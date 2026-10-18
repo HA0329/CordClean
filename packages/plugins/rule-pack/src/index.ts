@@ -27,7 +27,7 @@ import type {
   TaskScanContext,
 } from '@cordclean/shared'
 import { SUPPORTED_RULE_TYPES } from '@cordclean/shared'
-import { exists, folderSize, normalizePath, walk } from '@cordclean/utils'
+import { exists, folderSize, mapLimit, normalizePath, walk } from '@cordclean/utils'
 import catalogJson from '../rules/catalog.json' with { type: 'json' }
 
 export interface RulePackConfig {
@@ -397,18 +397,16 @@ export default defineCleanerPlugin<RulePackConfig>({
       )
 
       async function scanCategory(scan: TaskScanContext): Promise<DraftWithRule[]> {
-        const output: DraftWithRule[] = []
-        for (const rule of rules) {
+        // 规则之间互不依赖：并发扫描，让体积统计的 I/O 重叠起来
+        const perRule = await mapLimit(rules, Math.max(1, settings.scan.concurrency), async (rule) => {
           scan.throwIfAborted()
-          const remaining = Math.max(0, config.maxItemsPerCategory - output.length)
-          if (!remaining) break
-          const drafts = await scanRule(rule, scan, {
-            maxItems: remaining,
+          return scanRule(rule, scan, {
+            maxItems: config.maxItemsPerCategory,
             maxEntriesPerDir: Math.min(config.maxEntriesPerDir, settings.scan.maxEntriesPerTask),
           })
-          output.push(...drafts)
-        }
-        return output
+        })
+        const output = perRule.flat()
+        return output.slice(0, config.maxItemsPerCategory)
       }
     }
   },

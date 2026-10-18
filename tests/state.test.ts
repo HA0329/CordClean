@@ -86,7 +86,7 @@ describe('设置服务', () => {
 
     const recovered = await createApp({ dataDir, logger: false, loadPlugins: false })
     try {
-      expect(recovered.ctx.settings.get().scan.concurrency).toBe(3)
+      expect(recovered.ctx.settings.get().scan.concurrency).toBe(4)
       const { readdirSync } = await import('node:fs')
       const broken = readdirSync(dataDir).filter((name) => name.includes('.broken-'))
       expect(broken.length).toBe(1)

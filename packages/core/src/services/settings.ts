@@ -20,7 +20,7 @@ export const DEFAULT_SETTINGS: Settings = {
     retentionDays: 0,
   },
   scan: {
-    concurrency: 3,
+    concurrency: 4,
     maxItemsPerTask: 20000,
     maxEntriesPerTask: 400000,
     maxDepth: 32,
@@ -132,7 +132,7 @@ export class SettingsService extends Service implements SettingsLike {
       if (!Number.isFinite(num)) return fallback
       return Math.min(max, Math.max(min, Math.round(num)))
     }
-    settings.scan.concurrency = clamp(settings.scan.concurrency, 1, 8, 3)
+    settings.scan.concurrency = clamp(settings.scan.concurrency, 1, 8, 4)
     settings.scan.maxDepth = clamp(settings.scan.maxDepth, 1, 128, 32)
     settings.scan.maxItemsPerTask = clamp(settings.scan.maxItemsPerTask, 100, 500000, 20000)
     settings.scan.maxEntriesPerTask = clamp(settings.scan.maxEntriesPerTask, 1000, 5_000_000, 400000)

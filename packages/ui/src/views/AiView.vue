@@ -56,6 +56,7 @@ const form = reactive({
   maxTokens: 2048,
   timeoutMs: 90000,
   apiKey: '',
+  asEvaluator: false,
   extraBody: '',
   extraHeaders: '',
 })
@@ -79,6 +80,7 @@ function syncFromConfig() {
   form.maxTokens = Number(config.maxTokens) > 0 ? Number(config.maxTokens) : 2048
   form.timeoutMs = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 90000
   form.apiKey = String(config.apiKey ?? '')
+  form.asEvaluator = config.asEvaluator === true
   form.extraBody = config.extraBody && Object.keys(config.extraBody).length ? JSON.stringify(config.extraBody, null, 2) : ''
   form.extraHeaders = config.extraHeaders && Object.keys(config.extraHeaders).length ? JSON.stringify(config.extraHeaders, null, 2) : ''
 }
@@ -143,6 +145,7 @@ async function save() {
       maxTokens: Number(form.maxTokens),
       timeoutMs: Number(form.timeoutMs),
       apiKey: form.apiKey.trim(),
+      asEvaluator: form.asEvaluator,
       extraBody,
       extraHeaders,
     })
@@ -294,6 +297,10 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
             <el-input-number v-model="form.timeoutMs" :min="3000" :max="600000" :step="5000" style="width: 100%" />
           </el-form-item>
 
+          <el-form-item label="作为规则评估器">
+            <el-switch v-model="form.asEvaluator" />
+            <div class="cc-hint">开启后扫描时用 AI 判断每类规则的风险与默认勾选；关闭则用内置启发式</div>
+          </el-form-item>
           <el-form-item label="API Key">
             <el-input
               v-model="form.apiKey"
