@@ -168,5 +168,13 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'ai/models': async ({ refresh }) => requireAi().models({ refresh }),
     'ai/probe': () => requireAi().probe(),
+  'ai/egress': async ({ limit }) => ({
+    stats: ctx.egress.stats(),
+    records: ctx.egress.preview().slice(0, Math.max(1, Math.min(20, limit ?? 5))),
+  }),
+  'ai/egress/clear': () => {
+    ctx.egress.reset()
+    return { ok: true as const }
+  },
   }
 }

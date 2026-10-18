@@ -302,6 +302,11 @@ export async function fetchAiModels(refresh = true): Promise<{ source: string; c
 }
 
 /** 连通性探测 */
+/** 外发记录（不变量 8）：统计 + 脱敏预览 */
+export async function fetchEgress(limit = 10) {
+  return requireTransport().request('ai/egress', { limit })
+}
+
 export async function probeAi(): Promise<AiProbeResult> {
   const probe = await requireTransport().request('ai/probe', undefined)
   state.aiProbe = probe

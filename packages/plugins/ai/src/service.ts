@@ -169,6 +169,7 @@ export class AiService extends Service implements AiLike {
       this.modelCache = { at: Date.now(), models: FALLBACK_MODELS, source: 'fallback' }
       return { source: 'fallback', models: FALLBACK_MODELS, error: '未配置 API Key，展示内置模型目录' }
     }
+    this.gate('models', this.rawConfig.baseUrl.replace(/\/+$/, '') + '/models', undefined)
     const result = await fetchModelList(this.rawConfig, key)
     this.modelCache = { at: Date.now(), models: result.models, source: result.source }
     if (result.error) this.ctx.logger.info('拉取模型列表失败，使用内置目录：%s', result.error)

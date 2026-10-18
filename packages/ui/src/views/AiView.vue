@@ -61,6 +61,9 @@ const form = reactive({
   extraHeaders: '',
 })
 
+const onlineAi = computed(() => (state.settings as any).privacy?.onlineAi !== false)
+const egress = ref<{ stats: { requests: number; bytes: number; tokens: number }; records: any[] } | null>(null)
+const egressOpen = ref(false)
 const available = computed(() => state.aiStatus.available)
 const configured = computed(() => state.aiStatus.configured)
 const analysis = computed(() => state.ai)
@@ -171,6 +174,15 @@ async function doProbe() {
   }
 }
 
+async function loadEgress() {
+  try {
+    egress.value = await (await import('../api/store.ts')).fetchEgress(10)
+    egressOpen.value = true
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 async function run() {
   running.value = true
   try {
@@ -196,6 +208,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       </div>
       <div class="cc-actions">
         <el-button :loading="loadingModels" :disabled="!available" @click="loadModels">获取模型</el-button>
+        <el-button :disabled="!available" @click="loadEgress">外发记录</el-button>
         <el-button :loading="probing" :disabled="!available || !configured" @click="doProbe">测试连接</el-button>
         <el-button type="primary" :loading="running" :disabled="!available || !configured" @click="run">
           {{ analysis ? '重新分析' : '开始分析' }}

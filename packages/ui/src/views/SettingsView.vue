@@ -11,6 +11,7 @@ const form = reactive({
   duplicateMinSizeMb: 1,
   dryRunDefault: false,
   cleanMode: 'recycle' as 'recycle' | 'quarantine' | 'delete',
+  onlineAi: true,
   highRiskQuarantine: true,
   confirmRisky: true,
   retries: 2,
@@ -39,6 +40,7 @@ function syncFromSettings() {
   form.confirmRisky = settings.clean.confirmRisky
   form.retries = settings.clean.retries
   form.cleanMode = settings.clean.mode
+  form.onlineAi = settings.privacy.onlineAi
   form.highRiskQuarantine = settings.clean.highRiskQuarantine
   form.quarantineEnabled = settings.quarantine.enabled
   form.quarantineMaxMb = Math.round(settings.quarantine.maxBytes / 1024 / 1024)
@@ -83,6 +85,7 @@ async function save() {
       clean: {
         dryRunDefault: form.dryRunDefault,
     clean: { mode: form.cleanMode, highRiskQuarantine: form.highRiskQuarantine },
+    privacy: { onlineAi: form.onlineAi },
         confirmRisky: form.confirmRisky,
         retries: form.retries,
       },
@@ -167,6 +170,10 @@ async function reset() {
               <el-option label="隔离区（可恢复）" value="quarantine" />
               <el-option label="永久删除" value="delete" />
             </el-select>
+          </el-form-item>
+          <el-form-item label="允许在线 AI">
+            <el-switch v-model="form.onlineAi" />
+            <span class="cc-faint">关闭后 AI 请求一律拒绝，工具完全离线可用</span>
           </el-form-item>
           <el-form-item label="高风险项进隔离区">
             <el-switch v-model="form.highRiskQuarantine" />
