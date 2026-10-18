@@ -383,8 +383,18 @@ body {
 
 /* ---------- 布局：侧边栏折叠 / 导航可读性 ---------- */
 .sidebar { transition: width 0.18s ease, flex-basis 0.18s ease, padding 0.18s ease; }
-html.sidebar-collapsed .sidebar { width: 0; flex-basis: 0; padding: 0; border-right: none; overflow: hidden; }
-html.sidebar-collapsed .sidebar * { visibility: hidden; }
+html.sidebar-collapsed .sidebar { width: 64px; flex-basis: 64px; padding: 18px 8px; border-right: 1px solid var(--cc-border); }
+html.sidebar-collapsed .sidebar .brand { justify-content: center; padding: 4px 0; }
+html.sidebar-collapsed .sidebar .brand-text,
+html.sidebar-collapsed .sidebar .nav-label,
+html.sidebar-collapsed .sidebar .engine-title,
+html.sidebar-collapsed .sidebar .engine-sub,
+html.sidebar-collapsed .sidebar .link-btn,
+html.sidebar-collapsed .sidebar .version { display: none; }
+html.sidebar-collapsed .sidebar .collapse-btn { display: none; }
+html.sidebar-collapsed .sidebar .nav-item { justify-content: center; padding: 10px 0; }
+html.sidebar-collapsed .sidebar .sidebar-footer { align-items: center; }
+html.sidebar-collapsed .sidebar .engine { justify-content: center; }
 
 
 

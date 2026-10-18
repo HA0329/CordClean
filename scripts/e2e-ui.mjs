@@ -235,14 +235,23 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 300))
   const themeBack = await evaluate("document.documentElement.classList.contains('dark')")
   console.log(`✓ 主题切回：${themeBack ? 'dark' : 'light'}`)
-  // 侧边栏折叠：宽度应归零，并出现浮动展开按钮
-  await evaluate("document.querySelector('.collapse-btn')?.click()")
+  // 侧边栏折叠：应为 64px 窄轨道且图标仍可点击
+  const collapsedNow = () => evaluate("document.documentElement.classList.contains('sidebar-collapsed')")
+  if (!(await collapsedNow())) {
+    await evaluate("document.querySelector('.collapse-btn')?.click()")
+    await new Promise((resolve) => setTimeout(resolve, 400))
+  }
+  const railWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
+  const icons = await evaluate("document.querySelectorAll('.sidebar .nav-item .nav-icon').length")
+  await evaluate("document.querySelectorAll('.sidebar .nav-item')[2]?.click()")
   await new Promise((resolve) => setTimeout(resolve, 400))
-  const sidebarWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
-  const reopen = await evaluate("!!document.querySelector('.sidebar-open')")
-  console.log(`✓ 侧边栏折叠：宽度=${sidebarWidth}px，浮动展开按钮=${reopen ? '有' : '无'}`)
+  const railHash = await evaluate("location.hash")
+  console.log(`✓ 折叠轨道：宽度=${railWidth}px，图标数=${icons}，点击后 hash=${railHash}`)
+  await capture("rail")
   await evaluate("document.querySelector('.sidebar-open')?.click()")
   await new Promise((resolve) => setTimeout(resolve, 300))
+  const expandedWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
+  console.log(`✓ 侧边栏展开：宽度=${expandedWidth}px`)
   console.log('\n✅ 界面端到端检查通过：6 个页面渲染正常、扫描全链路成功、无 JS 异常')
     shutdown(0)
   }

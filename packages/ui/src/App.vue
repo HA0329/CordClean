@@ -59,10 +59,8 @@ function applySidebar(collapsed: boolean) {
   document.documentElement.classList.toggle('sidebar-collapsed', collapsed)
   const aside = document.querySelector('.sidebar') as HTMLElement | null
   if (aside) {
-    aside.style.width = collapsed ? '0px' : ''
-    aside.style.flexBasis = collapsed ? '0px' : ''
-    aside.style.padding = collapsed ? '0' : ''
-    aside.style.overflow = collapsed ? 'hidden' : ''
+    aside.style.width = collapsed ? '64px' : ''
+    aside.style.flexBasis = collapsed ? '64px' : ''
   }
 }
 function toggleSidebar() {
