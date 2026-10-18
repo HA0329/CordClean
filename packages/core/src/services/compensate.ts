@@ -146,7 +146,9 @@ export class CompensateService extends Service {
 
       const clear = item.kind === 'directory' && (item.meta as any)?.action === 'clear'
       // ② 黑名单 / ③ 白名单：受保护路径拒绝；清空语义走清空白名单
-      const check = clear ? policy.checkClear(canonical) : policy.check(canonical)
+      // 清空语义优先走清空白名单；白名单未命中时回落到普通辖区（受保护目录仍会被拒绝）
+      const clearCheck = clear ? policy.checkClear(canonical) : undefined
+      const check = clearCheck?.allowed ? clearCheck : policy.check(canonical)
       if (!check.allowed) {
         const reason: RejectReason = check.reason === 'protected' ? 'protected' : check.reason === 'name-denied' ? 'protected' : 'outside'
         reject(item, reason, `路径被策略拒绝（${check.reason ?? 'unknown'}${check.detail ? `：${check.detail}` : ''}）`)
@@ -261,7 +263,8 @@ export class CompensateService extends Service {
    */
   async recheck(item: CleanTicketItem): Promise<CompensateRejection | undefined> {
     const policy: PathPolicyLike = this.ctx.pathPolicy
-    const check = item.action === 'clear' ? policy.checkClear(item.path) : policy.check(item.path)
+    const clearCheck = item.action === 'clear' ? policy.checkClear(item.path) : undefined
+    const check = clearCheck?.allowed ? clearCheck : policy.check(item.path)
     if (!check.allowed) {
       return { itemId: item.itemId, path: item.path, reason: 'protected', message: `执行前复核失败：${check.reason ?? 'policy'}` }
     }

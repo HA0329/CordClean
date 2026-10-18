@@ -89,7 +89,7 @@ async function benchTraversal(totalFiles: number) {
     dataDir,
     logger: false,
     manifest: manifestOf([{ id: 'bulk', plugin: fakeFilesPlugin({ id: 'bulk', roots: [filesDir] }) }]),
-    settingsOverrides: { clean: { dryRunDefault: false } },
+    settingsOverrides: { clean: { dryRunDefault: false, mode: 'delete' } },
   })
 
   const scan = await time(() => app.ctx.cleaner.scan())

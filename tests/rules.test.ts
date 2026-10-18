@@ -338,3 +338,34 @@ describe('自定义规则（AI 建议入库后）', () => {
     expect(app.ctx.cleaner.list().some((task) => task.id === 'rule:custom-test')).toBe(true)
   })
 })
+
+describe('D-18 回归：按 itemIds 清理清空类规则', () => {
+  it('扫描后按 id 清理，目录保留、内容删除', async () => {
+    const dir = path.join(sandbox.root, 'd18-cache')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'a.bin'), Buffer.alloc(1024, 1))
+    const app = await createApp({
+      dataDir: path.join(sandbox.dataDir, 'd18'),
+      logger: false,
+      manifest: manifestOf([{ id: 'rule-pack', plugin: rulePack }]),
+      settingsOverrides: {
+        clean: { mode: 'quarantine' },
+        rules: {
+          custom: [{
+            id: 'd18-rule', category: 'd18', categoryLabel: 'D18', categoryId: 'apps',
+            name: 'D18 缓存', risk: 'safe', source: 'user', version: 1,
+            target: { type: 'clear_dir', path: dir },
+          }],
+        },
+      },
+    })
+    apps.push(app)
+    const scan = await app.ctx.cleaner.scan({ taskIds: ['rule:d18'] })
+    const item = scan.items[0]
+    expect(item.protected).toBe(false)
+    const report = await app.ctx.cleaner.clean({ itemIds: [item.id] })
+    expect(report.cleaned).toBe(1)
+    expect(existsSync(dir)).toBe(true)
+    expect(existsSync(path.join(dir, 'a.bin'))).toBe(false)
+  })
+})

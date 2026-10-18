@@ -11,7 +11,7 @@
 import { stat } from 'node:fs/promises'
 import { Service, type Context } from 'cordis'
 import type { CleanItemResult } from '@cordclean/shared'
-import { clearDirectory, compactSqlite, deletePath, describeDeleteError, pathKey } from '@cordclean/utils'
+import { clearDirectory, compactSqlite, deletePath, describeDeleteError, mapLimit, pathKey } from '@cordclean/utils'
 import type { QuarantineSession } from './quarantine.ts'
 import { isCleanTicket, type CleanTicket, type CleanTicketItem } from './compensate.ts'
 
@@ -61,6 +61,7 @@ export class ExecutorService extends Service {
 
     const settings = this.ctx.settings.get()
     const recycleQueue: CleanTicketItem[] = []
+    const plainQueue: CleanTicketItem[] = []
     const pending = new Map<string, CleanTicketItem>()
 
     // 第一遍：复核 + 分类（回收站批量处理效率最高）
@@ -80,9 +81,7 @@ export class ExecutorService extends Service {
         pending.set(item.itemId, item)
         continue
       }
-      const result = await this.runOne(item, options, settings.clean.retries)
-      this.absorb(outcome, result)
-      options.onItem?.(result)
+      plainQueue.push(item)
     }
 
     // 第二遍：批量进回收站
@@ -109,6 +108,12 @@ export class ExecutorService extends Service {
       }
     }
 
+    // 非回收站项并发执行（补偿链已在前置阶段完成逐项校验）
+    const settled = await mapLimit(plainQueue, 16, (item) => this.runOne(item, options, settings.clean.retries))
+    for (const result of settled) {
+      this.absorb(outcome, result)
+      options.onItem?.(result)
+    }
     outcome.failed = outcome.results.filter((result) => !result.ok).length
     return outcome
   }

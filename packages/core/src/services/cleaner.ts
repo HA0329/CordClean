@@ -155,9 +155,11 @@ export class CleanerService extends Service implements CleanerLike {
       // 服务引用在扫描开始时取一次：避免每个清理项都经过 Cordis 上下文代理
       // `action: clear` 的目标走清空白名单（目录本身受保护，但允许清空内容）
       const isClear = kind === 'directory' && (draft.meta as any)?.action === 'clear'
-      const policy = kind === 'file' || kind === 'directory'
-        ? (isClear ? policyRef.checkClear(path) : policyRef.check(path))
-        : { allowed: true }
+      let policy: { allowed: boolean; reason?: string; detail?: string } = { allowed: true }
+      if (kind === 'file' || kind === 'directory') {
+        const clearCheck = isClear ? policyRef.checkClear(path) : undefined
+        policy = clearCheck?.allowed ? clearCheck : policyRef.check(path)
+      }
       const risk = draft.risk ?? task.risk
       const size = Math.max(0, Math.trunc(draft.size ?? 0))
       const item: CleanItem = {
