@@ -364,7 +364,10 @@ export default defineCleanerPlugin<RulePackConfig>({
 
       // 0) 登记规则：归属本插件 fiber，卸载即注销（论文 6.2.1）
       const imported = ctx.rules.importRules(ctx, rules, (rule) => ruleRoots(rule, env))
-      for (const item of imported.rejected) ctx.logger.warn('规则被拒绝（%s）：%s', item.ruleId, item.reason)
+      for (const item of imported.rejected) ctx.logger.debug('规则被拒绝（%s）：%s', item.ruleId, item.reason)
+      if (imported.rejected.length) {
+        ctx.logger.info('规则包 %s：%d 条规则因安全策略跳过（详见 debug 日志）', category.key, imported.rejected.length)
+      }
 
       // 1) 声明辖区：每条规则的根目录都必须在路径策略里登记，否则内核拒绝删除
       ctx.effect(() => {

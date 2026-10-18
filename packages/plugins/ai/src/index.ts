@@ -29,6 +29,10 @@ export default defineCleanerPlugin<Partial<AiConfig>>({
   Config,
   setup(ctx, config) {
     const normalized = normalizeConfig(config as Partial<AiConfig>)
+    const legacyModel = String((config as any)?.model ?? '')
+    if (legacyModel && legacyModel !== normalized.model) {
+      ctx.logger.info('模型名 %s 已下线，自动迁移为 %s', legacyModel, normalized.model)
+    }
     const service = new AiService(ctx, normalized)
 
     const credential = service.configured() ? '使用已配置/环境变量中的 API Key' : '未配置 API Key（可在界面填写或设置 DEEPSEEK_API_KEY）'

@@ -8,6 +8,7 @@ import {
   aiPluginConfig,
   enableAiPlugin,
   fetchAiModels,
+  fetchEgress,
   probeAi,
   refreshAiStatus,
   saveAiConfig,
@@ -188,7 +189,7 @@ async function doProbe() {
 
 async function loadEgress() {
   try {
-    egress.value = await (await import('../api/store.ts')).fetchEgress(10)
+    egress.value = await fetchEgress(10)
     egressOpen.value = true
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
