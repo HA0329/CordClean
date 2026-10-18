@@ -16,6 +16,9 @@ import {
   refreshAiStatus,
   saveAiConfig,
   dryRunAiRule,
+  draftAiPlugin,
+  validateAiPlugin,
+  installAiPlugin,
   patchSettings,
   state,
 } from '../api/store.ts'
@@ -258,6 +261,48 @@ async function addSuggestedRoots() {
   try {
     await patchSettings({ analysis: { roots } })
     ElMessage.success(`已添加 ${rootSuggestions.value.length} 个扫描根，下次扫描生效`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+const workshopOpen = ref(false)
+const workshopRequirement = ref('')
+const workshopDraft = ref<{ name: string; code: string; notes: string } | null>(null)
+const workshopValidation = ref<{ ok: boolean; errors: string[]; warnings: string[] } | null>(null)
+const workshopReviewed = ref(false)
+const workshopBusy = ref(false)
+
+async function generateWorkshopDraft() {
+  if (!workshopRequirement.value.trim()) {
+    ElMessage.warning('先写一句需求')
+    return
+  }
+  workshopBusy.value = true
+  try {
+    const draft = await draftAiPlugin(workshopRequirement.value.trim())
+    workshopDraft.value = draft
+    workshopValidation.value = await validateAiPlugin(draft.code)
+    workshopReviewed.value = false
+    workshopOpen.value = true
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    workshopBusy.value = false
+  }
+}
+
+async function revalidateWorkshopDraft() {
+  if (!workshopDraft.value) return
+  workshopValidation.value = await validateAiPlugin(workshopDraft.value.code)
+}
+
+async function installWorkshopDraft() {
+  if (!workshopDraft.value || !workshopValidation.value?.ok || !workshopReviewed.value) return
+  try {
+    const result = await installAiPlugin(workshopDraft.value.name, workshopDraft.value.code)
+    workshopOpen.value = false
+    ElMessage.success('已安装并启用：' + result.id + '（本次运行有效）')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
@@ -548,6 +593,13 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
           </div>
         </div>
 
+        <div class="cc-card">
+        <div class="cc-card-title"><h3>🛠️ AI 插件工坊</h3><span class="cc-faint">生成单文件插件 → 校验 → 你阅读代码后安装</span></div>
+        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。</p>
+        <el-input v-model="workshopRequirement" type="textarea" :rows="2" placeholder="例如：写一个插件，清理 D 盘下超过 30 天的 .log 文件" />
+        <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
+      </div>
+
         <div v-if="rootSuggestions.length" class="cc-card">
         <div class="cc-card-title">
           <h3>📁 AI 建议新增的扫描根</h3>
@@ -574,7 +626,24 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
         <el-button type="primary" @click="selectionOpen = true">对比并应用</el-button>
       </div>
 
-      <el-dialog v-model="dryRunOpen" title="规则试运行（只读，不会删除）" width="720px">
+      <el-dialog v-model="workshopOpen" title="插件草稿审阅" width="900px">
+      <template v-if="workshopDraft">
+        <p class="cc-hint">名称：{{ workshopDraft.name }} · {{ workshopDraft.notes }}</p>
+        <div v-if="workshopValidation">
+          <p v-if="workshopValidation.errors.length" class="error-text">校验未通过：{{ workshopValidation.errors.join('；') }}</p>
+          <p v-else class="cc-hint">✓ 语法与契约校验通过</p>
+          <p v-if="workshopValidation.warnings.length" class="cc-faint">提示：{{ workshopValidation.warnings.join('；') }}</p>
+        </div>
+        <el-input v-model="workshopDraft.code" type="textarea" :rows="18" class="cc-mono" spellcheck="false" @input="revalidateWorkshopDraft" />
+        <el-checkbox v-model="workshopReviewed" style="margin-top: 8px">我已阅读上述代码，理解它会以完整权限运行</el-checkbox>
+      </template>
+      <template #footer>
+        <el-button @click="workshopOpen = false">取消</el-button>
+        <el-button type="primary" :disabled="!workshopValidation?.ok || !workshopReviewed" @click="installWorkshopDraft">安装并启用</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="dryRunOpen" title="规则试运行（只读，不会删除）" width="720px">
       <p v-if="dryRunLoading" class="cc-faint">正在统计命中项…</p>
       <template v-else-if="dryRunResult">
         <p>

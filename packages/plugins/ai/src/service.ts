@@ -213,6 +213,29 @@ export class AiService extends Service implements AiLike {
     return result
   }
 
+  /** AI 插件工坊：生成单文件 Cordis 插件草稿 */
+  async draftPlugin(requirement: string): Promise<{ name: string; code: string; notes: string }> {
+    const key = this.requireKey()
+    const config = this.rawConfig
+    const request = buildRequest(config, key, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX + requirement)
+    this.gate('plugin-draft', request.url, request.body)
+    const result = await requestJson(request.url, {
+      headers: request.headers,
+      body: request.body,
+      timeoutMs: config.timeoutMs,
+      retries: config.retries,
+    })
+    const parsed = parseResponse(config, result.payload)
+    const data = extractJsonObject(parsed.text)
+    const code = typeof data?.code === 'string' ? data.code : ''
+    if (!code.trim()) throw new AiError('模型没有返回插件代码', 'INVALID_RESPONSE', result.status, parsed.raw)
+    return {
+      name: String(data?.name ?? 'ai-plugin').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 40) || 'ai-plugin',
+      code,
+      notes: String(data?.notes ?? '').slice(0, 500),
+    }
+  }
+
   status(): AiRuntimeStatus {
     return {
       available: true,
@@ -532,6 +555,15 @@ export function createAiService(ctx: Context, raw: Partial<AiConfig> | undefined
 /** 提示模型额外给出新规则建议（可选字段） */
 /** 让模型在候选列表内挑选清理项 */
 /** 让模型建议新增扫描根（只能从候选 rootId 中选） */
+const PLUGIN_SYSTEM_PROMPT = [
+  '你是 Cordis 插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "code": "完整 ESM 源码", "notes": "简要说明" }。',
+  'code 必须是单文件 .mjs，默认导出 defineCleanerPlugin({ name, version, description, inject: ["cleaner"], setup(ctx, config) {...} })。',
+  '插件用 ctx.cleaner.define({ id, name, category, risk, icon, defaultSelected, targets, scan(scan){ scan.emit({path,kind,size}) } }) 注册清理任务。',
+  '禁止：child_process、process.exit、fs.rm/rmSync/unlink/rmdir、直接删除文件、网络请求、读取环境变量中的密钥。删除一律交给内核（只 emit 候选）。',
+  '路径必须来自 config 或已知的 %ENV% 模板；不要硬编码 C:\\Users 下的用户名；用 ctx.logger 记录关键日志。',
+].join('\n')
+const PLUGIN_USER_PREFIX = '需求：'
+
 const ROOT_HINT =
   '\n\n如果发现「用户目录下某一级目录体积很大、但不在当前扫描根里」，请输出 roots 数组（最多 3 条）：' +
   '[{"rootId":"候选里的 rootId","reason":"为什么建议加入扫描范围（中文，30 字内）"}]。' +

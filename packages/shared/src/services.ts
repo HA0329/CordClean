@@ -264,6 +264,8 @@ export interface PluginManagerLike {
  */
 export interface AiLike {
   analyze(options?: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] }): Promise<AiAnalysis>
+  /** 生成单文件插件草稿（工坊用） */
+  draftPlugin?(requirement: string): Promise<{ name: string; code: string; notes: string }>
   last(): AiAnalysis | undefined
   configured(): boolean
   /** 拉取可用模型列表（失败时返回内置兜底列表） */

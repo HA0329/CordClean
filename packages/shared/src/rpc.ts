@@ -131,6 +131,9 @@ export interface ApiMap {
   'ai/status': { params: void; result: AiRuntimeStatus }
   'ai/models': { params: { refresh?: boolean }; result: { source: 'remote' | 'fallback'; models: AiModelInfo[] } }
   'ai/probe': { params: void; result: AiProbeResult }
+  'ai/plugin/draft': { params: { requirement: string }; result: { name: string; code: string; notes: string } }
+  'ai/plugin/validate': { params: { code: string }; result: { ok: boolean; errors: string[]; warnings: string[] } }
+  'ai/plugin/install': { params: { name: string; code: string }; result: { path: string; id: string } }
   'ai/rules/dry-run': {
     params: { suggestion: AiRuleSuggestion }
     result: { ok: boolean; reason?: string; count: number; bytes: number; samples: Array<{ path: string; bytes: number; kind: string }>; missing: string[] }

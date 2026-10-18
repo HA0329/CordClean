@@ -23,6 +23,7 @@ import type {
   CleanItemRef,
 } from '@cordclean/shared'
 import { dlog, exportDiagnostics, initDiagnostics, logDirPath, recentLogs } from './diagnostics.ts'
+import { saveGeneratedPlugin, validatePluginCode } from './plugin-workshop.ts'
 import { RpcError } from '@cordclean/shared'
 
 /** 外壳能力适配器（不同运行环境的系统交互） */
@@ -240,7 +241,18 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'ai/models': async ({ refresh }) => requireAi().models({ refresh }),
     'ai/probe': () => requireAi().probe(),
-    'ai/rules/dry-run': async ({ suggestion }) => {
+    'ai/plugin/draft': async ({ requirement }) => {
+      if (!ctx.ai?.draftPlugin) throw new Error('AI 插件未启用或版本过旧')
+      return ctx.ai.draftPlugin(String(requirement ?? ''))
+    },
+    'ai/plugin/validate': ({ code }) => validatePluginCode(String(code ?? '')),
+    'ai/plugin/install': async ({ name, code }) => {
+      const checked = validatePluginCode(String(code ?? ''))
+      if (!checked.ok) throw new Error(checked.errors[0] ?? '校验未通过')
+      const file = saveGeneratedPlugin(api.dataDir, name, String(code))
+      await ctx.plugins.installExternal(file)
+      return { path: file, id: 'external:' + String(name).replace(/[^a-zA-Z0-9_-]/g, '-') }
+    },    'ai/rules/dry-run': async ({ suggestion }) => {
       // 只读演练：不写规则库、不删除，只报告会命中什么
       const env = ctx.system.env
       const expand = (value: string) =>

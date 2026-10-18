@@ -1,0 +1,9 @@
+feat(ai): 第6步——AI 插件工坊（生成 → 校验 → 人工审阅 → 安装）
+
+- 新增 RPC：ai/plugin/draft（按需求生成单文件 ESM 插件）、ai/plugin/validate、ai/plugin/install
+- 提示词固化 Cordis 契约：defineCleanerPlugin + ctx.cleaner.define + 只 emit 候选、禁止直接删文件/子进程/网络
+- 静态校验：必须含 defineCleanerPlugin/export default；黑名单 child_process、process.exit、fs.rm/unlink/rmdir、http/axios
+- 语法校验：写入临时 .mjs 后 node --check（与运行时同一解析器）
+- 安装：写入 <dataDir>/generated-plugins/<name>.mjs，再走 installExternal 热加载；本次运行有效
+- AI 页新增「AI 插件工坊」卡片与审阅弹窗：可编辑代码、实时复检、必须勾选"我已阅读代码"才能安装
+- 新增 3 个校验单测（合法通过 / 删除与子进程拒绝 / 语法错误拒绝）
