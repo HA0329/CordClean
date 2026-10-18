@@ -250,8 +250,9 @@ export function describeDeleteError(error: unknown): string {
   const code = errorCode(error)
   switch (code) {
     case 'EBUSY':
+      return '文件正被其它程序占用（EBUSY），已跳过，不会强制删除'
     case 'EPERM':
-      return '文件正被其它程序占用或权限不足'
+      return '权限不足或文件被占用（EPERM），已跳过，不会强制删除'
     case 'EACCES':
       return '没有访问权限'
     case 'ENOENT':

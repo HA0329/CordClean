@@ -8,7 +8,7 @@
  * - `quarantinedBytes`：进了隔离区的字节（可恢复）；
  * - `vanished`：执行前发现目标已不存在（不虚报释放量）。
  */
-import { stat } from 'node:fs/promises'
+import { open, readdir, stat } from 'node:fs/promises'
 import { Service, type Context } from 'cordis'
 import type { CleanItemResult } from '@cordclean/shared'
 import { clearDirectory, compactSqlite, deletePath, describeDeleteError, mapLimit, pathKey } from '@cordclean/utils'
@@ -30,6 +30,39 @@ export interface ExecuteOutcome {
   vanished: number
   skipped: number
   failed: number
+}
+
+/** 删除前预检：递归尝试以读写方式打开每个文件；被占用/无权限即判整目录不可删 */
+export async function preflightDirectory(root: string, limit = 5000): Promise<{ ok: boolean; path?: string; message: string }> {
+  let visited = 0
+  const walk = async (dir: string): Promise<{ ok: boolean; path?: string; message: string }> => {
+    let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      return { ok: false, path: dir, message: '无法读取目录（' + (code ?? '未知错误') + '），已跳过' }
+    }
+    for (const entry of entries) {
+      if (++visited > limit) return { ok: false, path: dir, message: '目录项过多（超过 ' + limit + '），已跳过' }
+      const full = dir + (dir.endsWith('\\\\') ? '' : '\\\\') + entry.name
+      if (entry.isDirectory()) {
+        const nested = await walk(full)
+        if (!nested.ok) return nested
+        continue
+      }
+      if (!entry.isFile()) continue
+      try {
+        const handle = await open(full, 'r+')
+        await handle.close()
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code ?? 'UNKNOWN'
+        return { ok: false, path: full, message: '文件可能正被占用或不可写（' + code + '），已跳过整目录' }
+      }
+    }
+    return { ok: true, message: '' }
+  }
+  return walk(root)
 }
 
 export class ExecutorService extends Service {
@@ -132,6 +165,11 @@ export class ExecutorService extends Service {
       if (item.action === 'compact') {
         const result = await compactSqlite(item.path)
         return { itemId: item.itemId, path: item.path, ok: true, bytes: result.freed }
+      }
+      // 目录预检：任一子项被占用/无权限就整目录跳过，避免"删了一半"
+      if (item.kind === 'directory' || item.action === 'clear') {
+        const preflight = await preflightDirectory(item.path)
+        if (!preflight.ok) return fail(preflight.message)
       }
       // 清空语义：只删子项，保留目录
       if (item.action === 'clear') {
