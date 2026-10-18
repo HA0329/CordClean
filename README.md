@@ -4,6 +4,20 @@
 
 > 仅支持 Windows 10/11。默认删除到回收站，高风险项可进隔离区，可恢复。
 
+## 界面预览
+
+| 概览 | 扫描与清理 |
+| --- | --- |
+| ![概览](assets/screenshots/overview.png) | ![扫描与清理](assets/screenshots/clean-result.png) |
+
+| 插件管理 | AI 顾问配置 |
+| --- | --- |
+| ![插件管理](assets/screenshots/plugins.png) | ![AI 顾问](assets/screenshots/ai-config.png) |
+
+| 设置（含定时任务） | 深色主题 |
+| --- | --- |
+| ![设置](assets/screenshots/settings.png) | ![深色主题](assets/screenshots/dark-theme.png) |
+
 ## 功能
 
 - **模块化清理**：规则库、回收站、大文件、重复文件、空目录、注册表残留、启动项、快捷方式、定时任务、AI 顾问等 11 个内置插件，可独立启停、热重载、改配置。

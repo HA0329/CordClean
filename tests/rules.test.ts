@@ -1,0 +1,371 @@
+/**
+ * 规则层测试：规则注册表、清空白名单、评估器、规则包纯函数、规则目录完整性。
+ */
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+import { afterAll, describe, expect, it } from 'vitest'
+import { createApp, type App } from '@cordclean/core'
+import { validateRules } from '@cordclean/shared'
+import type { CleanRule } from '@cordclean/shared'
+import { expandTemplate, matchSegment, matchSegments, ruleRoots } from '@cordclean/plugin-rule-pack'
+import rulePack from '@cordclean/plugin-rule-pack'
+import { createSandbox, manifestOf } from './helpers.ts'
+
+const sandbox = createSandbox()
+const apps: App[] = []
+
+afterAll(async () => {
+  for (const app of apps) await app.dispose()
+  rmSync(sandbox.root, { recursive: true, force: true })
+})
+
+async function boot(name: string): Promise<App> {
+  const app = await createApp({
+    dataDir: path.join(sandbox.dataDir, name),
+    logger: false,
+    manifest: manifestOf([]),
+  })
+  apps.push(app)
+  return app
+}
+
+const rule = (patch: Partial<CleanRule> = {}): CleanRule => ({
+  id: 'r1',
+  category: 'test',
+  name: '测试规则',
+  risk: 'safe',
+  source: 'user',
+  version: 1,
+  target: { type: 'clear_dir', path: sandbox.root },
+  ...patch,
+})
+
+describe('规则注册表', () => {
+  it('登记后可见，注销后消失（副作用归属调用方）', async () => {
+    const app = await boot('rules-basic')
+    const dispose = app.ctx.rules.register(app.ctx, [rule({ id: 'a' }), rule({ id: 'b' })])
+    expect(app.ctx.rules.list().map((item) => item.id)).toEqual(['a', 'b'])
+    expect(app.ctx.rules.categories()[0].key).toBe('test')
+    dispose()
+    expect(app.ctx.rules.list()).toHaveLength(0)
+  })
+
+  it('结构非法的规则被拒绝，合法规则仍能登记', async () => {
+    const app = await boot('rules-validate')
+    const bad = rule({ id: 'bad', target: { type: 'glob_files', base: sandbox.root } })
+    app.ctx.rules.register(app.ctx, [bad, rule({ id: 'good' })])
+    expect(app.ctx.rules.list().map((item) => item.id)).toEqual(['good'])
+  })
+
+  it('分类风险取组内最高，统计按类型与风险分组', async () => {
+    const app = await boot('rules-stats')
+    app.ctx.rules.register(app.ctx, [
+      rule({ id: 'safe-1', risk: 'safe' }),
+      rule({ id: 'risky-1', risk: 'risky' }),
+    ])
+    expect(app.ctx.rules.categories()[0].risk).toBe('risky')
+    const stats = app.ctx.rules.stats()
+    expect(stats.rules).toBe(2)
+    expect(stats.byRisk).toMatchObject({ safe: 1, risky: 1 })
+  })
+
+  it('校验器能发现缺少 pattern / maxDepth 等错误', () => {
+    const issues = validateRules([
+      rule({ id: 'x', target: { type: 'glob_files', base: sandbox.root } }),
+      rule({ id: 'y', target: { type: 'find_dirs', bases: [sandbox.root], names: ['node_modules'] } }),
+    ])
+    expect(issues.filter((issue) => issue.level === 'error')).toHaveLength(2)
+  })
+})
+
+describe('清空白名单', () => {
+  it('受保护目录默认拒绝，登记 clearRoot 后允许清空', async () => {
+    const app = await boot('clear-policy')
+    const dir = path.join(sandbox.root, 'protected-like')
+    mkdirSync(dir, { recursive: true })
+
+    // 用一个"看起来受保护"的目录模拟：把 sandbox 作为允许根，但子目录不登记
+    expect(app.ctx.pathPolicy.check(dir).allowed).toBe(false)
+    const dispose = app.ctx.pathPolicy.addClearRoot(dir)
+    expect(app.ctx.pathPolicy.check(dir).allowed).toBe(false) // 目录本身仍受保护
+    expect(app.ctx.pathPolicy.checkClear(dir).allowed).toBe(true)
+    expect(app.ctx.pathPolicy.checkClear(path.join(dir, 'child')).allowed).toBe(true)
+    expect(app.ctx.pathPolicy.checkClear(sandbox.root).allowed).toBe(false)
+    dispose()
+    expect(app.ctx.pathPolicy.checkClear(dir).allowed).toBe(false)
+  })
+
+  it('清空只删内容，保留目录本身', async () => {
+    const app = await boot('clear-engine')
+    const dir = path.join(sandbox.root, 'cache')
+    mkdirSync(path.join(dir, 'nested'), { recursive: true })
+    writeFileSync(path.join(dir, 'a.bin'), Buffer.alloc(2048, 1))
+    writeFileSync(path.join(dir, 'nested', 'b.bin'), Buffer.alloc(1024, 2))
+
+    app.ctx.pathPolicy.addClearRoot(dir)
+    app.ctx.cleaner.define({
+      id: 'clear-task',
+      name: '清空测试',
+      category: 'system',
+      risk: 'safe',
+      icon: '🧪',
+      defaultSelected: true,
+      targets: [dir],
+      async scan(scan) {
+        scan.emit({ path: dir, kind: 'directory', size: 3072, meta: { action: 'clear' } })
+      },
+    })
+
+    const report = await app.ctx.cleaner.scan({ taskIds: ['clear-task'] })
+    expect(report.items).toHaveLength(1)
+
+    const result = await app.ctx.cleaner.clean({ items: [report.items[0]] })
+    expect(result.cleaned).toBe(1)
+    expect(result.failed).toBe(0)
+    expect(existsSync(dir)).toBe(true)
+    expect(existsSync(path.join(dir, 'a.bin'))).toBe(false)
+    expect(existsSync(path.join(dir, 'nested'))).toBe(false)
+  })
+})
+
+describe('评估器', () => {
+  it('heuristic：safe 建议清理，risky 不建议，受保护直接拒绝', async () => {
+    const app = await boot('evaluator')
+    const results = await app.ctx.evaluator.evaluate([
+      { rule: rule({ risk: 'safe' }), path: 'C:/a', kind: 'file', size: 1, mtimeMs: Date.now() - 86_400_000 * 30 },
+      { rule: rule({ risk: 'risky' }), path: 'C:/b', kind: 'file', size: 1, mtimeMs: Date.now() - 86_400_000 * 30 },
+      { rule: rule({ risk: 'safe' }), path: 'C:/c', kind: 'file', size: 1, mtimeMs: Date.now(), protected: true },
+    ])
+    expect(results[0]).toMatchObject({ suggest: true, risk: 'safe' })
+    expect(results[1]).toMatchObject({ suggest: false, risk: 'risky' })
+    expect(results[2].suggest).toBe(false)
+    expect(results[2].reason).toContain('受保护')
+  })
+
+  it('可替换策略：注册自定义评估器并切换，失败时回退启发式', async () => {
+    const app = await boot('evaluator-strategy')
+    expect(app.ctx.evaluator.current()).toBe('heuristic')
+    const dispose = app.ctx.evaluator.register({
+      id: 'mock',
+      name: 'Mock 评估器',
+      evaluate: (inputs) => inputs.map(() => ({ suggest: false, risk: 'caution' as const, reason: 'mock 判定' })),
+    })
+    app.ctx.evaluator.use('mock')
+    const results = await app.ctx.evaluator.evaluate([
+      { rule: rule(), path: 'C:/x', kind: 'file', size: 1, mtimeMs: 0 },
+    ])
+    expect(results[0].reason).toBe('mock 判定')
+    expect(app.ctx.evaluator.strategies()).toContain('mock')
+
+    // 策略抛错 → 回退启发式，不把异常抛给扫描
+    app.ctx.evaluator.register({
+      id: 'broken',
+      name: '坏策略',
+      evaluate: () => {
+        throw new Error('boom')
+      },
+    })
+    app.ctx.evaluator.use('broken')
+    const fallback = await app.ctx.evaluator.evaluate([
+      { rule: rule({ risk: 'safe' }), path: 'C:/x', kind: 'file', size: 1, mtimeMs: 0 },
+    ])
+    expect(fallback[0].strategy).toBe('heuristic')
+    dispose()
+  })
+})
+
+describe('规则包纯函数', () => {
+  const env = {
+    userProfile: 'C:\\Users\\tester',
+    localAppData: 'C:\\Users\\tester\\AppData\\Local',
+    appData: 'C:\\Users\\tester\\AppData\\Roaming',
+    temp: 'C:\\Temp',
+    get: (name: string) => {
+      const map: Record<string, string> = {
+        TEMP: 'C:\\Temp',
+        LOCALAPPDATA: 'C:\\Users\\tester\\AppData\\Local',
+        APPDATA: 'C:\\Users\\tester\\AppData\\Roaming',
+        USERPROFILE: 'C:\\Users\\tester',
+      }
+      return map[name.toUpperCase()]
+    },
+  } as any
+
+  it('展开 %VAR% 与 ~/，未知变量返回空串', () => {
+    expect(expandTemplate('%LOCALAPPDATA%/NVIDIA/DXCache', env)).toBe('C:\\Users\\tester\\AppData\\Local\\NVIDIA\\DXCache')
+    expect(expandTemplate('~/Downloads', env)).toBe('C:\\Users\\tester\\Downloads')
+    expect(expandTemplate('%NOPE%/x', env)).toBe('')
+  })
+
+  it('glob 分段匹配支持 * 与多段路径', () => {
+    expect(matchSegment('thumbcache_*.db', 'thumbcache_256.db')).toBe(true)
+    expect(matchSegment('*.db', 'a.png')).toBe(false)
+    expect(matchSegments(['*', 'History'], ['Default', 'History'])).toBe(true)
+    expect(matchSegments(['*', 'History'], ['Default', 'History', 'x'])).toBe(false)
+  })
+
+  it('ruleRoots 合并 path/paths/base/bases 并去重', () => {
+    const single: CleanRule = rule({
+      target: { type: 'clear_dir', path: '%TEMP%', paths: ['%TEMP%', '%APPDATA%/x'] },
+    })
+    const roots = ruleRoots(single, env)
+    expect(roots).toEqual(['C:\\Temp', 'C:\\Users\\tester\\AppData\\Roaming\\x'])
+  })
+})
+
+describe('规则目录（catalog.json）', () => {
+  const catalogPath = path.resolve(import.meta.dirname, '../packages/plugins/rule-pack/rules/catalog.json')
+  const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as {
+    version: number
+    categories: Array<{ key: string; label: string; risk: string; categoryId: string; rules: any[] }>
+  }
+
+  it('导入规模与分类覆盖达到预期', () => {
+    expect(catalog.categories.length).toBeGreaterThanOrEqual(25)
+    const total = catalog.categories.reduce((sum, category) => sum + category.rules.length, 0)
+    expect(total).toBeGreaterThanOrEqual(260)
+    // 每个分类都必须有界面归类
+    for (const category of catalog.categories) {
+      expect(category.categoryId).toBeTruthy()
+      expect(category.label).toBeTruthy()
+    }
+  })
+
+  it('所有规则通过结构校验（无 error）', () => {
+    const rules: CleanRule[] = catalog.categories.flatMap((category) =>
+      category.rules.map((item) => ({
+        ...item,
+        category: category.key,
+        categoryLabel: category.label,
+        categoryId: category.categoryId as any,
+      })),
+    )
+    const errors = validateRules(rules).filter((issue) => issue.level === 'error')
+    expect(errors.map((issue) => issue.message)).toEqual([])
+  })
+})
+
+describe('数据库压缩（compact_db）', () => {
+  it('VACUUM 回收空闲页且不删除数据', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const app = await boot('compact-db')
+    const dir = path.join(sandbox.root, 'compact')
+    mkdirSync(dir, { recursive: true })
+    const dbPath = path.join(dir, 'History')
+    const db = new DatabaseSync(dbPath)
+    db.exec('CREATE TABLE visits (id INTEGER PRIMARY KEY, url TEXT, ts INTEGER)')
+    const insert = db.prepare('INSERT INTO visits (url, ts) VALUES (?, ?)')
+    db.exec('BEGIN')
+    for (let index = 0; index < 3000; index++) insert.run(`https://example.com/${index}`, Date.now())
+    db.exec('COMMIT')
+    db.exec('DELETE FROM visits')
+    db.close()
+    const beforeSize = (await import('node:fs')).statSync(dbPath).size
+    app.ctx.pathPolicy.addRoot(dir)
+
+    app.ctx.cleaner.define({
+      id: 'compact-task',
+      name: '数据库压缩',
+      category: 'browser',
+      risk: 'safe',
+      icon: '🗜️',
+      defaultSelected: false,
+      targets: [dbPath],
+      async scan(scan) {
+        scan.emit({ path: dbPath, kind: 'file', size: beforeSize, meta: { action: 'compact' } })
+      },
+    })
+    const report = await app.ctx.cleaner.scan({ taskIds: ['compact-task'] })
+    const cleaned = await app.ctx.cleaner.clean({ items: report.items, dryRun: false, forceQuarantine: false })
+    // 默认回收站模式对 compact 不适用：压缩是原地操作，按永久删除计量（freed = 回收的空闲页）
+    expect(cleaned.cleaned).toBe(1)
+    const after = (await import('node:fs')).statSync(dbPath).size
+    expect(after).toBeLessThan(beforeSize)
+    const verify = new DatabaseSync(dbPath)
+    const row = verify.prepare('SELECT COUNT(*) AS n FROM visits').get() as { n: number }
+    verify.close()
+    expect(row.n).toBe(0)
+  })
+})
+
+describe('唯一入库管线（不变量 7）', () => {
+  it('拒绝受保护目录上的删除类规则，放行清空类规则', async () => {
+    const app = await boot('rules-import')
+    const del = rule({ id: 'del-system', target: { type: 'delete_dir', path: 'C:\\Windows\\System32\\test-dir' } })
+    const clear = rule({ id: 'clear-system', target: { type: 'clear_dir', path: 'C:\\Windows\\System32\\LogFiles' } })
+    del.target.requiresAdmin = false
+    const result = app.ctx.rules.importRules(app.ctx, [del, clear], (item) => [item.target.path ?? ''])
+    expect(result.accepted.map((item) => item.id)).toContain('clear-system')
+    expect(result.rejected.map((item) => item.ruleId)).toContain('del-system')
+    expect(app.ctx.rules.list().length).toBe(1)
+  })
+
+  it('重复 id 被拒绝', async () => {
+    const app = await boot('rules-duplicate')
+    app.ctx.rules.register(app.ctx, [rule({ id: 'dup' })])
+    const result = app.ctx.rules.importRules(app.ctx, [rule({ id: 'dup' })], () => [sandbox.root])
+    expect(result.accepted).toHaveLength(0)
+    expect(result.rejected[0].ruleId).toBe('dup')
+  })
+})
+
+describe('自定义规则（AI 建议入库后）', () => {
+  it('settings.rules.custom 的规则会进入规则注册表并生成任务', async () => {
+    const app = await createApp({
+      dataDir: path.join(sandbox.dataDir, 'custom-rules'),
+      logger: false,
+      manifest: manifestOf([{ id: 'rule-pack', plugin: rulePack }]),
+      settingsOverrides: {
+        rules: {
+          custom: [
+            {
+              id: 'custom-test-1',
+              category: 'custom-test',
+              categoryLabel: '自定义测试',
+              categoryId: 'apps',
+              name: '自定义缓存',
+              risk: 'safe',
+              source: 'ai',
+              version: 1,
+              target: { type: 'clear_dir', path: path.join(sandbox.root, 'custom-cache') },
+            },
+          ],
+        },
+      },
+    })
+    apps.push(app)
+    expect(app.ctx.rules.get('custom-test-1')).toBeDefined()
+    expect(app.ctx.cleaner.list().some((task) => task.id === 'rule:custom-test')).toBe(true)
+  })
+})
+
+describe('D-18 回归：按 itemIds 清理清空类规则', () => {
+  it('扫描后按 id 清理，目录保留、内容删除', async () => {
+    const dir = path.join(sandbox.root, 'd18-cache')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'a.bin'), Buffer.alloc(1024, 1))
+    const app = await createApp({
+      dataDir: path.join(sandbox.dataDir, 'd18'),
+      logger: false,
+      manifest: manifestOf([{ id: 'rule-pack', plugin: rulePack }]),
+      settingsOverrides: {
+        clean: { mode: 'quarantine' },
+        rules: {
+          custom: [{
+            id: 'd18-rule', category: 'd18', categoryLabel: 'D18', categoryId: 'apps',
+            name: 'D18 缓存', risk: 'safe', source: 'user', version: 1,
+            target: { type: 'clear_dir', path: dir },
+          }],
+        },
+      },
+    })
+    apps.push(app)
+    const scan = await app.ctx.cleaner.scan({ taskIds: ['rule:d18'] })
+    const item = scan.items[0]
+    expect(item.protected).toBe(false)
+    const report = await app.ctx.cleaner.clean({ itemIds: [item.id] })
+    expect(report.cleaned).toBe(1)
+    expect(existsSync(dir)).toBe(true)
+    expect(existsSync(path.join(dir, 'a.bin'))).toBe(false)
+  })
+})
