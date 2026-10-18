@@ -415,26 +415,30 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
   border: 1px solid var(--cc-border);
   border-radius: 12px;
   padding: 12px 14px;
-  background: var(--cc-primary-soft);
+  background: var(--cc-bg-soft);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  transition: border-color 0.16s ease;
+  gap: 12px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .task-card:hover {
-  border-color: rgba(79, 140, 255, 0.4);
+  border-color: var(--cc-primary);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
 }
 
 .task-head {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
 .task-icon {
-  font-size: 16px;
-  line-height: 1.4;
+  width: 22px;
+  text-align: center;
+  font-size: 17px;
+  line-height: 1;
+  flex: 0 0 auto;
 }
 
 .task-title {
@@ -443,8 +447,12 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
 }
 
 .task-name {
-  font-size: 13.5px;
-  font-weight: 550;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-desc {
@@ -461,7 +469,9 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   font-size: 12px;
+  margin-top: auto;
 }
 
 .task-result {

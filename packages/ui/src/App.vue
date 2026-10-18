@@ -54,6 +54,17 @@ function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
 }
 const bootError = ref<string>()
+// 侧边栏折叠（记忆）
+const collapsed = ref(false)
+try {
+  collapsed.value = localStorage.getItem('cordclean.sidebar') === 'collapsed'
+} catch {}
+function toggleSidebar() {
+  collapsed.value = !collapsed.value
+  try {
+    localStorage.setItem('cordclean.sidebar', collapsed.value ? 'collapsed' : 'expanded')
+  } catch {}
+}
 const loading = ref(true)
 
 async function bootstrap() {
@@ -81,8 +92,8 @@ async function revealDataDir() {
 
 <template>
   <div class="shell">
-    <aside class="sidebar">
-      <div class="brand">
+    <aside class="sidebar" :class="{ collapsed }">
+      <div class="brand"><button class="collapse-btn" :title="collapsed ? '展开侧边栏' : '折叠侧边栏'" @click="toggleSidebar">{{ collapsed ? '»' : '«' }}</button>
         <div class="brand-mark">CC</div>
         <div class="brand-text">
           <strong>CordClean</strong>
@@ -99,7 +110,7 @@ async function revealDataDir() {
           @click="state.page = item.id"
         >
           <span class="nav-icon">{{ item.icon }}</span>
-          <span>{{ item.label }}</span>
+          <span class="nav-label">{{ item.label }}</span>
         </button>
       </nav>
 
@@ -238,8 +249,8 @@ async function revealDataDir() {
 
 .nav-item.active {
   background: var(--cc-primary-soft);
-  border-color: rgba(79, 140, 255, 0.35);
-  color: #dce6ff;
+  border-color: var(--cc-primary);
+  color: var(--cc-primary);
 }
 
 .nav-icon {

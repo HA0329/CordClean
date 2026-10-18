@@ -16,6 +16,11 @@ const editing = ref<PluginRuntime | null>(null)
 const editorValue = ref('')
 const configError = ref<string>()
 const saving = ref(false)
+const expanded = ref<Record<string, boolean>>({})
+
+function toggleExpanded(id: string) {
+  expanded.value[id] = !expanded.value[id]
+}
 
 const plugins = computed(() => state.plugins)
 const enabledCount = computed(() => plugins.value.filter((plugin) => plugin.enabled).length)
@@ -34,6 +39,24 @@ async function reload(plugin: PluginRuntime) {
   try {
     await reloadPlugin(plugin.id)
     ElMessage.success(`${plugin.name} 已热重载`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function uninstall(plugin: PluginRuntime) {
+  try {
+    await setPluginEnabled(plugin.id, false)
+    ElMessage.success(plugin.name + ' 已卸载：任务与辖区已释放（内置插件可随时重新安装）')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function install(plugin: PluginRuntime) {
+  try {
+    await setPluginEnabled(plugin.id, true)
+    ElMessage.success(plugin.name + ' 已安装并启用')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
@@ -101,7 +124,10 @@ function categoryName(id: string) {
           <el-switch :model-value="plugin.enabled" @change="(v: any) => toggle(plugin, !!v)" />
         </div>
 
-        <p class="plugin-desc">{{ plugin.description }}</p>
+        <p class="plugin-desc" :class="{ clamped: !expanded[plugin.id] }">{{ plugin.description }}</p>
+        <button v-if="plugin.description && plugin.description.length > 46" class="desc-toggle" @click="toggleExpanded(plugin.id)">
+          {{ expanded[plugin.id] ? '收起' : '展开' }}
+        </button>
 
         <div class="plugin-meta">
           <span class="cc-pill">{{ categoryName(plugin.category) }}</span>
@@ -123,6 +149,8 @@ function categoryName(id: string) {
         <div class="plugin-actions">
           <el-button size="small" :disabled="!plugin.enabled" @click="openConfig(plugin)">配置</el-button>
           <el-button size="small" @click="reload(plugin)">热重载</el-button>
+          <el-button v-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">卸载</el-button>
+          <el-button v-else size="small" type="primary" plain @click="install(plugin)">安装</el-button>
           <span class="cc-faint" style="margin-left: auto">{{ plugin.configurable ? '支持配置' : '无配置项' }}</span>
         </div>
       </div>
