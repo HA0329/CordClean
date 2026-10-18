@@ -286,3 +286,24 @@ describe('数据库压缩（compact_db）', () => {
     expect(row.n).toBe(0)
   })
 })
+
+describe('唯一入库管线（不变量 7）', () => {
+  it('拒绝受保护目录上的删除类规则，放行清空类规则', async () => {
+    const app = await boot('rules-import')
+    const del = rule({ id: 'del-system', target: { type: 'delete_dir', path: 'C:\\Windows\\System32\\test-dir' } })
+    const clear = rule({ id: 'clear-system', target: { type: 'clear_dir', path: 'C:\\Windows\\System32\\LogFiles' } })
+    del.target.requiresAdmin = false
+    const result = app.ctx.rules.importRules(app.ctx, [del, clear], (item) => [item.target.path ?? ''])
+    expect(result.accepted.map((item) => item.id)).toContain('clear-system')
+    expect(result.rejected.map((item) => item.ruleId)).toContain('del-system')
+    expect(app.ctx.rules.list().length).toBe(1)
+  })
+
+  it('重复 id 被拒绝', async () => {
+    const app = await boot('rules-duplicate')
+    app.ctx.rules.register(app.ctx, [rule({ id: 'dup' })])
+    const result = app.ctx.rules.importRules(app.ctx, [rule({ id: 'dup' })], () => [sandbox.root])
+    expect(result.accepted).toHaveLength(0)
+    expect(result.rejected[0].ruleId).toBe('dup')
+  })
+})

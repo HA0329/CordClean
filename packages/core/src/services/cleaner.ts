@@ -171,6 +171,7 @@ export class CleanerService extends Service implements CleanerLike {
         category: task.category,
         defaultSelected: draft.defaultSelected ?? (!policy.allowed ? false : risk === 'safe' && (task.defaultSelected ?? true)),
         protected: !policy.allowed,
+        mtimeMs: draft.mtimeMs,
         meta: draft.meta,
         note: draft.note,
       }

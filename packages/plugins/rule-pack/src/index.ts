@@ -221,6 +221,7 @@ async function scanRule(
         push({
           path: entry.path,
           kind: wantDirectory ? 'directory' : 'file',
+          mtimeMs: entry.mtimeMs,
           size: wantDirectory ? (await folderSize(entry.path, { maxEntries: options.maxEntriesPerDir, signal: scan.signal })).bytes : entry.size,
           meta: { ruleId: rule.id, action: wantDirectory ? (action === 'clear' ? 'clear' : 'delete') : 'delete' },
         })
@@ -272,7 +273,7 @@ async function scanRule(
           if (!matchSegments(patternSegments, segments)) continue
         }
         if (!passesConditions(entry.mtimeMs, entry.size, target)) continue
-        push({ path: entry.path, kind: 'file', size: entry.size, meta: { ruleId: rule.id, action: 'delete' } })
+        push({ path: entry.path, kind: 'file', size: entry.size, mtimeMs: entry.mtimeMs, meta: { ruleId: rule.id, action: 'delete' } })
       }
     }
     return drafts
@@ -340,7 +341,8 @@ export default defineCleanerPlugin<RulePackConfig>({
       const expandedTargets = [...new Set(rules.flatMap((rule) => ruleRoots(rule, env)))].slice(0, 8)
 
       // 0) 登记规则：归属本插件 fiber，卸载即注销（论文 6.2.1）
-      ctx.rules.register(ctx, rules)
+      const imported = ctx.rules.importRules(ctx, rules, (rule) => ruleRoots(rule, env))
+      for (const item of imported.rejected) ctx.logger.warn('规则被拒绝（%s）：%s', item.ruleId, item.reason)
 
       // 1) 声明辖区：每条规则的根目录都必须在路径策略里登记，否则内核拒绝删除
       ctx.effect(() => {

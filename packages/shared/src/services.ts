@@ -36,6 +36,11 @@ import type {
 
 /** 全局配置结构（持久化为 JSON） */
 export interface Settings {
+  /** 隐私与外发 */
+  privacy: {
+    /** 是否允许在线 AI（总开关） */
+    onlineAi: boolean
+  }
   /** 隔离区设置 */
   quarantine: {
     /** 是否启用隔离区（关闭后高风险项将直接删除，仅建议高级用户关闭） */
@@ -398,6 +403,12 @@ export interface ExecutorLike {
 export interface RulesLike {
   /** 登记规则：副作用归属调用方 scope，卸载即注销 */
   register(scope: Context, rules: CleanRule[] | CleanRule): () => void
+  /** 唯一入库管线：结构 + 受保护目标校验，返回被拒绝的规则 */
+  importRules(
+    scope: Context,
+    rules: CleanRule[],
+    resolveRoots?: (rule: CleanRule) => string[],
+  ): { accepted: CleanRule[]; rejected: Array<{ ruleId: string; reason: string }> }
   list(): CleanRule[]
   categories(): RuleCategory[]
   get(id: string): CleanRule | undefined

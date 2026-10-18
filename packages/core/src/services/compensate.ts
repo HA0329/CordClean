@@ -192,6 +192,11 @@ export class CompensateService extends Service {
         const info = await stat(canonical)
         currentSize = info.size
         // 目录的 stat.size 只是目录项大小（通常为 0），不能和聚合体积比较
+        if (item.mtimeMs && item.mtimeMs > 0 && Math.abs(info.mtimeMs - item.mtimeMs) > 2000) {
+          stats.changed++
+          reject(item, 'changed', `文件修改时间已变化（预览 ${item.mtimeMs} → 现在 ${info.mtimeMs}）`)
+          continue
+        }
         if (item.kind === 'file' && item.size > 0 && info.size !== item.size) {
           stats.changed++
           reject(item, 'changed', `文件大小已变化（预览 ${item.size} → 现在 ${info.size}）`)

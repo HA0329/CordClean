@@ -23,7 +23,7 @@ const RISK_WEIGHT = RISK_META
 
 
 export class RulesService extends Service implements RulesLike {
-  static inject = ['settings']
+  static inject = ['settings', 'pathPolicy']
 
   /** ruleId → 规则 */
   private table = new Map<string, CleanRule>()
@@ -72,6 +72,45 @@ export class RulesService extends Service implements RulesLike {
     return () => {
       void dispose()
     }
+  }
+
+  /**
+   * 唯一规则入库管线（不变量 7）：结构校验 + 受保护目标校验 + 重复 id 校验。
+   * 所有来源（内置/导入/用户/AI）都必须经过这里，差别只在是否需要用户确认。
+   */
+  importRules(
+    scope: Context,
+    rules: CleanRule[],
+    resolveRoots?: (rule: CleanRule) => string[],
+  ): { accepted: CleanRule[]; rejected: Array<{ ruleId: string; reason: string }> } {
+    const rejected: Array<{ ruleId: string; reason: string }> = []
+    const issues = this.validate(rules)
+    const bad = new Set(issues.filter((issue) => issue.level === 'error' && issue.ruleId).map((issue) => issue.ruleId!))
+    const accepted: CleanRule[] = []
+    for (const rule of rules) {
+      if (bad.has(rule.id) || this.table.has(rule.id)) {
+        rejected.push({ ruleId: rule.id, reason: '结构非法或 id 重复' })
+        continue
+      }
+      const roots = resolveRoots?.(rule) ?? []
+      const clear = rule.target.type === 'clear_dir' || (rule.target.type === 'glob_dirs' && rule.target.action !== 'delete')
+      let blocked = false
+      for (const root of roots) {
+        if (/^[a-zA-Z]:\\?$/.test(root)) {
+          rejected.push({ ruleId: rule.id, reason: '目标不能是驱动器根目录' })
+          blocked = true
+          break
+        }
+        if (!clear && this.ctx.pathPolicy.isProtected(root)) {
+          rejected.push({ ruleId: rule.id, reason: "目标位于受保护目录且不是清空内容语义：" + root })
+          blocked = true
+          break
+        }
+      }
+      if (!blocked) accepted.push(rule)
+    }
+    if (accepted.length) this.register(scope, accepted)
+    return { accepted, rejected }
   }
 
   list(): CleanRule[] {

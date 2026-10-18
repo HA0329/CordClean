@@ -57,6 +57,7 @@ export class RecycleBinService extends Service {
   private runner?: RecycleRunner
   private scriptPath?: string
   private availableCache = new Map<string, boolean>()
+  private forcedAvailability?: boolean
 
   constructor(ctx: Context) {
     super(ctx, 'recycleBin')
@@ -68,8 +69,15 @@ export class RecycleBinService extends Service {
     this.availableCache.clear()
   }
 
+  /** 测试用：强制可用性 */
+  setAvailableForTests(value?: boolean): void {
+    this.forcedAvailability = value
+    this.availableCache.clear()
+  }
+
   /** 某个路径所在卷的回收站是否可用（网络盘/部分移动盘没有回收站） */
   async available(target: string): Promise<boolean> {
+    if (this.forcedAvailability !== undefined) return this.forcedAvailability
     if (this.runner) return true
     if (process.platform !== 'win32') return false
     const root = path.parse(path.resolve(target)).root

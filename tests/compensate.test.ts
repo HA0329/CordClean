@@ -236,3 +236,27 @@ describe('清理引擎接入', () => {
     expect(existsSync(path.join(dir, 'a.bin'))).toBe(false)
   })
 })
+
+describe('S5 预览一致性（mtime）与 S7 回收站拒绝', () => {
+  it('mtime 变化超过 2 秒的项被跳过', async () => {
+    const app = await boot('compensate-mtime')
+    app.ctx.pathPolicy.addRoot(sandbox.root)
+    const target = file('mtime/a.bin', 128)
+    const item = makeItem(target, 128)
+    item.mtimeMs = Date.now() - 60_000
+    const result = await app.ctx.compensate.issue({ mode: 'delete', items: [item] })
+    expect(result.ticket).toBeUndefined()
+    expect(result.rejections[0].reason).toBe('changed')
+  })
+
+  it('回收站不可用且未允许回落时明确拒绝，不静默永久删除', async () => {
+    const app = await boot('compensate-recycle-unavailable')
+    app.ctx.pathPolicy.addRoot(sandbox.root)
+    app.ctx.recycleBin.setAvailableForTests(false)
+    const target = file('unavailable/a.bin', 64)
+    const result = await app.ctx.compensate.issue({ mode: 'recycle', items: [makeItem(target, 64)] })
+    expect(result.ticket).toBeUndefined()
+    expect(result.rejections[0].reason).toBe('recycle-unavailable')
+    expect(existsSync(target)).toBe(true)
+  })
+})

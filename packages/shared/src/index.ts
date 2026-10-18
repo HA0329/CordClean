@@ -64,6 +64,8 @@ export interface CleanItem {
   kind: ItemKind
   /** 字节数，未知为 0 */
   size: number
+  /** 扫描时的修改时间（毫秒），用于预览一致性比对 */
+  mtimeMs?: number
   risk: RiskLevel
   category: CategoryId
   /** 默认是否被勾选 */
@@ -79,6 +81,8 @@ export interface CleanItem {
 /** 插件在扫描过程中上报的「清理项草稿」，由引擎补全 id/risk/category 等字段 */
 export interface CleanItemDraft {
   path: string
+  /** 扫描时的 mtime（毫秒），用于执行前预览一致性比对 */
+  mtimeMs?: number
   title?: string
   kind?: ItemKind
   size?: number

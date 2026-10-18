@@ -13,6 +13,9 @@ const SETTINGS_VERSION = 1
 
 /** 默认设置 */
 export const DEFAULT_SETTINGS: Settings = {
+  privacy: {
+    onlineAi: true,
+  },
   quarantine: {
     enabled: true,
     maxBytes: 2 * 1024 ** 3,
@@ -34,7 +37,7 @@ export const DEFAULT_SETTINGS: Settings = {
     retries: 2,
     mode: 'recycle',
     highRiskQuarantine: true,
-    quarantineFallback: true,
+    quarantineFallback: false,
     budget: { maxFiles: 50_000, maxBytes: 20 * 1024 * 1024 * 1024 },
   },
   rules: {
@@ -149,10 +152,12 @@ export class SettingsService extends Service implements SettingsLike {
     const clean = settings.clean as any
     if (!['recycle', 'quarantine', 'delete'].includes(clean.mode)) clean.mode = 'recycle'
     clean.highRiskQuarantine = clean.highRiskQuarantine !== false
-    clean.quarantineFallback = clean.quarantineFallback !== false
+    clean.quarantineFallback = clean.quarantineFallback === true
     if (!clean.budget || typeof clean.budget !== 'object') clean.budget = { maxFiles: 50_000, maxBytes: 20 * 1024 * 1024 * 1024 }
     clean.budget.maxFiles = Math.max(1, Number(clean.budget.maxFiles) || 50_000)
     clean.budget.maxBytes = Math.max(1, Number(clean.budget.maxBytes) || 20 * 1024 * 1024 * 1024)
+    if (!settings.privacy || typeof settings.privacy !== 'object') settings.privacy = { onlineAi: true }
+    settings.privacy.onlineAi = settings.privacy.onlineAi !== false
     if (!Array.isArray(settings.analysis.roots)) settings.analysis.roots = []
     if (!Array.isArray(settings.analysis.excludes)) settings.analysis.excludes = []
     if (!isPlainObject(settings.plugins)) settings.plugins = {}
