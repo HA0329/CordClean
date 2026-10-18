@@ -1,0 +1,9 @@
+feat(ai): 第5步——AI 规则试运行（dry-run），确认命中后再采纳
+
+- 新增 RPC ai/rules/dry-run：只读统计规则会命中的路径/文件与体积，不写规则库、不删除
+- 支持 path/base/paths/bases 与统一的 glob（* ?）匹配；自动展开 %ENV% 与 ~
+- 返回 count/bytes/samples/missing；单个路径不存在时单独列出
+- AI 规则建议卡片增加「试运行」按钮 + 结果弹窗（命中数、体积、样例表）
+- 采纳仍走既有校验与入库管线
+- 新增 RPC 层测试：glob 命中 1 项、4096 字节
+- 全量测试通过

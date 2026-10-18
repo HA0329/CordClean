@@ -4,7 +4,7 @@
  * 覆盖：鉴权、方法分发、错误码、超大请求体、目录穿越、SPA 回退、
  * 启动参数注入、WebSocket 握手鉴权、事件广播、并发请求。
  */
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
@@ -229,4 +229,24 @@ describe('WebSocket', () => {
     expect(socket.readyState).toBe(WebSocket.OPEN)
     socket.close()
   })
-})
+  it('AI 规则试运行只统计命中项，不写规则库', async () => {
+    const dir = sandbox.dir('dry-run')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'cache.tmp'), Buffer.alloc(4096, 7))
+    const suggestion = {
+      name: '演示规则',
+      category: 'demo',
+      risk: 'safe',
+      reason: '试运行',
+      target: { type: 'glob_files', path: path.join(dir, '*') },
+    }
+    const response = await fetch(`http://127.0.0.1:${server.port}/api/rpc?token=${TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ai/rules/dry-run', params: { suggestion } }),
+    })
+    const json: any = await response.json()
+    expect(json.result.count).toBe(1)
+    expect(json.result.bytes).toBe(4096)
+    expect(json.result.samples[0].path).toContain('cache.tmp')
+  })})

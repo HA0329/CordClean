@@ -15,6 +15,7 @@ import {
   probeAi,
   refreshAiStatus,
   saveAiConfig,
+  dryRunAiRule,
   patchSettings,
   state,
 } from '../api/store.ts'
@@ -259,6 +260,23 @@ async function addSuggestedRoots() {
     ElMessage.success(`已添加 ${rootSuggestions.value.length} 个扫描根，下次扫描生效`)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+const dryRunOpen = ref(false)
+const dryRunResult = ref<any>(null)
+const dryRunLoading = ref(false)
+
+async function previewRule(rule: any) {
+  dryRunLoading.value = true
+  dryRunOpen.value = true
+  dryRunResult.value = null
+  try {
+    dryRunResult.value = await dryRunAiRule(rule)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    dryRunLoading.value = false
   }
 }
 
@@ -523,7 +541,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
               <p class="cc-faint">{{ rule.reason }}</p>
               <code>{{ rule.target.type }} · {{ rule.target.path || rule.target.base || rule.target.pattern }}</code>
             </div>
-            <el-button size="small" type="primary" plain @click="adoptRule(rule, index)">采纳</el-button>
+            <div class="rule-actions">`n              <el-button size="small" @click="previewRule(rule)">试运行</el-button>`n              <el-button size="small" type="primary" plain @click="adoptRule(rule, index)">采纳</el-button>`n            </div>
           </div>
         </div>
 
@@ -553,7 +571,26 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
         <el-button type="primary" @click="selectionOpen = true">对比并应用</el-button>
       </div>
 
-      <el-dialog v-model="selectionOpen" title="确认清理 AI 推荐的项" width="720px">
+      <el-dialog v-model="dryRunOpen" title="规则试运行（只读，不会删除）" width="720px">
+      <p v-if="dryRunLoading" class="cc-faint">正在统计命中项…</p>
+      <template v-else-if="dryRunResult">
+        <p>
+          命中 <strong>{{ dryRunResult.count }}</strong> 项，约 <strong>{{ formatBytes(dryRunResult.bytes) }}</strong>
+          <span v-if="!dryRunResult.ok" class="cc-faint">· {{ dryRunResult.reason }}</span>
+        </p>
+        <p v-if="dryRunResult.missing?.length" class="cc-faint">不存在的路径：{{ dryRunResult.missing.join('、') }}</p>
+        <el-table :data="dryRunResult.samples" size="small" max-height="320">
+          <el-table-column prop="path" label="路径" min-width="300" show-overflow-tooltip />
+          <el-table-column label="大小" width="100">
+            <template #default="{ row }">{{ formatBytes(row.bytes) }}</template>
+          </el-table-column>
+          <el-table-column prop="kind" label="类型" width="80" />
+        </el-table>
+      </template>
+      <template #footer><el-button @click="dryRunOpen = false">关闭</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="selectionOpen" title="确认清理 AI 推荐的项" width="720px">
         <p class="cc-hint">共 {{ selectionRows.length }} 项，合计 {{ formatBytes(analysis?.selectionSummary?.bytes ?? 0) }}。风险项仍会走隔离区/回收站。</p>
         <el-table :data="selectionRows" size="small" max-height="360">
           <el-table-column prop="path" label="路径" min-width="260" show-overflow-tooltip />

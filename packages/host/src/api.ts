@@ -1,3 +1,6 @@
+import { readdir, stat } from 'node:fs/promises'
+import path from 'node:path'
+import { folderSize } from '@cordclean/utils'
 import { spawn } from 'node:child_process'
 /**
  * RPC 方法实现。
@@ -237,6 +240,50 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'ai/models': async ({ refresh }) => requireAi().models({ refresh }),
     'ai/probe': () => requireAi().probe(),
+    'ai/rules/dry-run': async ({ suggestion }) => {
+      // 只读演练：不写规则库、不删除，只报告会命中什么
+      const env = ctx.system.env
+      const expand = (value: string) =>
+        String(value)
+          .replace(/^~[\\/]/, env.userProfile + '\\')
+          .replace(/%([^%]+)%/g, (whole, name: string) => env.get(name) ?? whole)
+      const target: any = suggestion.target ?? {}
+      const bases: string[] = [target.path, ...(target.paths ?? []), target.base, ...(target.bases ?? [])]
+        .filter(Boolean)
+        .map((item: unknown) => expand(String(item)))
+      const isGlob = String(target.type ?? '').includes('glob')
+      const samples: Array<{ path: string; bytes: number; kind: string }> = []
+      const missing: string[] = []
+      let bytes = 0
+      let count = 0
+      for (const base of bases.slice(0, 8)) {
+        try {
+          if (isGlob && /[*?]/.test(base)) {
+            const dir = path.dirname(base)
+            const pattern = path.basename(base)
+            const escaped = pattern.replace(/[.+^|[\\]\\\\]/g, '\\\\$&')
+            const regex = new RegExp('^' + escaped.replace(/\\*/g, '.*').replace(/\\?/g, '.') + '$', 'i')
+            for (const entry of await readdir(dir, { withFileTypes: true })) {
+              if (!regex.test(entry.name)) continue
+              const full = path.join(dir, entry.name)
+              const size = entry.isDirectory() ? (await folderSize(full, { maxEntries: 5000 })).bytes : (await stat(full)).size
+              count += 1
+              bytes += size
+              if (samples.length < 30) samples.push({ path: full, bytes: size, kind: entry.isDirectory() ? 'dir' : 'file' })
+            }
+            continue
+          }
+          const info = await stat(base)
+          const size = info.isDirectory() ? (await folderSize(base, { maxEntries: 20000 })).bytes : info.size
+          count += 1
+          bytes += size
+          if (samples.length < 30) samples.push({ path: base, bytes: size, kind: info.isDirectory() ? 'dir' : 'file' })
+        } catch {
+          missing.push(base)
+        }
+      }
+      return { ok: count > 0, reason: count > 0 ? undefined : '没有命中任何文件或目录', count, bytes, samples, missing }
+    },
   'ai/apply-rule': async ({ suggestion }) => {
     const rule: any = {
       id: 'ai-' + Date.now().toString(36),
