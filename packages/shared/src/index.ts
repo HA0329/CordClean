@@ -343,6 +343,10 @@ export interface AiProbeResult {
 
 /** AI 插件运行时状态（供界面展示与配置） */
 export interface AiRuntimeStatus {
+  /** 可用的上下文采集器（界面渲染开关） */
+  contextAvailable?: Array<{ id: string; name: string; description?: string; defaultEnabled: boolean }>
+  /** 本次分析实际使用的采集器 */
+  contextUsed?: string[]
   available: boolean
   configured: boolean
   /** 接口形态：chat / messages / responses */

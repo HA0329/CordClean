@@ -274,6 +274,40 @@ export interface AiLike {
   status(): AiRuntimeStatus
 }
 
+/** AI 上下文段落（脱敏摘要） */
+export interface AiContextSection {
+  id: string
+  title: string
+  lines: string[]
+}
+
+export interface AiContextProviderInfo {
+  id: string
+  name: string
+  description?: string
+  defaultEnabled: boolean
+}
+
+/** AI 上下文采集器服务（`ctx.aiContext`） */
+export interface AiContextLike {
+  addProvider(provider: {
+    id: string
+    name: string
+    description?: string
+    defaultEnabled?: boolean
+    collect(ctx: unknown): AiContextSection | Promise<AiContextSection>
+  }): () => void
+  list(): AiContextProviderInfo[]
+  collect(enabled?: string[]): Promise<AiContextSection[]>
+}
+
+/** AI 上下文段落（脱敏摘要） */
+declare module 'cordis' {
+  interface Context {
+    /** AI 上下文采集器 */
+    aiContext: AiContextLike
+  }
+}
 declare module 'cordis' {
   interface Context {
     cleaner: CleanerLike

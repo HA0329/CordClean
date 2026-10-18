@@ -60,6 +60,7 @@ const form = reactive({
   timeoutMs: 90000,
   apiKey: '',
   asEvaluator: false,
+  contextProviders: [] as string[],
   extraBody: '',
   extraHeaders: '',
 })
@@ -97,6 +98,7 @@ function syncFromConfig() {
   form.timeoutMs = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 90000
   form.apiKey = String(config.apiKey ?? '')
   form.asEvaluator = config.asEvaluator === true
+  form.contextProviders = Array.isArray(config.contextProviders) ? [...config.contextProviders] : []
   form.extraBody = config.extraBody && Object.keys(config.extraBody).length ? JSON.stringify(config.extraBody, null, 2) : ''
   form.extraHeaders = config.extraHeaders && Object.keys(config.extraHeaders).length ? JSON.stringify(config.extraHeaders, null, 2) : ''
 }
@@ -162,6 +164,7 @@ async function save() {
       timeoutMs: Number(form.timeoutMs),
       apiKey: form.apiKey.trim(),
       asEvaluator: form.asEvaluator,
+      contextProviders: form.contextProviders,
       extraBody,
       extraHeaders,
     })

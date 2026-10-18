@@ -1,0 +1,8 @@
+feat(ai): 第1步——AI 上下文采集器框架（ctx.aiContext）+ 热点/已安装软件采集器
+
+- 新增 core/services/ai-context.ts：注册/注销采集器、按开关采集、失败隔离
+- 内置 hotspots（标签+体积，无路径）与 installed-apps（软件名，无路径）
+- AI 插件配置 contextProviders；分析时把脱敏段落拼进 prompt，status 暴露可用采集器
+- AI 页新增「分析范围」复选组，不选=默认集合
+- 新增 tests/ai-context.test.ts（默认集合、开关生效、无绝对路径、自定义采集器注册/注销）
+- 全量 190 个用例通过

@@ -121,6 +121,8 @@ export class AiService extends Service implements AiLike {
   private lastProbe?: AiProbeResult
   /** 规则评估结果缓存（同一批规则的重复评估直接复用） */
   private evalCache = new Map<string, { at: number; result: Map<string, RuleEvalResult> }>()
+  /** 本次分析实际用到的上下文采集器 */
+  private lastContextUsed: string[] = []
 
   constructor(ctx: Context, private readonly rawConfig: AiConfig) {
     super(ctx, 'ai')
@@ -381,7 +383,13 @@ export class AiService extends Service implements AiLike {
     const key = this.requireKey()
     const config = this.rawConfig
     const profile = await this.buildProfile(options.extraContext)
-    const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext) + RULE_HINT)
+    const contextSections = await this.ctx.aiContext.collect(config.contextProviders)
+    this.lastContextUsed = contextSections.map((section) => section.id)
+    const contextText = contextSections.length
+      ? '\n\n补充上下文（脱敏摘要）：\n' +
+        contextSections.map((section) => `【${section.title}】\n` + section.lines.join('\n')).join('\n\n')
+      : ''
+    const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext) + contextText + RULE_HINT)
     this.gate('analyze', request.url, request.body)
 
     const result = await requestJson(request.url, {

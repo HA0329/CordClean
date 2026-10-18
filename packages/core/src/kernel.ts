@@ -11,6 +11,7 @@ import { createTaskEnv, defaultDataDir } from './env.ts'
 import { setupLogger } from './logger.ts'
 import { BUILTIN_MANIFEST } from './manifest.ts'
 import { CleanerService } from './services/cleaner.ts'
+import { AiContextService } from './services/ai-context.ts'
 import { CompensateService } from './services/compensate.ts'
 import { EgressService } from './services/egress.ts'
 import { EvaluatorService } from './services/evaluator.ts'
@@ -72,6 +73,7 @@ export async function createApp(options: AppOptions = {}): Promise<App> {
   await ctx.plugin(PathPolicyService, {})
   await ctx.plugin(QuarantineService, { dataDir })
   await ctx.plugin(HistoryService, { dataDir })
+  await ctx.plugin(AiContextService)
   await ctx.plugin(EgressService)
   await ctx.plugin(RecycleBinService)
   await ctx.plugin(RulesService)
