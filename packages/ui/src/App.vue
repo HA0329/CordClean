@@ -173,7 +173,7 @@ async function revealDataDir() {
         <div class="topbar-right">
           <span class="cc-faint" v-if="state.app">启动耗时 {{ state.app.bootMs }} ms</span>
           <span class="cc-faint">累计释放 {{ formatBytes(state.totals.freedBytes) }}</span>
-          <button class="theme-toggle" title="退出 CordClean" @click="quitCordClean">⏻</button>
+          <button class="quit-btn" title="退出 CordClean" @click="quitCordClean">⏻</button>
           <button class="theme-toggle" :title="theme === 'dark' ? '切换到亮色' : '切换到暗色'" @click="toggleTheme">
             {{ theme === 'dark' ? '☀️' : '🌙' }}
           </button>

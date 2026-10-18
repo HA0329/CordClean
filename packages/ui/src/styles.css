@@ -362,7 +362,8 @@ body {
 }
 
 /* 主题切换按钮 */
-.theme-toggle {
+.theme-toggle,
+.quit-btn {
   width: 30px;
   height: 30px;
   display: inline-grid;
