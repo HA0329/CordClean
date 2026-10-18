@@ -112,7 +112,7 @@ if (hidden) {
 
 log('')
 log(mode === 'desktop' ? '正在启动桌面版... 窗口出现即表示已启动' : `正在启动浏览器版... 浏览器将自动打开 ${url}`)
-log('状态：双击 状态.bat；退出：界面右上角电源按钮或 关闭.bat')
+log('状态：双击 6-查看运行状态.bat；退出：界面右上角电源按钮或 7-关闭CordClean.bat')
 
 const child = spawn('pnpm', [mode === 'desktop' ? 'start:desktop' : 'start:web'], {
   stdio: out,
