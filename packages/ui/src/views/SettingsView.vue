@@ -443,6 +443,24 @@ async function doClearEgress() {
       </div>
 
       <div class="cc-card">
+        <div class="cc-card-title"><h3>🩺 诊断与日志</h3><span class="cc-faint">出问题时先看这里</span></div>
+        <div class="data-actions">
+          <div class="data-row">
+            <div><div class="data-title">运行日志</div><div class="cc-faint">记录启动、扫描、清理、插件与 AI 请求</div></div>
+            <el-button size="small" @click="viewLogs">查看最近日志</el-button>
+          </div>
+          <div class="data-row">
+            <div><div class="data-title">日志目录</div><div class="cc-faint">资源管理器打开 logs 目录</div></div>
+            <el-button size="small" @click="openLogDirectory">打开</el-button>
+          </div>
+          <div class="data-row">
+            <div><div class="data-title">诊断报告</div><div class="cc-faint">环境 + 设置摘要 + 最近日志</div></div>
+            <el-button size="small" type="primary" plain @click="exportDiag">导出</el-button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cc-card">
         <div class="cc-card-title"><h3>ℹ️ 关于</h3></div>
         <p class="cc-hint">
           CordClean v{{ state.app?.version ?? '0.1.0' }} · Node {{ state.app?.node }} · {{ state.app?.platform }}
@@ -453,7 +471,14 @@ async function doClearEgress() {
       </div>
     </div>
 
-    <el-dialog v-model="logsOpen" title="最近日志（末尾 300 行）" width="860px">`n      <pre class="log-view">{{ loadingLogs ? '正在读取…' : logLines.join('\n') || '(暂无日志)' }}</pre>`n      <template #footer><el-button @click="logsOpen = false">关闭</el-button></template>`n    </el-dialog>`n`n    <el-dialog v-model="importOpen" title="导入设置（JSON）" width="620px">
+    <el-dialog v-model="logsOpen" title="最近日志（末尾 300 行）" width="860px">
+      <pre class="log-view">{{ loadingLogs ? '正在读取…' : (logLines.join('\n') || '(暂无日志)') }}</pre>
+      <template #footer>
+        <el-button @click="logsOpen = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="importOpen" title="导入设置（JSON）" width="620px">
       <p class="cc-hint">粘贴导出的 JSON，或选择一个 cordclean-settings.json 文件。</p>
       <input type="file" accept="application/json" @change="pickImportFile" />
       <el-input v-model="importText" type="textarea" :rows="10" style="margin-top: 10px" />
