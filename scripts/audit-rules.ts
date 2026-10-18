@@ -11,7 +11,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os'
 import path from 'node:path'
 import { createApp } from '@cordclean/core'
-import { validateRules } from '@cordclean/shared'
+import { SUPPORTED_RULE_TYPES, validateRules } from '@cordclean/shared'
 import type { CleanRule } from '@cordclean/shared'
 
 interface Catalog {
@@ -91,7 +91,7 @@ for (const category of catalog.categories) {
   let unsupported = 0
 
   for (const rule of categoryRules) {
-    if (!['clear_dir', 'delete_dir', 'glob_files', 'glob_dirs', 'files_by_rule', 'find_dirs'].includes(rule.target.type)) {
+    if (!SUPPORTED_RULE_TYPES.includes(rule.target.type)) {
       unsupported++
       continue
     }

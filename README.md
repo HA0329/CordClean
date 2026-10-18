@@ -178,7 +178,7 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
   保留原始分类、风险与说明，来源标注为 `imported`；
 - **分类 → 任务**：一个分类一个任务（`rule:<category>`），风险取组内最高；
 - **规则 → 扫描**：支持 `clear_dir`（清空内容）、`delete_dir`、`glob_files`、`glob_dirs`、
-  `files_by_rule`（按大小/年龄）、`find_dirs`（按目录名递归找）；
+  `files_by_rule`（按大小/年龄）、`find_dirs`（按目录名递归找）、`compact_db`（SQLite VACUUM，不删数据）；
 - **默认边界**：高风险分类（浏览器密码/Cookie、Windows.old、Downloads 大文件等）
   默认不装载；`deep_only` 规则默认不装载；两者都可以在设置里打开；
 - **清空白名单**：`C:\Windows\System32\LogFiles`、`%WINDIR%\Temp` 这类「目录受保护但内容可清」
@@ -214,7 +214,7 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 180 个用例 / 19 个文件
+pnpm test          # 179 个用例 / 17 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 14 个插件的真实扫描审计（只读）

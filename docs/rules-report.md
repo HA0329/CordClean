@@ -1,14 +1,14 @@
 # 规则库审计报告
 
-- 来源：PC-Cleaner 0.9.9（导入时间 2026-10-18T06:51:41.744Z）
-- 生成时间：2026-10-18T06:57:30.246Z
-- 规模：29 个分类 / 274 条规则 / 272 个候选根目录
-- 结构校验：0 个错误，15 个提示；暂未实现的规则类型 15 条（broken_shortcuts / compact_db）
-- 本机可命中的根目录：131 个；被路径策略拦截且不在清空白名单：17 个
+- 来源：PC-Cleaner 0.9.9（导入时间 2026-10-18T07:10:54.078Z）
+- 生成时间：2026-10-18T07:18:09.373Z
+- 规模：28 个分类 / 271 条规则 / 284 个候选根目录
+- 结构校验：0 个错误，0 个提示；暂未实现的规则类型 0 条（broken_shortcuts / compact_db）
+- 本机可命中的根目录：136 个；登记辖区后仍被路径策略拦截：17 个
 
 ## 分类明细
 
-| 分类 | 风险 | 界面归类 | 规则数 | 候选根 | 本机存在 | 受保护拦截 | 清空白名单 | 未实现 |
+| 分类 | 风险 | 界面归类 | 规则数 | 候选根 | 本机存在 | 策略拦截 | 策略放行 | 未实现 |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | 开发工具缓存（dev_caches） | caution | dev | 33 | 33 | 13 | 2 | 11 | 0 |
 | 浏览器/网页缓存（web_cache） | safe | browser | 28 | 28 | 14 | 0 | 14 | 0 |
@@ -17,7 +17,7 @@
 | 系统深度清理(需管理员)（system_admin） | caution | system | 17 | 17 | 14 | 6 | 8 | 0 |
 | 微信运行缓存（wechat_cache） | safe | apps | 16 | 22 | 14 | 0 | 14 | 0 |
 | 变态级隐蔽缓存(系统账户/下载中断/媒体应用)（extreme_stealth） | caution | system | 14 | 14 | 2 | 1 | 1 | 0 |
-| 浏览器数据库压缩（database_compact） | safe | browser | 12 | 0 | 0 | 0 | 0 | 12 |
+| 浏览器数据库压缩（database_compact） | safe | browser | 12 | 12 | 5 | 0 | 5 | 0 |
 | 游戏平台缓存（game_caches） | caution | apps | 10 | 15 | 2 | 0 | 2 | 0 |
 | 直播伴侣/电竞平台缓存（live_stream_cache） | caution | apps | 9 | 9 | 5 | 0 | 5 | 0 |
 | 浏览器隐私数据(高风险)（browser_privacy） | risky | privacy | 9 | 9 | 3 | 0 | 3 | 0 |
@@ -33,7 +33,6 @@
 | 办公软件缓存（office_caches） | safe | apps | 3 | 3 | 0 | 0 | 0 | 0 |
 | 下载/旧文件（downloads） | risky | disk | 3 | 3 | 3 | 3 | 0 | 0 |
 | 回收站与诊断日志(ETL)（recycle_and_diagnostics） | caution | system | 3 | 3 | 2 | 1 | 1 | 0 |
-| 失效快捷方式（broken_shortcuts） | risky | apps | 3 | 0 | 0 | 0 | 0 | 3 |
 | 使用痕迹（usage_traces） | caution | privacy | 3 | 5 | 4 | 0 | 4 | 0 |
 | 多媒体设计软件缓存（media_caches） | safe | apps | 2 | 2 | 0 | 0 | 0 | 0 |
 | 隐蔽的安装包/升级残留（hidden_installer_backups） | caution | system | 2 | 2 | 0 | 0 | 0 | 0 |
@@ -77,22 +76,4 @@
 - （）
 - （）
 - （）
-
-## 结构提示
-
-- 规则 database_compact-1 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-2 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-3 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-4 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-5 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-6 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-7 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-8 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-9 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-10 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-11 类型 compact_db 暂未实现，将被跳过
-- 规则 database_compact-12 类型 compact_db 暂未实现，将被跳过
-- 规则 broken_shortcuts-1 类型 broken_shortcuts 暂未实现，将被跳过
-- 规则 broken_shortcuts-2 类型 broken_shortcuts 暂未实现，将被跳过
-- 规则 broken_shortcuts-3 类型 broken_shortcuts 暂未实现，将被跳过
 

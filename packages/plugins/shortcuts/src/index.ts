@@ -230,11 +230,11 @@ export async function classifyShortcut(options: ClassifyShortcutOptions): Promis
  */
 async function scanDirectory(
   scan: TaskScanContext,
-  dir: ScanDir,
+  dir: string,
   includeStartup: boolean,
   stats: { broken: number; skipped: Record<string, number>; tooLarge: number },
 ): Promise<void> {
-  for await (const entry of walk(dir.path, {
+  for await (const entry of walk(dir, {
     maxDepth: MAX_SCAN_DEPTH,
     maxEntries: MAX_ENTRIES,
     signal: scan.signal,
@@ -298,11 +298,11 @@ export default defineCleanerPlugin<ShortcutsConfig>({
     }
 
     // 只保留真实存在的目录：不存在时既不登记清理辖区，也不出现在 targets 里
-    const dirs: ScanDir[] = []
+    const dirs: string[] = []
     for (const dir of candidateDirs(env, settings)) {
-      if (!(await exists(dir.path))) continue
+      if (!(await exists(dir))) continue
       // 声明清理辖区：只有这些目录下的文件才允许被本插件删除
-      ctx.effect(() => ctx.pathPolicy.addRoot(dir.path, 'shortcuts'))
+      ctx.effect(() => ctx.pathPolicy.addRoot(dir, 'shortcuts'))
       dirs.push(dir)
     }
 
@@ -317,7 +317,7 @@ export default defineCleanerPlugin<ShortcutsConfig>({
         defaultSelected: false,
         requiresAdmin: false,
         estimatedMs: 2000,
-        targets: dirs.map((dir) => dir.path),
+        targets: dirs,
         tips: [
           '只删除 .lnk 快捷方式文件本身，不会影响它指向的程序或文件',
           '网络路径、离线磁盘与「此电脑/回收站」等系统入口一律跳过，不做判定',
