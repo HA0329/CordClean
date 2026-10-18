@@ -3,6 +3,9 @@ import { reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   clearEgress,
+  exportDiagnostics,
+  fetchLogs,
+  openLogDir,
   clearHistory,
   openDataDir,
   patchSettings,
@@ -44,6 +47,9 @@ const newExclude = ref('')
 const saving = ref(false)
 const importText = ref('')
 const importOpen = ref(false)
+const logsOpen = ref(false)
+const logLines = ref<string[]>([])
+const loadingLogs = ref(false)
 
 function syncFromSettings() {
   const s = state.settings
@@ -250,6 +256,36 @@ async function doPurgeQuarantine() {
   }
 }
 
+async function viewLogs() {
+  logsOpen.value = true
+  loadingLogs.value = true
+  try {
+    logLines.value = await fetchLogs(300)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    loadingLogs.value = false
+  }
+}
+
+async function openLogDirectory() {
+  try {
+    await openLogDir()
+    ElMessage.success('已打开日志目录')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function exportDiag() {
+  try {
+    const file = await exportDiagnostics()
+    ElMessage.success('诊断报告已导出：' + file)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 async function doClearEgress() {
   try {
     await clearEgress()
@@ -417,7 +453,7 @@ async function doClearEgress() {
       </div>
     </div>
 
-    <el-dialog v-model="importOpen" title="导入设置（JSON）" width="620px">
+    <el-dialog v-model="logsOpen" title="最近日志（末尾 300 行）" width="860px">`n      <pre class="log-view">{{ loadingLogs ? '正在读取…' : logLines.join('\n') || '(暂无日志)' }}</pre>`n      <template #footer><el-button @click="logsOpen = false">关闭</el-button></template>`n    </el-dialog>`n`n    <el-dialog v-model="importOpen" title="导入设置（JSON）" width="620px">
       <p class="cc-hint">粘贴导出的 JSON，或选择一个 cordclean-settings.json 文件。</p>
       <input type="file" accept="application/json" @change="pickImportFile" />
       <el-input v-model="importText" type="textarea" :rows="10" style="margin-top: 10px" />
@@ -488,4 +524,5 @@ async function doClearEgress() {
   font-size: 13px;
   font-weight: 550;
 }
+.log-view { max-height: 520px; overflow: auto; font-family: Consolas, monospace; font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; background: var(--cc-primary-soft); padding: 12px; border-radius: 10px; }
 </style>

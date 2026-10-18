@@ -1,0 +1,8 @@
+feat(diagnostics): 结构化运行日志 + 诊断报告 + 设置页日志入口
+
+- packages/host/src/diagnostics.ts：<dataDir>/logs/cordclean.log，5MB 轮转，自动脱敏 sk-/apiKey/token/authorization
+- RPC 层统一记录：方法、耗时、参数摘要、错误信息；扫描/清理额外记录统计
+- 未捕获异常/日志失败不影响主流程
+- 新增 RPC app/logs/recent、app/logs/open、app/logs/export（环境 + 设置摘要 + 最近 1000 行日志）
+- 设置页新增「诊断与日志」卡片：查看最近日志（弹窗）、打开日志目录、导出诊断报告
+- 实测：启动后日志落盘，包含启动记录；UI/E2E 通过

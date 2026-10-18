@@ -19,6 +19,7 @@ import type {
   CleanItem,
   CleanItemRef,
 } from '@cordclean/shared'
+import { dlog, exportDiagnostics, initDiagnostics, logDirPath, recentLogs } from './diagnostics.ts'
 import { RpcError } from '@cordclean/shared'
 
 /** 外壳能力适配器（不同运行环境的系统交互） */
@@ -60,6 +61,7 @@ function toCleanItem(ref: CleanItemRef): CleanItem {
 
 /** 构造 RPC 处理方法表 */
 export function createHandlers(api: ApiContext): HandlerMap {
+  initDiagnostics(api.dataDir)
   const { ctx } = api
 
   const requireAi = (): AiLike => {
@@ -98,6 +100,28 @@ export function createHandlers(api: ApiContext): HandlerMap {
       if (!source) throw new Error('找不到该插件的源码路径（可能来自打包文件）')
       return { path: source }
     },
+    'app/logs/recent': ({ limit }) => ({ lines: recentLogs(limit ?? 200) }),
+    'app/logs/open': async () => {
+      await api.shell.openPath(logDirPath())
+    },
+    'app/logs/export': async () => {
+      const file = exportDiagnostics({
+        version: api.version,
+        dataDir: api.dataDir,
+        platform: process.platform,
+        node: process.versions.node,
+        electron: process.versions.electron ?? null,
+        plugins: ctx.plugins.list().map((plugin) => ({ id: plugin.id, enabled: plugin.enabled, status: plugin.status, error: plugin.error })),
+        tasks: ctx.cleaner.list().length,
+        settings: {
+          clean: ctx.settings.get().clean,
+          scan: ctx.settings.get().scan,
+          rules: ctx.settings.get().rules.includeRisky,
+          privacy: ctx.settings.get().privacy,
+        },
+      })
+      return { path: file }
+    },
     'app/quit': async () => {
       setTimeout(() => process.exit(0), 300)
       return { ok: true as const }
@@ -112,7 +136,12 @@ export function createHandlers(api: ApiContext): HandlerMap {
 
     'tasks/list': () => ctx.cleaner.list(),
 
-    'scan/start': async ({ taskIds }) => ctx.cleaner.scan({ taskIds }),
+    'scan/start': async ({ taskIds }) => {
+      dlog('info', 'scan', '开始扫描', { taskIds: taskIds ?? 'all' })
+      const report = await ctx.cleaner.scan({ taskIds })
+      dlog('info', 'scan', '扫描完成', { items: report.items.length, bytes: report.stats.bytes, errors: report.errors.length, ms: report.elapsedMs })
+      return report
+    },
     'scan/cancel': () => {
       ctx.cleaner.cancelScan()
     },
@@ -122,7 +151,9 @@ export function createHandlers(api: ApiContext): HandlerMap {
       if (items?.length) {
         return ctx.cleaner.clean({ items: items.map(toCleanItem), dryRun, forceQuarantine })
       }
-      return ctx.cleaner.clean({ itemIds, dryRun, forceQuarantine })
+      const result = await ctx.cleaner.clean({ itemIds, dryRun, forceQuarantine })
+      dlog('info', 'clean', '清理完成', { mode: result.mode, cleaned: result.cleaned, freed: result.freedBytes, recycled: result.recycledBytes, failed: result.failed })
+      return result
     },
     'clean/cancel': () => {
       ctx.cleaner.cancelClean()

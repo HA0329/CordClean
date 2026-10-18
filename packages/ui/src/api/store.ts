@@ -372,6 +372,20 @@ export async function openEditor(target: string): Promise<void> {
   await requireTransport().request('app/open-editor', { path: target })
 }
 
+export async function fetchLogs(limit = 200): Promise<string[]> {
+  const result = await requireTransport().request('app/logs/recent', { limit })
+  return result.lines
+}
+
+export async function openLogDir(): Promise<void> {
+  await requireTransport().request('app/logs/open', undefined)
+}
+
+export async function exportDiagnostics(): Promise<string> {
+  const result = await requireTransport().request('app/logs/export', undefined)
+  return result.path
+}
+
 export async function quitApp(): Promise<void> {
   await requireTransport().request('app/quit', undefined)
 }

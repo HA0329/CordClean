@@ -12,6 +12,7 @@ import path from 'node:path'
 import type { Context } from 'cordis'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { RpcRequest, RpcResponse, ServerEvent } from '@cordclean/shared'
+import { dlog } from './diagnostics.ts'
 import { RPC_ERRORS } from '@cordclean/shared'
 import type { HandlerMap } from './api.ts'
 
@@ -124,14 +125,17 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
   }
 
   const dispatch = async (request: RpcRequest): Promise<RpcResponse> => {
+    const startedAt = Date.now()
     const handler = (options.handlers as Record<string, (params: any) => any>)[request.method]
     if (!handler) {
       return { jsonrpc: '2.0', id: request.id, error: { code: RPC_ERRORS.METHOD_NOT_FOUND, message: `未知方法：${request.method}` } }
     }
     try {
       const result = await handler(request.params ?? {})
+      dlog('info', 'rpc', request.method, { ms: Date.now() - startedAt, params: request.params })
       return { jsonrpc: '2.0', id: request.id, result: result ?? null }
     } catch (error) {
+      dlog('error', 'rpc', request.method + ' 失败', { ms: Date.now() - startedAt, error: (error as Error)?.message, params: request.params })
       const err = error as { code?: number; message?: string }
       return {
         jsonrpc: '2.0',
