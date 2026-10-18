@@ -75,8 +75,9 @@ function syncFromConfig() {
   form.model = String(config.model ?? status.model ?? 'deepseek-flash')
   form.effort = String(config.reasoningEffort ?? status.effort ?? 'auto')
   form.jsonMode = String(config.jsonMode ?? status.jsonMode ?? 'auto')
-  form.maxTokens = Number(config.maxTokens ?? 2048)
-  form.timeoutMs = Number(config.timeoutMs ?? 90000)
+  // 0 是「未设置」的哨兵值（保证旧配置能回落），界面上显示真实默认值
+  form.maxTokens = Number(config.maxTokens) > 0 ? Number(config.maxTokens) : 2048
+  form.timeoutMs = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 90000
   form.apiKey = String(config.apiKey ?? '')
   form.extraBody = config.extraBody && Object.keys(config.extraBody).length ? JSON.stringify(config.extraBody, null, 2) : ''
   form.extraHeaders = config.extraHeaders && Object.keys(config.extraHeaders).length ? JSON.stringify(config.extraHeaders, null, 2) : ''
