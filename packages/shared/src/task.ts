@@ -64,6 +64,11 @@ export interface PathPolicyLike {
   containsProtected(path: string): boolean
   /** 路径命中的允许根（用于删除前检查链接祖先） */
   rootOf(path: string): string | undefined
+  /**
+   * 清空白名单校验：允许清空受保护目录的内容，但不删除目录本身。
+   * 对应规则里的 action=clear（如 C:\Windows\System32\LogFiles）。
+   */
+  checkClear(path: string): PathPolicyCheck
 }
 
 /** 扫描上下文 */

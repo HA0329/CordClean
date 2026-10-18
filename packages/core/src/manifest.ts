@@ -8,6 +8,14 @@ import type { PluginManifestEntry } from './services/plugins.ts'
 
 export const BUILTIN_MANIFEST: PluginManifestEntry[] = [
   {
+    id: 'rule-pack',
+    name: '规则库',
+    description: '把 JSON 规则自动转换为清理能力：30 个分类、270+ 条规则，新增清理域只需加数据',
+    category: 'system',
+    version: '2.0.0',
+    load: () => import('@cordclean/plugin-rule-pack'),
+  },
+  {
     id: 'temp',
     name: '临时文件清理',
     description: '用户临时目录、系统临时目录、Prefetch 预读文件与最近使用记录',

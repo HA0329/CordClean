@@ -49,6 +49,8 @@ interface HotState {
   deniedNames: Set<string>
   allowRoots: Map<string, number>
   userRoots: Map<string, number>
+  /** 清空白名单：允许清空这些目录的内容（目录本身受保护） */
+  clearRoots: Map<string, number>
   settingsRootKeys: string[]
   shortNamesEnabled: boolean
   shortNamesResolved: boolean
@@ -100,6 +102,38 @@ function rootOfKey(hot: HotState, key: string): string | undefined {
   // 设置中的自定义扫描根（缓存键，避免每次校验都走 ctx 代理）
   for (let i = 0; i < hot.settingsRootKeys.length; i++) consider(hot.settingsRootKeys[i])
   return best
+}
+
+/** 是否位于某个清空白名单目录内（含自身） */
+function clearRootOf(hot: HotState, key: string): string | undefined {
+  let best: string | undefined
+  for (const rootKey of hot.clearRoots.keys()) {
+    if (key === rootKey || key.startsWith(rootKey.endsWith('\\') ? rootKey : rootKey + '\\')) {
+      if (!best || rootKey.length > best.length) best = rootKey
+    }
+  }
+  return best
+}
+
+/**
+ * 清空白名单校验：允许删除「受保护目录内部的内容」，但目录本身仍然受保护。
+ *
+ * 这是 PC-Cleaner 的 clear-under-protected 白名单机制：
+ * `C:\Windows\System32\LogFiles` 不能删，但可以清空其内容。
+ * 因此该函数只对**已登记为 clearRoot 的目录本身**放行，不做递归放行。
+ */
+function checkClearPath(hot: HotState, target: string): PathPolicyCheck {
+  const normalized = normalizePath(target)
+  if (!normalized) return { allowed: false, reason: 'outside', detail: '空路径' }
+  if (!isAbsolutePath(normalized)) return { allowed: false, reason: 'outside', detail: '非绝对路径' }
+  const path = canonicalizePath(normalized)
+  if (/^[a-zA-Z]:\\?$/.test(path)) return { allowed: false, reason: 'protected', detail: '驱动器根目录' }
+  const key = path.toLowerCase()
+  const root = clearRootOf(hot, key)
+  if (!root) return { allowed: false, reason: 'outside', detail: '不在清空白名单内' }
+  const name = basename(path).toLowerCase()
+  if (hot.deniedNames.has(name)) return { allowed: false, reason: 'name-denied', detail: name }
+  return { allowed: true, detail: root }
 }
 
 /** 核心校验（热路径） */
@@ -194,6 +228,7 @@ export class PathPolicyService extends Service implements PathPolicyLike {
       ]),
       allowRoots: new Map(),
       userRoots: new Map(),
+      clearRoots: new Map(),
       settingsRootKeys: [],
       shortNamesEnabled: config.resolveShortNames !== false,
       shortNamesResolved: false,
@@ -226,7 +261,28 @@ export class PathPolicyService extends Service implements PathPolicyLike {
   readonly rootOf = (target: string): string | undefined =>
     rootOfKey(this.hot, canonicalizePath(target).toLowerCase())
 
+  /** 清空白名单校验（允许清空受保护目录的内容） */
+  readonly checkClear = (target: string): PathPolicyCheck => checkClearPath(this.hot, target)
+
   /* ------------------------------ 维护类 API ------------------------------ */
+
+  /**
+   * 登记「只允许清空内容、不允许删除目录本身」的目录。
+   *
+   * 用于 `C:\Windows\System32\LogFiles`、`%WINDIR%\Temp` 这类
+   * 「目录受保护但内容可重建」的场景，对应 PC-Cleaner 的 clear 白名单。
+   */
+  addClearRoot(target: string, _source?: string): () => void {
+    const key = pathKey(target)
+    if (!key) return () => {}
+    const roots = this.hot.clearRoots
+    roots.set(key, (roots.get(key) ?? 0) + 1)
+    return () => {
+      const count = roots.get(key) ?? 0
+      if (count <= 1) roots.delete(key)
+      else roots.set(key, count - 1)
+    }
+  }
 
   /** 声明一个允许清理的根目录，返回撤销函数（通常由插件在 apply 中调用） */
   addRoot(target: string, _source?: string): () => void {
@@ -254,9 +310,9 @@ export class PathPolicyService extends Service implements PathPolicyLike {
     }
   }
 
-  /** 当前所有允许根 */
+  /** 当前所有允许根（含清空白名单） */
   roots(): string[] {
-    return [...new Set([...this.hot.allowRoots.keys(), ...this.hot.userRoots.keys()])]
+    return [...new Set([...this.hot.allowRoots.keys(), ...this.hot.userRoots.keys(), ...this.hot.clearRoots.keys()])]
   }
 
   /** 仅供测试/诊断：列出保护目录 */

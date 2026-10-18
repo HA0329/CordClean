@@ -128,6 +128,7 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 | `leftovers` | 应用残留 | 高风险 | 注册表卸载项比对；目录类只提示 |
 | `startup` | 启动项 | 谨慎 | Run/RunOnce、启动文件夹、计划任务；删除前导出 `.reg` |
 | `registry` | 注册表问题 | 高风险 | 无效卸载项 / App Paths；删除前导出 `.reg` |
+| `rule-pack` | 规则库（21 个分类 / 170 条规则） | 安全~谨慎 | 数据驱动：新增清理域只需加 JSON（见 §6.2） |
 | `ai` | —（提供 `ctx.ai` 服务） | — | 三种接口形态、模型与推理等级可配置（见 §6.1） |
 
 ### 6.1 AI 顾问：接口可配置、可演进
@@ -168,6 +169,25 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 > Key 支持配置里填写，或使用环境变量 `DEEPSEEK_API_KEY` / `OPENAI_API_KEY`；
 > 发送给模型的画像已脱敏（无路径、文件名、用户名），有单元测试断言。
 
+### 6.2 规则库：内容和代码分离
+
+`rule-pack` 插件把 `packages/plugins/rule-pack/rules/catalog.json` 里的规则自动变成清理任务：
+
+- **来源**：从 PC-Cleaner 的 `rules.json` 导入（29 分类 / 274 条规则 / 272 个候选根），
+  保留原始分类、风险与说明，来源标注为 `imported`；
+- **分类 → 任务**：一个分类一个任务（`rule:<category>`），风险取组内最高；
+- **规则 → 扫描**：支持 `clear_dir`（清空内容）、`delete_dir`、`glob_files`、`glob_dirs`、
+  `files_by_rule`（按大小/年龄）、`find_dirs`（按目录名递归找）；
+- **默认边界**：高风险分类（浏览器密码/Cookie、Windows.old、Downloads 大文件等）
+  默认不装载；`deep_only` 规则默认不装载；两者都可以在设置里打开；
+- **清空白名单**：`C:\Windows\System32\LogFiles`、`%WINDIR%\Temp` 这类「目录受保护但内容可清」
+  的目标通过 `pathPolicy.addClearRoot()` 登记，只允许清空内容、不允许删除目录本身；
+- **新增清理域**：在 `catalog.json` 加一段 JSON，或写进用户规则（`settings.rules.custom`），
+  重启/热重载插件即可生效，内核与其它插件零改动。
+
+规则校验与覆盖率由 `scripts/audit-rules.ts` 输出到 [规则库审计报告](docs/rules-report.md)：
+结构错误、暂未实现的类型、死目标、重复目标、被路径策略拦截的目标都会列出来。
+
 ## 7. 安全设计（四层防护）
 
 1. **路径策略**（`packages/core/src/services/path-policy.ts`）
@@ -193,10 +213,12 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 127 个用例 / 14 个文件
+pnpm test          # 140 个用例 / 15 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
-pnpm exec tsx scripts/audit-plugins.ts   # 13 个插件的真实扫描审计（只读）
+pnpm exec tsx scripts/audit-plugins.ts   # 14 个插件的真实扫描审计（只读）
+pnpm exec tsx scripts/audit-rules.ts     # 规则库审计（校验/死目标/拦截/重复）→ docs/rules-report.md
+pnpm exec tsx scripts/import-rules.ts    # 从 PC-Cleaner 重新导入规则目录
 pnpm exec tsx scripts/dryrun-clean.ts    # 真实环境预演清理验证（不删除文件）
 $env:DEEPSEEK_API_KEY='sk-...'; pnpm exec tsx scripts/ai-live-test.ts   # AI 插件真实接口联调（三形态）
 node scripts/e2e-ui.mjs                  # Electron 界面端到端点检（CDP）

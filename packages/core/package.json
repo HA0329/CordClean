@@ -11,6 +11,7 @@
     "@cordclean/utils": "workspace:*",
     "cordis": "4.0.0-rc.11",
     "schemastery": "^3.17.2",
+    "@cordclean/plugin-rule-pack": "workspace:*",
     "@cordclean/plugin-temp": "workspace:*",
     "@cordclean/plugin-recycle": "workspace:*",
     "@cordclean/plugin-browser": "workspace:*",

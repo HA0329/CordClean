@@ -376,7 +376,69 @@ service.ts      业务：取画像 → 发请求 → 解析建议（不含任何
    若在 `fetch` 返回时计时，会把 8 秒的生成过程显示成 0.2 秒。
    `requestJson()` 改为读完 `response.text()` 再计时。
 
-## 11. 工程折中与反思
+## 11. 规则库：让内容与代码分离
+
+清理工具的规则会持续增长（新软件、新版本、新缓存目录），如果每个清理域都要写一个插件，
+`src/plugins/` 迟早会变成第二个"规则地狱"。因此本系统在插件层之上再引入一层**规则库**：
+
+```
+catalog.json / 用户规则（数据）
+        │  规则包插件 rule-pack 读取并校验
+        ▼
+  ctx.rules.register(ctx, rules)     ← 登记即副作用，归属规则包 fiber
+        │  一个分类 = 一个清理任务（rule:<category>）
+        ▼
+  scan(rule) → 候选（clear_dir / glob / find_dirs …）
+        │
+        ▼
+  ctx.evaluator.evaluate(candidates) → risk / suggest / reason
+        │
+        ▼
+  内核：路径策略 → 清理引擎（清空/删除）
+```
+
+### 11.1 数据模型
+
+一条规则由「分类 + 目标 + 风险 + 来源」组成，目标支持 6 种已实现类型：
+
+| 类型 | 语义 | 典型用法 |
+| --- | --- | --- |
+| `clear_dir` | 清空目录内容、保留目录 | `%TEMP%`、Chrome `Cache` |
+| `delete_dir` | 删除目录本身 | 已知可整体删除的缓存目录 |
+| `glob_files` | 按模式匹配文件 | `thumbcache_*.db` |
+| `glob_dirs` | 按模式匹配目录 | `net_*`（微信多实例） |
+| `files_by_rule` | 按大小/年龄筛选 | Downloads 中 180 天前的大文件 |
+| `find_dirs` | 按目录名递归查找 | 散落的 `node_modules`/`dist` |
+
+条件字段：`olderThanDays`、`minSizeMb`、`maxDepth`、`excludeDirs`、`deepOnly`、
+`skipIfInUse`、`requiresAdmin`、`paths`/`bases`（多候选）。
+
+### 11.2 安全上的三个决定
+
+1. **辖区照旧**：规则包在 `setup` 里把每条规则的根目录登记进路径策略，
+   未登记的路径内核仍然拒绝——规则是"申请"，不是"授权"；
+2. **清空白名单**：`C:\Windows\System32\LogFiles` 这类目录受保护但内容可重建，
+   用 `addClearRoot()` 只放行"清空内容"，目录本身仍不可删；
+3. **默认收紧**：高风险分类（浏览器密码/Cookie、Windows.old、Downloads 大文件）
+   与 `deep_only` 规则默认不装载，需在设置里显式打开。
+
+### 11.3 与论文 v4.0 的对应
+
+| 论文设计 | 本实现 |
+| --- | --- |
+| 5.2 规则契约（CleanRule/ScanTarget） | `packages/shared/src/rules.ts` |
+| 6.2.1 规则注册归属申请者 | `ctx.rules.register(scope, rules)`，`scope.effect()` 注销 |
+| 5.4 可替换评估器 | `ctx.evaluator`（heuristic 默认，可注册 AI 适配器） |
+| 场景插件登记规则 | `rule-pack` 按分类登记规则并生成任务 |
+| 新增清理域零改动 | 加一段 JSON 即可，内核/插件代码不变 |
+
+### 11.4 已导入规模
+
+从 PC-Cleaner `rules.json` 转换：**29 个分类 / 274 条规则 / 272 个候选根目录**，
+其中 15 条属于尚未实现的类型（`broken_shortcuts`、`compact_db`），由审计脚本持续报告。
+本机实测：21 个分类 / 170 条规则默认装载，一次样本扫描命中 62 项、271 MB。
+
+## 12. 工程折中与反思
 
 1. **顺序加载插件**：为换取任务归属的零侵入，牺牲了并行加载速度（实测差异 < 20 ms，可接受）；
 2. **不引入 ORM/数据库**：历史用 JSONL 追加写，隔离区用目录 + manifest，简单且可人工修复；

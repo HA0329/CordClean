@@ -113,6 +113,43 @@ export async function inspectPath(target: string): Promise<PathMeta> {
  * 删除一个文件或目录（不跟随链接）。
  * 失败会抛出原始错误，由调用方归类为「被占用」「权限不足」等。
  */
+/**
+ * 清空目录内容但保留目录本身（规则里的 `action: clear`）。
+ *
+ * 与 deletePath 的区别：不删除根目录，只删除它的直接子项；
+ * 子项中的符号链接/联接点按「只删链接」处理，不进入目标。
+ *
+ * @returns 实际释放字节数与被跳过的链接数量
+ */
+export async function clearDirectory(target: string, options: { retries?: number } = {}): Promise<{ bytes: number; skippedLinks: number; failed: string[] }> {
+  const meta = await inspectPath(target)
+  if (!meta.exists || !meta.isDirectory) return { bytes: 0, skippedLinks: 0, failed: [] }
+  let entries
+  try {
+    entries = await fs.readdir(toLongPath(target), { withFileTypes: true })
+  } catch {
+    return { bytes: 0, skippedLinks: 0, failed: [target] }
+  }
+  let bytes = 0
+  let skippedLinks = 0
+  const failed: string[] = []
+  for (const entry of entries) {
+    const child = target.endsWith('\\') ? target + entry.name : target + '\\' + entry.name
+    try {
+      const result = await deletePath(child, { recursive: true, retries: options.retries ?? 2 })
+      bytes += result.bytes
+      if (result.linkOnly) skippedLinks++
+    } catch {
+      failed.push(child)
+    }
+  }
+  return { bytes, skippedLinks, failed }
+}
+
+/**
+ * 删除一个文件或目录（不跟随链接）。
+ * 失败会抛出原始错误，由调用方归类为「被占用」「权限不足」等。
+ */
 export async function deletePath(target: string, options: { recursive?: boolean; retries?: number } = {}): Promise<DeleteResult> {
   const meta = await inspectPath(target)
   if (!meta.exists) return { bytes: 0, linkOnly: false }

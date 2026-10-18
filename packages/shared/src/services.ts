@@ -7,6 +7,7 @@
  * 插件看到的是能力契约，不是具体实现。
  */
 import type { Context } from 'cordis'
+import type { CleanRule, RuleCategory, RuleIssue, RuleValidationReport } from './rules.ts'
 import type {
   AiAnalysis,
   AiModelInfo,
@@ -69,6 +70,15 @@ export interface Settings {
     confirmRisky: boolean
     /** 删除时忽略的错误重试次数 */
     retries: number
+  }
+  /** 规则库设置 */
+  rules: {
+    /** 是否启用高风险分类（默认关闭） */
+    includeRisky: boolean
+    /** 是否启用深度规则 */
+    includeDeep: boolean
+    /** 是否加载用户自定义规则 */
+    includeCustom: boolean
   }
   /** 分析范围 */
   analysis: {
@@ -238,6 +248,10 @@ export interface AiLike {
 declare module 'cordis' {
   interface Context {
     cleaner: CleanerLike
+    /** 规则注册表：插件登记清理规则，卸载时自动注销 */
+    rules: RulesLike
+    /** 规则评估器：可为每条候选给出建议与风险（可替换实现） */
+    evaluator: EvaluatorLike
     settings: SettingsLike
     pathPolicy: {
       check(path: string): PathPolicyCheck
@@ -247,6 +261,10 @@ declare module 'cordis' {
       containsProtected(path: string): boolean
       /** 找出路径命中的允许根（用于删除前检查链接祖先） */
       rootOf(path: string): string | undefined
+      /** 清空白名单：允许清空受保护目录的内容（不删除目录本身） */
+      checkClear(path: string): PathPolicyCheck
+      /** 登记清空白名单（插件在 apply 阶段调用，卸载即撤销） */
+      addClearRoot(path: string, source?: string): () => void
       addRoot(path: string, source?: string): () => void
       addUserRoot(path: string): () => void
     }
@@ -259,6 +277,7 @@ declare module 'cordis' {
   }
 
   interface Events {
+    'rules/changed'(): void
     'cleaner/scan-progress'(event: ScanProgressEvent): void
     'cleaner/scan-done'(report: ScanReport): void
     'cleaner/clean-progress'(event: CleanProgressEvent): void
@@ -325,6 +344,55 @@ export function defineCleanerPlugin<TConfig = any>(options: CleanerPluginOptions
     },
   }
   return plugin
+}
+
+/** 规则注册表能力（`ctx.rules`） */
+export interface RulesLike {
+  /** 登记规则：副作用归属调用方 scope，卸载即注销 */
+  register(scope: Context, rules: CleanRule[] | CleanRule): () => void
+  list(): CleanRule[]
+  categories(): RuleCategory[]
+  get(id: string): CleanRule | undefined
+  /** 结构校验（不访问文件系统） */
+  validate(rules: CleanRule[]): RuleIssue[]
+  stats(): RuleValidationReport['stats']
+}
+
+/** 评估输入：一行候选 */
+export interface EvalInput {
+  rule: CleanRule
+  path: string
+  kind: 'file' | 'directory'
+  size: number
+  mtimeMs: number
+  /** 是否被判定为受保护 */
+  protected?: boolean
+}
+
+/** 评估输出 */
+export interface EvalResult {
+  suggest: boolean
+  risk: import('./index.ts').RiskLevel
+  reason: string
+  /** 命中的评估策略 */
+  strategy?: string
+}
+
+/** 可替换的评估策略 */
+export interface EvaluatorStrategy {
+  id: string
+  name: string
+  evaluate(inputs: EvalInput[]): Promise<EvalResult[]> | EvalResult[]
+}
+
+/** 规则评估能力（`ctx.evaluator`） */
+export interface EvaluatorLike {
+  evaluate(inputs: EvalInput[]): Promise<EvalResult[]>
+  /** 注册评估策略（如 AI 适配器） */
+  register(strategy: EvaluatorStrategy): () => void
+  strategies(): string[]
+  current(): string
+  use(id: string): void
 }
 
 /** AI 建议的补类型导出，方便插件复用 */

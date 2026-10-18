@@ -202,3 +202,43 @@ await app.dispose()
 
 > 注意：**只做扫描（scan）验证，不要在自测中执行真实的 `clean()`**，以免误删本机文件。
 > 如需验证清理逻辑，请使用 `dryRun: true`。
+
+## 六、另一种扩展方式：加一条规则（不用写代码）
+
+从 v5 起，清理能力有两种扩展粒度：
+
+| 方式 | 适用场景 | 成本 |
+| --- | --- | --- |
+| 写插件 | 需要自定义扫描/清理逻辑（回收站解析、重复文件、注册表、浏览器 profile） | 一个包 + 测试 |
+| 加规则 | 只是"清某个目录/某类文件"，带条件（年龄/大小/深度） | 一段 JSON |
+
+加规则的步骤：
+
+1. 在 `packages/plugins/rule-pack/rules/catalog.json` 对应分类的 `rules` 数组里加一条：
+
+```json
+{
+  "id": "system_temp-99",
+  "name": "某软件缓存",
+  "risk": "safe",
+  "source": "builtin",
+  "version": 1,
+  "target": {
+    "type": "clear_dir",
+    "path": "%LOCALAPPDATA%/Vendor/App/Cache",
+    "skipIfInUse": true
+  }
+}
+```
+
+2. 校验：`pnpm exec tsx scripts/audit-rules.ts`（结构错误、死目标、重复、被策略拦截都会报出来）；
+3. 重启应用或热重载 `rule-pack`，界面上出现新的清理项。
+
+注意事项：
+
+- `clear_dir` 表示**清空内容、保留目录**；要删目录本身用 `delete_dir`；
+- 位于受保护目录内部的目标（如 `C:\Windows\System32\LogFiles`）请用 `clear_dir`，
+  规则包会自动登记"清空白名单"，目录本身仍然不可删；
+- 高风险清理（浏览器 Cookie/密码、用户文档下的内容）请放到 `risky` 分类，
+  它默认不装载，需要 `settings.rules.includeRisky = true`；
+- 只想在"深度模式"生效的规则加 `"deepOnly": true`。

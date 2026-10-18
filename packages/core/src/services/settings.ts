@@ -33,6 +33,11 @@ export const DEFAULT_SETTINGS: Settings = {
     confirmRisky: true,
     retries: 2,
   },
+  rules: {
+    includeRisky: false,
+    includeDeep: false,
+    includeCustom: true,
+  },
   analysis: {
     roots: [],
     includeSystem: true,
@@ -133,6 +138,10 @@ export class SettingsService extends Service implements SettingsLike {
     settings.quarantine.maxFiles = clamp(settings.quarantine.maxFiles, 0, 1_000_000, 20000)
     settings.quarantine.retentionDays = clamp(settings.quarantine.retentionDays, 0, 3650, 0)
     settings.clean.retries = clamp(settings.clean.retries, 0, 5, 2)
+    if (!settings.rules || typeof settings.rules !== 'object') settings.rules = { includeRisky: false, includeDeep: false, includeCustom: true }
+    settings.rules.includeRisky = settings.rules.includeRisky === true
+    settings.rules.includeDeep = settings.rules.includeDeep === true
+    settings.rules.includeCustom = settings.rules.includeCustom !== false
     if (!Array.isArray(settings.analysis.roots)) settings.analysis.roots = []
     if (!Array.isArray(settings.analysis.excludes)) settings.analysis.excludes = []
     if (!isPlainObject(settings.plugins)) settings.plugins = {}

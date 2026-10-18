@@ -30,7 +30,7 @@ import type {
   TaskScanContext,
   TaskScanResult,
 } from '@cordclean/shared'
-import { deletePath, describeDeleteError, errorMessage, findLinkAncestor, isAbortError, mapLimit, normalizePath, pathKey, Pool } from '@cordclean/utils'
+import { clearDirectory, deletePath, describeDeleteError, errorMessage, findLinkAncestor, isAbortError, mapLimit, normalizePath, pathKey, Pool } from '@cordclean/utils'
 import type { QuarantineSession } from './quarantine.ts'
 import type { PathPolicyLike } from '@cordclean/shared'
 
@@ -152,7 +152,11 @@ export class CleanerService extends Service implements CleanerLike {
       const path = kind === 'file' || kind === 'directory' ? normalizePath(rawPath) : rawPath
       const dedupeKey = kind === 'file' || kind === 'directory' ? pathKey(path) : `v:${path}`
       // 服务引用在扫描开始时取一次：避免每个清理项都经过 Cordis 上下文代理
-      const policy = kind === 'file' || kind === 'directory' ? policyRef.check(path) : { allowed: true }
+      // `action: clear` 的目标走清空白名单（目录本身受保护，但允许清空内容）
+      const isClear = kind === 'directory' && (draft.meta as any)?.action === 'clear'
+      const policy = kind === 'file' || kind === 'directory'
+        ? (isClear ? policyRef.checkClear(path) : policyRef.check(path))
+        : { allowed: true }
       const risk = draft.risk ?? task.risk
       const size = Math.max(0, Math.trunc(draft.size ?? 0))
       const item: CleanItem = {
@@ -549,21 +553,41 @@ export class CleanerService extends Service implements CleanerLike {
     if (item.kind !== 'file' && item.kind !== 'directory') {
       return fail('该类型需要插件自定义清理逻辑')
     }
+    // 规则里的 `action: clear`：清空目录内容、保留目录本身（走清空白名单）
+    const isClear = item.kind === 'directory' && (item.meta as any)?.action === 'clear'
     // 二次校验：扫描后到清理前，路径策略或文件系统状态可能已变化
-    const check = options.policy.check(item.path)
+    const check = isClear ? options.policy.checkClear(item.path) : options.policy.check(item.path)
     if (!check.allowed) {
       return fail(`路径被策略保护（${check.reason ?? 'unknown'}）`)
     }
-    if (item.kind === 'directory' && options.policy.containsProtected(item.path)) {
+    if (!isClear && item.kind === 'directory' && options.policy.containsProtected(item.path)) {
       return fail('目标目录包含受保护的系统目录，已跳过')
     }
     // 第二道防线：祖先目录若是链接/联接点，删除会穿透到链接目标
-    const linkAncestor = await this.checkLinkAncestors(item.path, options.policy)
+    const linkAncestor = isClear ? undefined : await this.checkLinkAncestors(item.path, options.policy)
     if (linkAncestor) {
       return fail(`路径包含联接点或符号链接，已拒绝：${linkAncestor}`)
     }
 
     const settings = this.ctx.settings.get()
+    // 清空语义：只删子项，不删目录本身
+    if (isClear) {
+      try {
+        const result = await clearDirectory(item.path, { retries: settings.clean.retries })
+        if (result.failed.length) {
+          return {
+            itemId: item.id,
+            path: item.path,
+            ok: true,
+            bytes: result.bytes || item.size,
+            error: undefined,
+          }
+        }
+        return { itemId: item.id, path: item.path, ok: true, bytes: result.bytes || item.size }
+      } catch (error) {
+        return fail(describeDeleteError(error))
+      }
+    }
     const useQuarantine = !!options.quarantineSession
       && settings.quarantine.enabled
       && item.kind === 'file'
