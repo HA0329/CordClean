@@ -1,0 +1,8 @@
+fix(launcher): 用 Node 重写启动器，彻底绕开 PowerShell 5.1 崩溃
+
+- 根因：powershell.exe 在本机自身崩溃（0x00007FF6B3E16E，System.Management.Automation 内存错误），与脚本无关
+- 新增 scripts/launch.mjs：Node 版本/ pnpm/依赖检查、单实例、隐藏或继承输出、就绪后开浏览器、PID 管理
+- 新增 scripts/status.mjs（运行中/正在启动/未运行）与 stop.mjs（taskkill 进程树 + 按端口兜底）
+- 启动.bat/启动-桌面版.bat 最小化窗口；启动-显示控制台.bat 前台；启动-完全隐藏.bat 走 WScript 隐藏
+- 删除 launch/status/stop.ps1，不再调用 powershell
+- 实测：最小化启动 -> status 显示运行中 -> stop 结束整棵进程树
