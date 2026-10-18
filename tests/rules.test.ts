@@ -243,3 +243,46 @@ describe('规则目录（catalog.json）', () => {
     expect(errors.map((issue) => issue.message)).toEqual([])
   })
 })
+
+describe('数据库压缩（compact_db）', () => {
+  it('VACUUM 回收空闲页且不删除数据', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const app = await boot('compact-db')
+    const dir = path.join(sandbox.root, 'compact')
+    mkdirSync(dir, { recursive: true })
+    const dbPath = path.join(dir, 'History')
+    const db = new DatabaseSync(dbPath)
+    db.exec('CREATE TABLE visits (id INTEGER PRIMARY KEY, url TEXT, ts INTEGER)')
+    const insert = db.prepare('INSERT INTO visits (url, ts) VALUES (?, ?)')
+    db.exec('BEGIN')
+    for (let index = 0; index < 3000; index++) insert.run(`https://example.com/${index}`, Date.now())
+    db.exec('COMMIT')
+    db.exec('DELETE FROM visits')
+    db.close()
+    const beforeSize = (await import('node:fs')).statSync(dbPath).size
+    app.ctx.pathPolicy.addRoot(dir)
+
+    app.ctx.cleaner.define({
+      id: 'compact-task',
+      name: '数据库压缩',
+      category: 'browser',
+      risk: 'safe',
+      icon: '🗜️',
+      defaultSelected: false,
+      targets: [dbPath],
+      async scan(scan) {
+        scan.emit({ path: dbPath, kind: 'file', size: beforeSize, meta: { action: 'compact' } })
+      },
+    })
+    const report = await app.ctx.cleaner.scan({ taskIds: ['compact-task'] })
+    const cleaned = await app.ctx.cleaner.clean({ items: report.items, dryRun: false, forceQuarantine: false })
+    // 默认回收站模式对 compact 不适用：压缩是原地操作，按永久删除计量（freed = 回收的空闲页）
+    expect(cleaned.cleaned).toBe(1)
+    const after = (await import('node:fs')).statSync(dbPath).size
+    expect(after).toBeLessThan(beforeSize)
+    const verify = new DatabaseSync(dbPath)
+    const row = verify.prepare('SELECT COUNT(*) AS n FROM visits').get() as { n: number }
+    verify.close()
+    expect(row.n).toBe(0)
+  })
+})

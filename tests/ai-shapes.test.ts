@@ -22,7 +22,7 @@ let server: Server
 let port = 0
 
 /** 服务端行为开关 */
-type Mode = 'ok' | 'models-fail' | 'retry-then-ok' | 'unauthorized' | 'wrong-shape-for-chat'
+type Mode = 'ok' | 'models-fail' | 'retry-then-ok' | 'unauthorized' | 'wrong-shape-for-chat' | 'rule-eval'
 let mode: Mode = 'ok'
 let retryBudget = 0
 let callCount = 0
@@ -120,6 +120,17 @@ beforeAll(async () => {
       if (mode === 'unauthorized') return send(401, { error: { message: 'invalid api key', code: 'invalid_api_key' } })
       if (mode === 'retry-then-ok' && retryBudget-- > 0) return send(500, { error: { message: 'temporary boom' } })
 
+      if (mode === 'rule-eval' && req.url?.includes('/chat/completions')) {
+        return send(200, {
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                items: [{ ruleId: 'system_temp-1', suggest: true, risk: 'safe', reason: '可安全清理' }],
+              }),
+            },
+          }],
+        })
+      }
       if (req.url?.includes('/chat/completions')) {
         if (mode === 'wrong-shape-for-chat') return send(200, MESSAGES_PAYLOAD)
         return send(200, CHAT_PAYLOAD)
@@ -390,6 +401,42 @@ describe('错误处理', () => {
     const app = await boot({ apiShape: 'chat' }, 'wrong-shape')
     try {
       await expect(app.ctx.ai!.analyze()).rejects.toThrow(/无法识别的响应结构/)
+    } finally {
+      await app.dispose()
+    }
+  })
+})
+
+describe('作为可替换评估器', () => {
+  it('规则统计 → AI 结论映射（不含路径）', async () => {
+    mode = 'rule-eval'
+    const app = await boot({ apiShape: 'chat' }, 'ai-eval-rules')
+    try {
+      const map = await (app.ctx.ai as any).evaluateRules([
+        { ruleId: 'system_temp-1', name: '用户临时文件', category: '系统临时文件', risk: 'safe', count: 3, bytes: 3072 },
+      ])
+      expect(map.get('system_temp-1')).toMatchObject({ suggest: true, risk: 'safe' })
+      // 请求体只包含规则统计，不含本机路径
+      expect(JSON.stringify(lastRequest.body)).not.toContain('C:\\')
+    } finally {
+      await app.dispose()
+    }
+  })
+
+  it('asEvaluator=true 时接管规则评估', async () => {
+    const app = await boot({ apiShape: 'chat', asEvaluator: true }, 'ai-eval-use')
+    try {
+      expect(app.ctx.evaluator.current()).toBe('ai')
+      expect(app.ctx.evaluator.strategies()).toContain('ai')
+    } finally {
+      await app.dispose()
+    }
+  })
+
+  it('asEvaluator=false 时保持内置启发式', async () => {
+    const app = await boot({ apiShape: 'chat' }, 'ai-eval-off')
+    try {
+      expect(app.ctx.evaluator.current()).toBe('heuristic')
     } finally {
       await app.dispose()
     }

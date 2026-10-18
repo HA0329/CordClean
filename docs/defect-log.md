@@ -207,3 +207,24 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 | `Program Files` 残留只提示 | `leftovers` 插件的目录类残留默认不可删除（保守策略） |
 | 8.3 短名解析依赖 cmd.exe | 极端精简系统可能失败，失败时静默降级（仅少一层保护） |
 | 未做代码签名 / 安装包 | 需 electron-builder 与证书，属于发布环节 |
+
+### D-15 清空目录被"预览一致性"误判为已变化
+
+**现象**：`action: clear` 的目录在清理时全部被跳过，报告"文件大小已变化（2048 → 0）"。
+**根因**：`stat()` 对目录返回的 `size` 是目录项大小（通常 0），却拿它和扫描时聚合的体积比较。
+**修复**：预览一致性只对 `kind === 'file'` 比较体积，目录只校验存在性。
+**验证**：`tests/compensate.test.ts` 与 `tests/rules.test.ts`（清空后目录保留、内容消失）。
+
+### D-16 clear / compact 误走回收站
+
+**现象**：清空目录时整个目录被移入回收站；数据库压缩（VACUUM）把 `.db` 文件移进了回收站。
+**根因**：补偿链按全局模式（默认 recycle）给每一项定模式，没有为"原地操作"单独分流。
+**修复**：`action=clear` 与 `action=compact` 固定走原地执行（永久删除内容 / VACUUM），不进入回收站队列。
+**验证**：`tests/rules.test.ts` 的 compact 用例（VACUUM 后文件仍在、空闲页变小、数据完整）。
+
+### D-17 回收站回执 JSON 序列化失败
+
+**现象**：回收站脚本执行后返回 "Argument types do not match"，界面显示全部失败。
+**根因**：Windows PowerShell 5.1 的 `ConvertTo-Json` 无法序列化 `List<string>`（`@{ ok = @($ok) }` 把 List 当成单个对象）。
+**修复**：先 `.ToArray()` 再序列化；回执路径用 `pathKey()` 归一化后匹配（兼容 8.3 短名）。
+**验证**：`tests/compensate.test.ts` 的回收站回执用例 + 真实脚本手工验证。

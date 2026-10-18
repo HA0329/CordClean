@@ -16,6 +16,7 @@ const fileOutside = sandbox.file('outsider/d.log', 'd'.repeat(7))
 const app = await createApp({
   dataDir: sandbox.dataDir,
   logger: false,
+  settingsOverrides: { clean: { mode: 'delete' } },
   manifest: manifestOf([
     {
       id: 'fake',

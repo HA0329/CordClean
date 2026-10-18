@@ -125,12 +125,21 @@ async function confirmClean() {
   showConfirm.value = false
   try {
     const report = await startClean([...selected], { dryRun: dryRun.value })
+    const modeLabel = report.mode === 'recycle' ? '回收站' : report.mode === 'quarantine' ? '隔离区' : '永久删除'
+    const parts: string[] = []
+    if (report.freedBytes > 0) parts.push(`释放 ${formatBytes(report.freedBytes)}`)
+    if (report.recycledBytes > 0) parts.push(`${formatBytes(report.recycledBytes)} 已移入${modeLabel}`)
+    if (report.quarantinedBytes > 0) parts.push(`${formatBytes(report.quarantinedBytes)} 已隔离（可恢复）`)
+    if (report.vanished > 0) parts.push(`${report.vanished} 项扫描后已不存在`)
+    if (report.skipped > 0) parts.push(`${report.skipped} 项按条件跳过`)
     if (report.freedBytes > 0 || report.cleaned > 0) {
       ElMessage.success(
         report.dryRun
           ? `预演完成：可释放 ${formatBytes(report.freedBytes)}`
-          : `已清理 ${report.cleaned} 项，释放 ${formatBytes(report.freedBytes)}${report.quarantined ? `（${report.quarantined} 项已放入隔离区）` : ''}`,
+          : `已处理 ${report.cleaned} 项${parts.length ? `：${parts.join('，')}` : ''}`,
       )
+    } else if (parts.length) {
+      ElMessage.warning(parts.join('，'))
     }
     if (report.failed) {
       ElMessage.warning(`${report.failed} 项未能清理，可在下方查看原因`)

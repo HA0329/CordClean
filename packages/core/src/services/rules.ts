@@ -16,7 +16,7 @@ import type {
   RuleValidationReport,
   RulesLike,
 } from '@cordclean/shared'
-import { RISK_META } from '@cordclean/shared'
+import { RISK_META, SUPPORTED_RULE_TYPES } from '@cordclean/shared'
 
 /** 规则风险权重，用于取分类最高风险 */
 const RISK_WEIGHT = RISK_META
@@ -119,7 +119,7 @@ export class RulesService extends Service implements RulesLike {
     for (const rule of this.table.values()) {
       byType[rule.target.type] = (byType[rule.target.type] ?? 0) + 1
       byRisk[rule.risk] = (byRisk[rule.risk] ?? 0) + 1
-      if (!['clear_dir', 'delete_dir', 'glob_files', 'glob_dirs', 'files_by_rule', 'find_dirs'].includes(rule.target.type)) {
+      if (!SUPPORTED_RULE_TYPES.includes(rule.target.type)) {
         unsupported++
       }
     }

@@ -138,15 +138,27 @@ export interface CleanItemResult {
 }
 
 /** 一次清理动作的汇总报告 */
+export type CleanMode = 'recycle' | 'quarantine' | 'delete'
+
 export interface CleanReport {
   sessionId: string
+  /** 本次清理采用的删除方式（回收站 / 隔离区 / 永久删除） */
+  mode: CleanMode
   taskIds: string[]
   dryRun: boolean
   startedAt: number
   elapsedMs: number
   freedBytes: number
+  /** 进入回收站的字节数（不释放空间，需清空回收站） */
+  recycledBytes: number
+  /** 进入隔离区的字节数（可恢复） */
+  quarantinedBytes: number
   cleaned: number
   quarantined: number
+  /** 扫描后被外部删除、未计入任何统计的项 */
+  vanished: number
+  /** 因条件不满足/预览不一致被跳过的项 */
+  skipped: number
   failed: number
   cancelled: boolean
   perTask: Array<{ taskId: string; cleaned: number; bytes: number; failed: number }>
@@ -174,8 +186,16 @@ export interface HistoryEntry {
   elapsedMs: number
   taskIds: string[]
   freedBytes: number
+  /** 进入回收站的字节数（不释放空间，需清空回收站） */
+  recycledBytes: number
+  /** 进入隔离区的字节数（可恢复） */
+  quarantinedBytes: number
   cleaned: number
   quarantined: number
+  /** 扫描后被外部删除、未计入任何统计的项 */
+  vanished: number
+  /** 因条件不满足/预览不一致被跳过的项 */
+  skipped: number
   failed: number
   dryRun: boolean
 }

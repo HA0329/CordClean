@@ -15,6 +15,8 @@ import type {
   AiRuntimeStatus,
   AiSuggestion,
   CleanItem,
+  CleanItemResult,
+  CleanMode,
   CleanReport,
   DiskInfo,
   HistoryEntry,
@@ -70,6 +72,17 @@ export interface Settings {
     confirmRisky: boolean
     /** 删除时忽略的错误重试次数 */
     retries: number
+    /** 默认删除方式：回收站 / 隔离区 / 永久删除 */
+    mode: CleanMode
+    /** 高风险项强制进隔离区（不使用回收站） */
+    highRiskQuarantine: boolean
+    /** 回收站不可用时回落到隔离区 */
+    quarantineFallback: boolean
+    /** 单次清理预算 */
+    budget: {
+      maxFiles: number
+      maxBytes: number
+    }
   }
   /** 规则库设置 */
   rules: {
@@ -269,6 +282,12 @@ declare module 'cordis' {
       addUserRoot(path: string): () => void
     }
     quarantine: QuarantineLike
+    /** 回收站（批量、逐项回执） */
+    recycleBin: RecycleLike
+    /** 补偿链（签发删除令牌） */
+    compensate: CompensateLike
+    /** 唯一删除入口（只接受补偿链令牌） */
+    executor: ExecutorLike
     history: HistoryLike
     system: SystemLike
     plugins: PluginManagerLike
@@ -344,6 +363,35 @@ export function defineCleanerPlugin<TConfig = any>(options: CleanerPluginOptions
     },
   }
   return plugin
+}
+
+/** 回收站能力（`ctx.recycleBin`） */
+export interface RecycleLike {
+  /** 该路径所在卷的回收站是否可用 */
+  available(target: string): Promise<boolean>
+  recycle(items: Array<{ path: string; isDirectory: boolean }>): Promise<{
+    ok: string[]
+    failed: Array<{ path: string; message: string }>
+  }>
+}
+
+/** 补偿链能力（`ctx.compensate`） */
+export interface CompensateLike {
+  issue(request: { items: CleanItem[]; mode: CleanMode; signal?: AbortSignal }): Promise<any>
+  recheck(item: any): Promise<{ itemId: string; path: string; reason: string; message: string } | undefined>
+}
+
+/** 执行器能力（`ctx.executor`） */
+export interface ExecutorLike {
+  execute(ticket: unknown, options?: any): Promise<{
+    results: CleanItemResult[]
+    freedBytes: number
+    recycledBytes: number
+    quarantinedBytes: number
+    vanished: number
+    skipped: number
+    failed: number
+  }>
 }
 
 /** 规则注册表能力（`ctx.rules`） */

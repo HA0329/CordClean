@@ -11,7 +11,10 @@ import { createTaskEnv, defaultDataDir } from './env.ts'
 import { setupLogger } from './logger.ts'
 import { BUILTIN_MANIFEST } from './manifest.ts'
 import { CleanerService } from './services/cleaner.ts'
+import { CompensateService } from './services/compensate.ts'
 import { EvaluatorService } from './services/evaluator.ts'
+import { ExecutorService } from './services/executor.ts'
+import { RecycleBinService } from './services/recycle-bin.ts'
 import { HistoryService } from './services/history.ts'
 import { PathPolicyService } from './services/path-policy.ts'
 import { PluginManagerService, type PluginManifestEntry } from './services/plugins.ts'
@@ -68,8 +71,11 @@ export async function createApp(options: AppOptions = {}): Promise<App> {
   await ctx.plugin(PathPolicyService, {})
   await ctx.plugin(QuarantineService, { dataDir })
   await ctx.plugin(HistoryService, { dataDir })
+  await ctx.plugin(RecycleBinService)
   await ctx.plugin(RulesService)
   await ctx.plugin(EvaluatorService)
+  await ctx.plugin(CompensateService)
+  await ctx.plugin(ExecutorService)
   await ctx.plugin(CleanerService)
   await ctx.plugin(PluginManagerService, { manifest: options.manifest ?? BUILTIN_MANIFEST })
 

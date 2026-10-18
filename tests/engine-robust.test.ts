@@ -190,6 +190,7 @@ describe('清理的幂等与失败处理', () => {
     const app = await createApp({
       dataDir: path.join(sandbox.root, 'acl-data'),
       logger: false,
+      settingsOverrides: { clean: { mode: 'delete' } },
       manifest: manifestOf([{ id: 'acl', plugin: fakeFilesPlugin({ id: 'acl', roots: [dir] }) }]),
     })
     try {

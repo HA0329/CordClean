@@ -98,10 +98,27 @@ export function normalizeSuggestions(raw: unknown): AiSuggestion[] {
   }))
 }
 
+export interface RuleEvalInput {
+  ruleId: string
+  name: string
+  category: string
+  risk: RiskLevel
+  count: number
+  bytes: number
+}
+
+export interface RuleEvalResult {
+  suggest: boolean
+  risk: RiskLevel
+  reason: string
+}
+
 export class AiService extends Service implements AiLike {
   private cache?: AiAnalysis
   private modelCache?: { at: number; models: AiModelInfo[]; source: 'remote' | 'fallback' }
   private lastProbe?: AiProbeResult
+  /** 规则评估结果缓存（同一批规则的重复评估直接复用） */
+  private evalCache = new Map<string, { at: number; result: Map<string, RuleEvalResult> }>()
 
   constructor(ctx: Context, private readonly rawConfig: AiConfig) {
     super(ctx, 'ai')
@@ -281,6 +298,73 @@ export class AiService extends Service implements AiLike {
         .sort((a, b) => b.mb - a.mb),
       userNote: userNote?.slice(0, 500),
     }
+  }
+
+  /**
+   * 作为「可替换评估器」使用：对一批规则给出 建议/风险/理由。
+   *
+   * 与 analyze() 的区别：输入是**按规则聚合的脱敏统计**（规则名、类别、项数、体积），
+   * 不含任何路径；输出是逐条规则的结构化评估。结果按输入签名缓存，避免同一扫描内重复调用。
+   */
+  async evaluateRules(inputs: RuleEvalInput[]): Promise<Map<string, RuleEvalResult>> {
+    const key = this.requireKey()
+    const config = this.rawConfig
+    const signature = JSON.stringify(inputs.map((item) => [item.ruleId, item.count, Math.round(item.bytes / 1024), item.risk]))
+    const cached = this.evalCache.get(signature)
+    if (cached && Date.now() - cached.at < 5 * 60_000) return cached.result
+
+    const system = [
+      '你是电脑清理工具的规则评估器。',
+      '输入是若干条清理规则的脱敏统计（规则名、类别、命中项数、合计体积），不包含任何文件路径。',
+      '请评估每条规则是否适合「默认勾选清理」，并给出风险等级。',
+      '只能输出 JSON 对象，不要输出解释性文字或 Markdown。',
+    ].join('\n')
+    const user = [
+      '规则列表（JSON）：',
+      JSON.stringify(inputs.map((item) => ({
+        ruleId: item.ruleId,
+        name: item.name,
+        category: item.category,
+        risk: item.risk,
+        count: item.count,
+        mb: Math.round((item.bytes / 1024 / 1024) * 10) / 10,
+      }))),
+      '',
+      '输出格式：{"items":[{"ruleId":"...","suggest":true,"risk":"safe|caution|risky","reason":"不超过60字"}]}',
+      '要求：每个 ruleId 必须出现一次；risk 只能是 safe/caution/risky；不确定时 suggest=false。',
+    ].join('\n')
+
+    const request = buildRequest(config, key, system, user)
+    const result = await requestJson(request.url, {
+      headers: request.headers,
+      body: request.body,
+      timeoutMs: config.timeoutMs,
+      retries: config.retries,
+    })
+    const parsed = parseResponse(config, result.payload)
+    let data: any
+    try {
+      data = extractJsonObject(parsed.text)
+    } catch (error) {
+      throw new AiError('评估器输出不是合法 JSON：' + errorMessage(error), 'INVALID_RESPONSE', result.status, {
+        text: parsed.text.slice(0, 300),
+      })
+    }
+    const items = Array.isArray(data?.items) ? data.items : []
+    const map = new Map<string, RuleEvalResult>()
+    for (const item of items) {
+      const ruleId = String(item?.ruleId ?? '')
+      if (!ruleId) continue
+      const risk = item?.risk === 'risky' || item?.risk === 'caution' ? item.risk : 'safe'
+      map.set(ruleId, {
+        suggest: item?.suggest === true,
+        risk,
+        reason: String(item?.reason ?? '').slice(0, 120),
+      })
+    }
+    if (!map.size) throw new AiError('评估器没有返回任何规则结论', 'INVALID_RESPONSE', result.status, data)
+    this.evalCache.set(signature, { at: Date.now(), result: map })
+    return map
   }
 
   async analyze(options: { taskIds?: string[]; extraContext?: string } = {}): Promise<AiAnalysis> {

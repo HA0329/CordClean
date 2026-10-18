@@ -156,6 +156,7 @@ describe('链接祖先穿透（引擎级）', () => {
     const escapeApp = await createApp({
       dataDir: path.join(sandbox.root, 'escape-data'),
       logger: false,
+      settingsOverrides: { clean: { mode: 'delete' } },
       manifest: manifestOf([
         {
           id: 'escape',
@@ -200,6 +201,7 @@ describe('链接祖先穿透（引擎级）', () => {
     const normalApp = await createApp({
       dataDir: path.join(sandbox.root, 'normal-data'),
       logger: false,
+      settingsOverrides: { clean: { mode: 'delete' } },
       manifest: manifestOf([{ id: 'normal', plugin: fakeFilesPlugin({ id: 'normal', roots: [scope] }) }]),
     })
     try {

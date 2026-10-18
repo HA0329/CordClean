@@ -15,6 +15,7 @@ import type {
   CleanItem,
   CleanItemDraft,
   CleanItemResult,
+  CleanMode,
   CleanOptions,
   CleanProgressEvent,
   CleanReport,
@@ -47,7 +48,7 @@ const MAX_ERRORS = 200
 const DELETE_CONCURRENCY = 6
 
 export class CleanerService extends Service implements CleanerLike {
-  static inject = ['settings', 'pathPolicy', 'quarantine', 'history', 'system']
+  static inject = ['settings', 'pathPolicy', 'quarantine', 'history', 'system', 'compensate', 'executor']
 
   private tasks = new Map<string, RegisteredTask>()
   private scanController?: AbortController
@@ -372,6 +373,10 @@ export class CleanerService extends Service implements CleanerLike {
     let cleaned = 0
     let quarantined = 0
     let freedBytes = 0
+    let recycledBytes = 0
+    let quarantinedBytes = 0
+    let vanished = 0
+    let skipped = 0
 
     for (const [taskId, groupItems] of groups) {
       if (controller.signal.aborted) break
@@ -438,24 +443,46 @@ export class CleanerService extends Service implements CleanerLike {
           reportProgress(undefined, true)
         }
       } else {
-        const pool = new Pool(DELETE_CONCURRENCY)
-        const settled = await Promise.all(
-          groupItems.map((item) =>
-            pool.run(async () => {
-              const result = await this.cleanOne(item, {
-                dryRun,
-                signal: controller.signal,
-                quarantineSession,
-                forceQuarantine,
-                policy: policyRef,
-              })
+        // 文件/目录：走补偿链 + 唯一删除入口（高风险项强制隔离区）
+        const riskyItems = settings.clean.highRiskQuarantine ? groupItems.filter((item) => item.risk === 'risky') : []
+        const normalItems = groupItems.filter((item) => !riskyItems.includes(item))
+        const batches: Array<{ items: CleanItem[]; mode: CleanMode }> = []
+        if (normalItems.length) batches.push({ items: normalItems, mode: forceQuarantine ? 'quarantine' : settings.clean.mode })
+        if (riskyItems.length) batches.push({ items: riskyItems, mode: 'quarantine' })
+
+        for (const batch of batches) {
+          if (controller.signal.aborted) break
+          const issued = await this.ctx.compensate.issue({
+            items: batch.items,
+            mode: batch.mode,
+            signal: controller.signal,
+          })
+          for (const rejection of issued.rejections) {
+            if (rejection.reason === 'vanished') vanished++
+            else skipped++
+            failures.push({ itemId: rejection.itemId, path: rejection.path, message: rejection.message })
+            done++
+            reportProgress(rejection.path, done === total)
+          }
+          if (!issued.ticket) continue
+          const executed = await this.ctx.executor.execute(issued.ticket, {
+            signal: controller.signal,
+            session: quarantineSession,
+            dryRun,
+            onItem: (result: CleanItemResult) => {
               done++
-              reportProgress(item.path, done === total)
-              return result
-            }),
-          ),
-        )
-        results.push(...settled)
+              reportProgress(result.path, done === total)
+            },
+          })
+          results.push(...executed.results)
+          recycledBytes += executed.recycledBytes
+          quarantinedBytes += executed.quarantinedBytes
+          vanished += executed.vanished
+          skipped += executed.skipped
+          freedBytes += dryRun
+            ? executed.results.reduce((sum, result) => sum + (result.ok ? result.bytes : 0), 0)
+            : executed.freedBytes
+        }
       }
 
       let taskCleaned = 0
@@ -464,12 +491,14 @@ export class CleanerService extends Service implements CleanerLike {
       for (const result of results) {
         if (!result.ok) {
           taskFailed++
-          failures.push({ itemId: result.itemId, path: result.path, message: result.error ?? '未知错误' })
+          // vanished 已在 skipped/vanished 里单独计量，不重复塞进失败清单
+          if (!String(result.error ?? '').includes('已不存在')) {
+            failures.push({ itemId: result.itemId, path: result.path, message: result.error ?? '未知错误' })
+          }
           continue
         }
         taskCleaned++
         taskBytes += result.bytes
-        freedBytes += result.bytes
         if (result.quarantined) quarantined++
         cleaned++
       }
@@ -480,13 +509,18 @@ export class CleanerService extends Service implements CleanerLike {
 
     const report: CleanReport = {
       sessionId,
+      mode: settings.clean.mode,
       taskIds: [...groups.keys()],
       dryRun,
       startedAt,
       elapsedMs: Date.now() - startedAt,
       freedBytes,
+      recycledBytes,
+      quarantinedBytes,
       cleaned,
       quarantined,
+      vanished,
+      skipped,
       failed: failures.length,
       cancelled: controller.signal.aborted,
       perTask,
@@ -500,8 +534,12 @@ export class CleanerService extends Service implements CleanerLike {
         elapsedMs: report.elapsedMs,
         taskIds: report.taskIds,
         freedBytes,
+        recycledBytes,
+        quarantinedBytes,
         cleaned,
         quarantined,
+        vanished,
+        skipped,
         failed: failures.length,
         dryRun: false,
       }

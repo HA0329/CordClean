@@ -25,7 +25,7 @@ export default defineCleanerPlugin<Partial<AiConfig>>({
   name: 'ai',
   version: '2.0.0',
   description: '支持 chat / messages / responses 三种接口形态，模型与推理等级可配置、可扩展',
-  inject: ['cleaner', 'system', 'settings'],
+  inject: ['cleaner', 'system', 'settings', 'evaluator'],
   Config,
   setup(ctx, config) {
     const normalized = normalizeConfig(config as Partial<AiConfig>)
@@ -52,5 +52,57 @@ export default defineCleanerPlugin<Partial<AiConfig>>({
         .catch(() => {})
     }
 
+    // 作为「可替换评估器」接入：规则包扫描时由 AI 给出 建议/风险/理由。
+    // 默认不接管（asEvaluator=false），只有用户显式开启才 use('ai')。
+    ctx.effect(() =>
+      ctx.evaluator.register({
+        id: 'ai',
+        name: `AI 评估器（${normalized.model}）`,
+        async evaluate(inputs) {
+          // 按规则聚合，避免把同一个规则的多条候选重复送给模型
+          const groups = new Map<string, { rule: (typeof inputs)[number]['rule']; count: number; bytes: number }>()
+          for (const input of inputs) {
+            const group = groups.get(input.rule.id)
+            if (group) {
+              group.count++
+              group.bytes += input.size
+            } else {
+              groups.set(input.rule.id, { rule: input.rule, count: 1, bytes: input.size })
+            }
+          }
+          const results = await service.evaluateRules(
+            [...groups.values()].map((group) => ({
+              ruleId: group.rule.id,
+              name: group.rule.name,
+              category: group.rule.categoryLabel ?? group.rule.category,
+              risk: group.rule.risk,
+              count: group.count,
+              bytes: group.bytes,
+            })),
+          )
+          return inputs.map((input) => {
+            const hit = results.get(input.rule.id)
+            if (!hit) {
+              // 模型漏掉的规则：保守回落到启发式结果，不让整批失败
+              return {
+                suggest: input.rule.risk === 'safe' && !input.protected,
+                risk: input.rule.risk,
+                reason: 'AI 未给出该规则的结论，已回落到默认判断',
+                strategy: 'ai',
+              }
+            }
+            return { ...hit, strategy: 'ai' }
+          })
+        },
+      }),
+    )
+    if (normalized.asEvaluator) {
+      try {
+        ctx.evaluator.use('ai')
+        ctx.logger.info('AI 已接管规则评估（可在界面关闭）')
+      } catch (error) {
+        ctx.logger.warn('切换到 AI 评估器失败：%s', error instanceof Error ? error.message : String(error))
+      }
+    }
   },
 })

@@ -58,6 +58,8 @@ export interface AiConfig {
   /** 失败重试次数（仅对超时/429/5xx 生效） */
   retries: number
   includeObservations: boolean
+  /** 是否作为规则评估器（替换内置启发式） */
+  asEvaluator: boolean
   /** 覆盖默认 system prompt（留空使用内置） */
   systemPrompt: string
   /** 额外请求体字段（深合并，优先级最高） */
@@ -90,6 +92,7 @@ const SchemaConfig = Schema.object({
   max_tokens: Schema.number().default(0).description('[已废弃] 旧字段，等价于 maxTokens'),
   retries: Schema.number().default(1).min(0).max(5).description('失败重试次数（超时/429/5xx）'),
   includeObservations: Schema.boolean().default(true).description('是否让模型附带其它观察'),
+  asEvaluator: Schema.boolean().default(false).description('作为规则评估器：扫描时用 AI 决定每类规则的风险与是否默认勾选（默认关闭，走内置启发式）'),
   systemPrompt: Schema.string().default('').description('自定义 system prompt（留空使用内置的清理专家提示词）'),
   extraBody: Schema.dict(Schema.any()).default({}).description('追加到请求体的任意字段（深合并、优先级最高），例如 {"top_p":0.95,"tools":[]}'),
   extraHeaders: Schema.dict(Schema.string()).default({}).description('追加/覆盖请求头，例如 {"x-api-key":"..."}'),
@@ -137,6 +140,7 @@ export function normalizeConfig(raw: Partial<AiConfig> | undefined): AiConfig {
     timeoutMs: Number.isFinite(timeoutMs) ? Math.min(600_000, Math.max(3_000, Math.trunc(timeoutMs))) : 90_000,
     retries: Number.isFinite(Number(input.retries)) ? Math.min(5, Math.max(0, Math.trunc(Number(input.retries)))) : 1,
     includeObservations: input.includeObservations !== false,
+    asEvaluator: input.asEvaluator === true,
     systemPrompt: String(input.systemPrompt ?? ''),
     extraBody: isPlainObject(input.extraBody) ? input.extraBody : {},
     extraHeaders: isPlainObject(input.extraHeaders) ? (input.extraHeaders as Record<string, string>) : {},

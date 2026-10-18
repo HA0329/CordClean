@@ -438,7 +438,61 @@ catalog.json / 用户规则（数据）
 其中 15 条属于尚未实现的类型（`broken_shortcuts`、`compact_db`），由审计脚本持续报告。
 本机实测：21 个分类 / 170 条规则默认装载，一次样本扫描命中 62 项、271 MB。
 
-## 12. 工程折中与反思
+## 12. 补偿链与唯一删除入口
+
+删除不可回滚，框架的 effect 也救不了"已经删掉的文件"。因此本系统把删除前的检查
+显式化为一条**补偿链**，并让执行器只接受过链令牌：
+
+```
+清理项 ──► compensate.issue()：①规范化 ②黑名单 ③白名单 ④条件/链接 ⑤预览一致性 ⑥预算 ⑦回收站
+                              │ 通过 → CleanTicket（私有 brand，外部无法伪造）
+                              ▼
+                        executor.execute(ticket)
+                              │ 逐项复核，不信任令牌内容
+                              ├─ recycle   → PowerShell 批量 SendToRecycleBin
+                              ├─ quarantine→ 隔离区（可恢复）
+                              ├─ delete    → 永久删除
+                              └─ compact   → SQLite VACUUM（不删数据）
+```
+
+### 12.1 七步链的判定
+
+| 步骤 | 做了什么 | 失败结果 |
+| --- | --- | --- |
+| ① 规范化 | `normalizePath` + `canonicalizePath`，拒绝相对路径/盘符根 | `normalize` 拒绝 |
+| ② 黑名单 | 路径策略（前缀树）判定受保护目录 | `protected` 拒绝 |
+| ③ 白名单 | 必须命中插件登记的辖区；`action=clear` 走清空白名单 | `outside` 拒绝 |
+| ④ 条件 | 只处理文件/目录；链接祖先检查阻断 junction 穿透；文件占用探测 | `in-use` / `protected` |
+| ⑤ 预览一致性 | 文件大小与扫描时不一致 → 跳过；不一致比例 > 5% → 整批中止 | `changed` / `changed-ratio` |
+| ⑥ 预算 | 单次 ≤ 5 万项 / 20 GB（可配置） | `budget` 整批拒绝 |
+| ⑦ 回收站 | 按卷探测 `$Recycle.Bin`；不可用且允许回落 → 逐项改走隔离区 | `recycle-unavailable` |
+
+令牌是模块私有 `Symbol` 标记的类实例：`isCleanTicket()` 做运行期身份校验，
+类型标注挡不住 `any`，所以执行器在每次执行前还会逐项 `recheck()`（规范化 + 策略 + 存在性）。
+
+### 12.2 诚实计量
+
+| 指标 | 含义 | 计量方式 |
+| --- | --- | --- |
+| `freedBytes` | 真正从磁盘消失的字节 | 永久删除/清空后按实际删除量；VACUUM 按前后文件大小差 |
+| `recycledBytes` | 进了回收站的字节 | 回收站回执成功的项按扫描体积累计（不虚报为释放） |
+| `quarantinedBytes` | 进了隔离区的字节 | 隔离区移动成功的项 |
+| `vanished` | 扫描后已不存在的项 | `stat` 失败，单独计数，不计入释放 |
+| `skipped` | 条件不满足/预览变化被跳过的项 | 结构化拒绝原因 |
+
+这解决了旧实现"用扫描体积当释放量"的虚报问题，也让界面能说清楚
+"这 3 GB 是进了回收站，还是真的释放了"。
+
+### 12.3 与论文 v4.0 的对应
+
+| 论文 | 本实现 |
+| --- | --- |
+| 表 5-2 补偿链七步 | `packages/core/src/services/compensate.ts` |
+| 令牌化唯一入口 | `CleanTicket` + `isCleanTicket()` + `executor.recheck()` |
+| 回收站批量执行 | `recycle-bin.ts`（JSON 清单 + PowerShell 批量 + 逐项回执） |
+| 诚实计量 | `CleanReport.recycledBytes / quarantinedBytes / vanished / skipped` |
+| 高风险进隔离区 | `settings.clean.highRiskQuarantine`，引擎按风险拆两批执行 |
+## 13. 工程折中与反思
 
 1. **顺序加载插件**：为换取任务归属的零侵入，牺牲了并行加载速度（实测差异 < 20 ms，可接受）；
 2. **不引入 ORM/数据库**：历史用 JSONL 追加写，隔离区用目录 + manifest，简单且可人工修复；

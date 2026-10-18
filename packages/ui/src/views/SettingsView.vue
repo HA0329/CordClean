@@ -10,6 +10,8 @@ const form = reactive({
   largeFileThresholdMb: 100,
   duplicateMinSizeMb: 1,
   dryRunDefault: false,
+  cleanMode: 'recycle' as 'recycle' | 'quarantine' | 'delete',
+  highRiskQuarantine: true,
   confirmRisky: true,
   retries: 2,
   quarantineEnabled: true,
@@ -36,6 +38,8 @@ function syncFromSettings() {
   form.dryRunDefault = settings.clean.dryRunDefault
   form.confirmRisky = settings.clean.confirmRisky
   form.retries = settings.clean.retries
+  form.cleanMode = settings.clean.mode
+  form.highRiskQuarantine = settings.clean.highRiskQuarantine
   form.quarantineEnabled = settings.quarantine.enabled
   form.quarantineMaxMb = Math.round(settings.quarantine.maxBytes / 1024 / 1024)
   form.quarantineMaxFiles = settings.quarantine.maxFiles
@@ -78,6 +82,7 @@ async function save() {
       },
       clean: {
         dryRunDefault: form.dryRunDefault,
+    clean: { mode: form.cleanMode, highRiskQuarantine: form.highRiskQuarantine },
         confirmRisky: form.confirmRisky,
         retries: form.retries,
       },
@@ -155,6 +160,16 @@ async function reset() {
           </el-form-item>
           <el-form-item label="高风险需确认">
             <el-switch v-model="form.confirmRisky" />
+          </el-form-item>
+          <el-form-item label="默认删除方式">
+            <el-select v-model="form.cleanMode" style="width: 180px">
+              <el-option label="回收站（可还原）" value="recycle" />
+              <el-option label="隔离区（可恢复）" value="quarantine" />
+              <el-option label="永久删除" value="delete" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="高风险项进隔离区">
+            <el-switch v-model="form.highRiskQuarantine" />
           </el-form-item>
           <el-form-item label="失败重试次数">
             <el-input-number v-model="form.retries" :min="0" :max="5" />

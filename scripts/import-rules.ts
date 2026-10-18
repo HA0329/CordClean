@@ -88,7 +88,7 @@ const CATEGORY_MAP: Record<string, string> = {
 /** 需要管理员权限的分类（按名称判断，再叠加路径判断） */
 const ADMIN_CATEGORIES = new Set(['system_admin', 'windows_old', 'hidden_installer_backups', 'recycle_and_diagnostics'])
 
-const SUPPORTED = new Set(['clear_dir', 'delete_dir', 'glob_files', 'glob_dirs', 'files_by_rule', 'find_dirs'])
+const SUPPORTED = new Set(['clear_dir', 'delete_dir', 'glob_files', 'glob_dirs', 'files_by_rule', 'find_dirs', 'compact_db'])
 
 const source = process.argv[2] ?? 'D:/桌面/deepseek-harness/myproject/PC-Cleaner/repo/pc_cleaner/rules.json'
 const output = process.argv[3] ?? path.join(process.cwd(), 'packages/plugins/rule-pack/rules/catalog.json')
@@ -107,6 +107,11 @@ const categories = []
 for (const category of raw.categories) {
   const rules: any[] = []
   for (const [index, target] of category.targets.entries()) {
+    // broken_shortcuts 已由 shortcuts 插件实现，规则目录里不再重复导入
+    if (target?.type === 'broken_shortcuts') {
+      dropped++
+      continue
+    }
     if (!target || !target.type) {
       dropped++
       continue

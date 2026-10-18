@@ -229,6 +229,32 @@ async function scanRule(
     return drafts
   }
 
+  if (target.type === 'compact_db') {
+    // 数据库压缩：只匹配文件，按 base + pattern（如 */History）定位
+    const patternSegments = (target.pattern ?? '*').split(/[\\/]+/).filter(Boolean)
+    for (const root of ruleRoots(rule, env)) {
+      scan.throwIfAborted()
+      if (!(await exists(root))) continue
+      for await (const entry of walk(root, {
+        signal: scan.signal,
+        maxDepth: patternSegments.length,
+        onError: (targetPath, error) => scan.addError({ path: targetPath, message: String(error) }),
+      })) {
+        if (entry.isDirectory) continue
+        const segments = entry.path.slice(root.length + 1).split(/[\\/]+/)
+        if (!matchSegments(patternSegments, segments)) continue
+        push({
+          path: entry.path,
+          kind: 'file',
+          size: entry.size,
+          meta: { ruleId: rule.id, action: 'compact' },
+          note: 'SQLite VACUUM：只回收空闲页，不删除数据（需先退出浏览器）',
+        })
+      }
+    }
+    return drafts
+  }
+
   if (target.type === 'files_by_rule') {
     const patternSegments = target.pattern ? target.pattern.split(/[\\/]+/).filter(Boolean) : []
     const maxDepth = Math.max(1, patternSegments.length || 1)

@@ -139,6 +139,7 @@ export const SUPPORTED_RULE_TYPES: RuleTargetType[] = [
   'glob_dirs',
   'files_by_rule',
   'find_dirs',
+  'compact_db',
 ]
 
 /** 规则动作是否有删除语义 */

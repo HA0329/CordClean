@@ -128,7 +128,8 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 | `leftovers` | 应用残留 | 高风险 | 注册表卸载项比对；目录类只提示 |
 | `startup` | 启动项 | 谨慎 | Run/RunOnce、启动文件夹、计划任务；删除前导出 `.reg` |
 | `registry` | 注册表问题 | 高风险 | 无效卸载项 / App Paths；删除前导出 `.reg` |
-| `rule-pack` | 规则库（21 个分类 / 170 条规则） | 安全~谨慎 | 数据驱动：新增清理域只需加 JSON（见 §6.2） |
+| `rule-pack` | 规则库（22 个分类 / 182 条默认规则） | 安全~谨慎 | 数据驱动：新增清理域只需加 JSON（见 §6.2） |
+| `shortcuts` | 失效快捷方式 | 高风险 | 纯二进制解析 `.lnk`，只报告目标不存在的死链 |
 | `ai` | —（提供 `ctx.ai` 服务） | — | 三种接口形态、模型与推理等级可配置（见 §6.1） |
 
 ### 6.1 AI 顾问：接口可配置、可演进
@@ -213,7 +214,7 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 140 个用例 / 15 个文件
+pnpm test          # 180 个用例 / 19 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 14 个插件的真实扫描审计（只读）
