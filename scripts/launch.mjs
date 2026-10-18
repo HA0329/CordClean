@@ -139,14 +139,7 @@ const child = spawn('pnpm', [mode === 'desktop' ? 'start:desktop' : 'start:web']
   env: process.env,
 })
 
-if (mode === 'web') {
-  // 等内核起来再打开浏览器，避免 404
-  for (let i = 0; i < 120; i++) {
-    if (await ping(1000)) { openBrowser(); break }
-    if (child.exitCode !== null) break
-    await sleep(500)
-  }
-}
+// 浏览器由内核在监听成功后打开（apps/web/src/main.ts），这里不再重复打开，避免双开
 
 const code = await new Promise((resolve) => child.on('exit', (c) => resolve(c ?? 0)))
 try { rmSync(pidFile, { force: true }) } catch {}
