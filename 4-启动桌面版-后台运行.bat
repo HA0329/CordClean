@@ -1,4 +1,5 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-start "" /min node "%~dp0scripts\launch.mjs" desktop
+node "%~dp0scripts\launch.mjs" desktop --hide-after-start
+exit /b 0

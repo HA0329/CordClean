@@ -29,6 +29,24 @@ if (args.includes('--detach')) {
   child.unref()
   process.exit(0)
 }
+// --hide-after-start：可见窗口只负责提示，随后把真正的工作交给隐藏子进程，自己退出（窗口消失）
+if (args.includes('--hide-after-start')) {
+  const existing = readPid()
+  if (alive(existing)) {
+    openBrowser()
+    process.exit(0)
+  }
+  console.log('CordClean 正在启动，窗口即将隐藏...')
+  await sleep(800)
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), mode, '--hidden'], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    cwd: root,
+  })
+  child.unref()
+  process.exit(0)
+}
 const log = (...m) => { if (!hidden) console.log(...m) }
 const fail = (m) => { console.error(m); process.exitCode = 1 }
 
