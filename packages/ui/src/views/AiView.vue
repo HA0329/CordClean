@@ -64,7 +64,7 @@ const form = reactive({
   model: 'deepseek-flash',
   effort: 'auto',
   jsonMode: 'auto',
-  maxTokens: 2048,
+  maxTokens: 65536,
   timeoutMs: 90000,
   apiKey: '',
   asEvaluator: false,

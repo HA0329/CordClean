@@ -214,28 +214,39 @@ export class AiService extends Service implements AiLike {
   }
 
   /** AI 插件工坊：生成单文件 Cordis 插件草稿 */
+  /** AI 插件工坊：生成单文件 Cordis 插件草稿（代码优先，失败自动重试一次） */
   async draftPlugin(requirement: string): Promise<{ name: string; code: string; notes: string }> {
     const key = this.requireKey()
-    const config = this.rawConfig
-    const request = buildRequest(config, key, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX + requirement)
-    this.gate('plugin-draft', request.url, request.body)
-    const result = await requestJson(request.url, {
-      headers: request.headers,
-      body: request.body,
-      timeoutMs: config.timeoutMs,
-      retries: config.retries,
-    })
-    const parsed = parseResponse(config, result.payload)
-    const data = extractJsonObject(parsed.text)
-    const code = typeof data?.code === 'string' ? data.code : ''
-    if (!code.trim()) throw new AiError('模型没有返回插件代码', 'INVALID_RESPONSE', result.status, parsed.raw)
-    return {
-      name: String(data?.name ?? 'ai-plugin').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 40) || 'ai-plugin',
-      code,
-      notes: String(data?.notes ?? '').slice(0, 500),
-    }
-  }
+    const base = this.rawConfig
+    let lastError = '生成失败'
 
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const maxTokens = Math.min(131_072, Math.max(32_768, base.maxTokens) * (attempt ? 2 : 1))
+      const config = { ...base, maxTokens }
+      const suffix = attempt ? '\n\n上一次输出为空或被截断。请直接输出完整、可运行的 ```js 代码块，不要省略、不要 JSON 包装。' : ''
+      const request = buildRequest(config, key, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX + requirement + suffix)
+      this.gate('plugin-draft', request.url, request.body)
+      const result = await requestJson(request.url, {
+        headers: request.headers,
+        body: request.body,
+        timeoutMs: config.timeoutMs,
+        retries: config.retries,
+      })
+      const parsed = parseResponse(config, result.payload)
+      if (parsed.truncated) {
+        lastError = `输出被截断（${parsed.finish ?? 'length'}）`
+        this.ctx.logger.info('插件草稿被截断，自动扩容重试')
+        continue
+      }
+      const code = extractPluginCode(parsed.text)
+      if (code && /defineCleanerPlugin/.test(code)) {
+        const matched = code.match(/name:\s*['"]([a-zA-Z0-9_-]+)['"]/)
+        return { name: matched?.[1] ?? 'ai-plugin', code, notes: parsed.text.slice(0, 200) }
+      }
+      lastError = '模型没有返回有效的插件代码'
+    }
+    throw new AiError(lastError, 'INVALID_RESPONSE')
+  }
   status(): AiRuntimeStatus {
     return {
       available: true,
@@ -371,7 +382,7 @@ export class AiService extends Service implements AiLike {
    */
   async evaluateRules(inputs: RuleEvalInput[]): Promise<Map<string, RuleEvalResult>> {
     const key = this.requireKey()
-    const config = this.rawConfig
+    const config = { ...this.rawConfig, maxTokens: Math.max(16_384, this.rawConfig.maxTokens) }
     const signature = JSON.stringify(inputs.map((item) => [item.ruleId, item.count, Math.round(item.bytes / 1024), item.risk]))
     const cached = this.evalCache.get(signature)
     if (cached && Date.now() - cached.at < 5 * 60_000) return cached.result
@@ -439,7 +450,7 @@ export class AiService extends Service implements AiLike {
 
   async analyze(options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] } = {}): Promise<AiAnalysis> {
     const key = this.requireKey()
-    const config = this.rawConfig
+    const config = { ...this.rawConfig, maxTokens: Math.max(16_384, this.rawConfig.maxTokens) }
     const profile = await this.buildProfile(options.extraContext)
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan
@@ -555,6 +566,17 @@ export function createAiService(ctx: Context, raw: Partial<AiConfig> | undefined
 /** 提示模型额外给出新规则建议（可选字段） */
 /** 让模型在候选列表内挑选清理项 */
 /** 让模型建议新增扫描根（只能从候选 rootId 中选） */
+export function extractPluginCode(text: string): string {
+  const fenced = text.match(/```(?:js|javascript|mjs)?\s*([\s\S]*?)```/i)
+  const raw = (fenced ? fenced[1] : text).trim()
+  if (raw.startsWith('{')) {
+    try {
+      const data = JSON.parse(raw)
+      if (typeof data?.code === 'string') return data.code.trim()
+    } catch {}
+  }
+  return raw
+}
 const PLUGIN_SYSTEM_PROMPT = [
   '你是 Cordis 插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "code": "完整 ESM 源码", "notes": "简要说明" }。',
   'code 必须是单文件 .mjs，默认导出 defineCleanerPlugin({ name, version, description, inject: ["cleaner"], setup(ctx, config) {...} })。',
