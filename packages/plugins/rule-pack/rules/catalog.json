@@ -1,0 +1,3835 @@
+{
+  "version": 1,
+  "generatedFrom": "PC-Cleaner 0.9.9（导入时间 2026-10-18T07:10:54.078Z）",
+  "description": "PC Junk Cleaner 内置清理规则（基于本机实测 + BleachBit/Dism++ 吸收扩充）。v0.9.3 安全加固：删除 clear_dir %LOCALAPPDATA%/npm-cache 父规则（它会连带清空正在运行的 npx/AI 工具，改为只清 _npx/_cacache/_logs）；删除微信 3.x 数据目录、ProgramData/Package Cache、WinSxS、$Recycle.Bin、System32/config/systemprofile 等不可逆或不受支持的规则；新增 ALLOWED_CLEAR_UNDER_PROTECTED（%WINDIR%/System32/LogFiles 与 %WINDIR%/System32/winevt/Logs 仅允许清空内容，根目录不可删）；缓存类规则批量加 skip_if_in_use（被运行中进程占用时跳过）；find_dirs 一律显式 max_depth；chkdsk found.* 由 delete 改为 clear。v0.9.2 增强（本机实测校准）：微信 4.x 补齐 xplugin 插件模块（本机 636MB）与 radium 小程序容器缓存（本机 173MB）、网络缓存通配 net_*、3.x 遗留日志；开发缓存补齐 npm _npx（本机 212MB）/ _cacache / _logs、corepack、各盘根 pnpm store、Maven 仓库、VS Code 日志、JetBrains 日志；新增 system_logs 分类（DISM/CBS/waasmedic/SIH/NetSetup 日志、System32\\LogFiles、setupapi/setuperr 安装日志、USOShared/USOPrivate 更新状态、传递优化缓存、Panther、security\\logs 等）；直播伴侣补齐 perfectworldarena Partitions 与日志；Steam 着色器缓存加规则级 max_depth 避免遍历上百 GB 游戏目录。v0.9.1：所有规则改用标准环境变量/应用默认位置表达，跨机器、跨用户皆可用；补充微信 4.x 升级包与日志缓存、NVIDIA App/Overlay 界面缓存、WebView2 嵌入式浏览器缓存、本地游戏/直播伴侣缓存与 LocalLow GPU 缓存。v0.9.0：BleachBit 浏览器站点数据（DOM/本地存储、会话、站点偏好、登录/表单数据、搜索引擎、同步数据）、浏览器数据库压缩（compact_db，VACUUM 释放碎片不删数据）、Dism++ 空间回收补充（Windows 事件日志、崩溃内存转储 MEMORY.DMP、.NET 原生映像缓存）。 v0.9.9 新增：broken_shortcuts（失效快捷方式 —— 纯 Python 解析 .lnk，只清「目标所在卷可访问但目标确实不存在」的死链；离线盘/移动盘/网络共享/URL/系统命名空间一律不动，Startup 默认排除）与 usage_traces（使用痕迹 —— 最近文档、跳转列表、PowerShell 命令历史；同时把 Recent 从 system_temp 移出，不再被 safe 分类静默清空）。分类数 29、目标数 276。",
+  "categories": [
+    {
+      "key": "system_temp",
+      "label": "系统临时文件",
+      "risk": "safe",
+      "categoryId": "system",
+      "rules": [
+        {
+          "id": "system_temp-1",
+          "name": "用户临时文件",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%TEMP%"
+          }
+        },
+        {
+          "id": "system_temp-2",
+          "name": "崩溃转储缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/CrashDumps",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "system_temp-3",
+          "name": "缩略图缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Windows/Explorer",
+            "pattern": "thumbcache_*.db",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "system_temp-4",
+          "name": "图标缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Windows/Explorer",
+            "pattern": "iconcache_*.db",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "system_temp-5",
+          "name": "网页窗口缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Windows/WebCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "system_temp-6",
+          "name": "Windows 错误报告",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Windows/WER",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "system_temp-7",
+          "name": "Windows 图标/字体缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Windows/Caches",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "system_temp-8",
+          "name": "系统云端字体缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/FontCache/4/CloudFonts",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "gpu_caches",
+      "label": "GPU 着色器缓存",
+      "risk": "safe",
+      "categoryId": "system",
+      "rules": [
+        {
+          "id": "gpu_caches-1",
+          "name": "NVIDIA DXCache",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/NVIDIA/DXCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "gpu_caches-2",
+          "name": "NVIDIA GLCache",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/NVIDIA/GLCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "gpu_caches-3",
+          "name": "AMD DXCache",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/AMD/DXCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "gpu_caches-4",
+          "name": "AMD GLCache",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/AMD/GLCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "gpu_caches-5",
+          "name": "DirectX 着色器缓存(D3DSCache)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/D3DSCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "gpu_caches-6",
+          "name": "NVIDIA NV_Cache 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/NVIDIA Corporation/NV_Cache",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "gpu_caches-7",
+          "name": "NVIDIA DXCache(LocalLow)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%/AppData/LocalLow/NVIDIA/DXCache",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "nvidia_app_cache",
+      "label": "NVIDIA 应用缓存",
+      "risk": "safe",
+      "categoryId": "system",
+      "note": "NVIDIA App（GeForce Experience 的替代品）与 NVIDIA Overlay 均基于 CEF（Chromium）界面，其 CefCache 与组件缓存可安全清理并自动重建，不影响驱动与游戏设置。",
+      "rules": [
+        {
+          "id": "nvidia_app_cache-1",
+          "name": "NVIDIA App 界面缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/NVIDIA Corporation/NVIDIA App/CefCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "nvidia_app_cache-2",
+          "name": "NVIDIA Overlay 界面缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/NVIDIA Corporation/NVIDIA Overlay/CefCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "nvidia_app_cache-3",
+          "name": "NVIDIA 应用识别缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/NVIDIA Corporation/NVIDIA App/NvBackend/ApplicationOntology",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "web_cache",
+      "label": "浏览器/网页缓存",
+      "risk": "safe",
+      "categoryId": "browser",
+      "rules": [
+        {
+          "id": "web_cache-1",
+          "name": "Edge 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-2",
+          "name": "Edge 代码缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Code Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-3",
+          "name": "Steam 网页缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Steam/htmlcache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-4",
+          "name": "INetCache",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Windows/INetCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-5",
+          "name": "Edge 组件缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Edge/User Data/component_crx_cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-6",
+          "name": "Edge 扩展缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Edge/User Data/extensions_crx_cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-7",
+          "name": "Edge 着色器缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Edge/User Data/GrShaderCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-8",
+          "name": "Edge 常驻着色器缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Edge/User Data/ShaderCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-9",
+          "name": "Edge GPU 持久缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Edge/User Data/GPUPersistentCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-10",
+          "name": "Edge GPU 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/GPUCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-11",
+          "name": "Edge Dawn 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/DawnGraphiteCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-12",
+          "name": "Edge WebGPU 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/DawnWebGPUCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-13",
+          "name": "Chrome 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-14",
+          "name": "Chrome 代码缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Code Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-15",
+          "name": "Chrome GPU 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/GPUCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-16",
+          "name": "Chrome Dawn 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/DawnGraphiteCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-17",
+          "name": "Chrome WebGPU 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/DawnWebGPUCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-18",
+          "name": "Firefox 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/cache2",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-19",
+          "name": "Brave 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/BraveSoftware/Brave-Browser/User Data",
+            "pattern": "*/Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-20",
+          "name": "Brave GPU 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/BraveSoftware/Brave-Browser/User Data",
+            "pattern": "*/GPUCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-21",
+          "name": "Vivaldi 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Vivaldi/User Data",
+            "pattern": "*/Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-22",
+          "name": "Vivaldi GPU 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Vivaldi/User Data",
+            "pattern": "*/GPUCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-23",
+          "name": "Opera 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/Opera Software/Opera Stable",
+            "pattern": "Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-24",
+          "name": "Opera GPU 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/Opera Software/Opera Stable",
+            "pattern": "GPUCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-25",
+          "name": "Edge Service Worker 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Service Worker/CacheStorage",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-26",
+          "name": "Chrome Service Worker 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Service Worker/CacheStorage",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-27",
+          "name": "Edge DawnCache",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/DawnCache",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "web_cache-28",
+          "name": "Chrome DawnCache",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/DawnCache",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "wechat_cache",
+      "label": "微信运行缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "note": "本机为微信 4.x（Weixin）：聊天记录等数据在数据目录（如 D:/WeixinShuju，含 xwechat_files），本工具绝不触碰；此处只清理 %APPDATA%/Tencent/xwechat 下的运行缓存（网络缓存、日志、崩溃报告、升级包、小程序缓存与插件模块），均为可重建内容。请在微信退出后清理；聊天数据请用微信「设置 → 存储空间」清理。xplugin/plugins（插件模块）与 radium（小程序容器缓存）清理后微信会按需重新下载/重建；这些目标被微信进程占用时会自动跳过（skip_if_in_use）。微信 3.x 数据目录（Documents/WeChat Files）已从规则中移除，不再列入清理范围。",
+      "rules": [
+        {
+          "id": "wechat_cache-1",
+          "name": "微信 4.x 升级包缓存（update）",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "paths": [
+              "%APPDATA%/Tencent/xwechat/update",
+              "%APPDATA%/Tencent/xwechat/update_1"
+            ],
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-2",
+          "name": "微信 4.x 运行日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "paths": [
+              "%APPDATA%/Tencent/xwechat/log",
+              "%APPDATA%/Tencent/xwechat/logs"
+            ],
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-3",
+          "name": "微信 4.x 崩溃报告",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "paths": [
+              "%APPDATA%/Tencent/xwechat/crashinfo",
+              "%APPDATA%/Tencent/xwechat/crash"
+            ],
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-4",
+          "name": "微信 4.x 网络缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "paths": [
+              "%APPDATA%/Tencent/xwechat/net",
+              "%APPDATA%/Tencent/xwechat/net_1"
+            ],
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-5",
+          "name": "微信 4.x 网络缓存(其它实例)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/Tencent/xwechat",
+            "pattern": "net_*",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-6",
+          "name": "微信 4.x 插件模块（按需重下）",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Tencent/xwechat/xplugin/plugins",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-7",
+          "name": "微信小程序容器网页缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "bases": [
+              "%APPDATA%/Tencent/xwechat/radium",
+              "%APPDATA%/Tencent/xwechat/radium/cache"
+            ],
+            "pattern": "web",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-8",
+          "name": "微信小程序包缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/Tencent/xwechat/radium/users",
+            "pattern": "*/applet",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-9",
+          "name": "微信小程序 xworker 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/Tencent/xwechat/radium/users",
+            "pattern": "*/xworker",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-10",
+          "name": "微信小程序 udr 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/Tencent/xwechat/radium/users",
+            "pattern": "*/udr",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-11",
+          "name": "小程序容器 Cache 目录",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "bases": [
+              "%APPDATA%/Tencent/xwechat/radium/users",
+              "%APPDATA%/Tencent/xwechat/applet"
+            ],
+            "pattern": "*/Cache",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-12",
+          "name": "微信插件下载缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Tencent/xwechat/xplugin/download",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-13",
+          "name": "微信内置浏览器缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/Tencent/xwechat",
+            "pattern": "cef_cache",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-14",
+          "name": "微信组件缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/Tencent/xwechat",
+            "pattern": "*/Cache",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-15",
+          "name": "微信 3.x 日志（若存在）",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Tencent/WeChat/Logs",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "wechat_cache-16",
+          "name": "微信 3.x 临时文件（若存在）",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Tencent/WeChat/Temp",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "office_caches",
+      "label": "办公软件缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "note": "Microsoft Office 和 WPS 的本地同步缓存、临时文件，删除后软件会自动重建，不影响文档内容。",
+      "rules": [
+        {
+          "id": "office_caches-1",
+          "name": "Office 文档同步缓存（OneDrive/SharePoint）",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Office/16.0/OfficeFileCache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "office_caches-2",
+          "name": "Office 智能查找缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Office/16.0/SmartLookupCache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "office_caches-3",
+          "name": "WPS 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Kingsoft/wps/cache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "media_caches",
+      "label": "多媒体设计软件缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "note": "Adobe Premiere Pro / After Effects 等软件的媒体缓存（峰值、预览），可安全删除并自动重建。",
+      "rules": [
+        {
+          "id": "media_caches-1",
+          "name": "Adobe 媒体缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Adobe/Common/Media Cache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "media_caches-2",
+          "name": "Adobe 媒体缓存文件",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Adobe/Common/Media Cache Files",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "comm_caches",
+      "label": "通信工具缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "note": "Zoom、Discord、Telegram 等通信应用的临时缓存，可安全清理。",
+      "rules": [
+        {
+          "id": "comm_caches-1",
+          "name": "Zoom 会议缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Zoom/cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "comm_caches-2",
+          "name": "Discord 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/discord/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "comm_caches-3",
+          "name": "Discord 代码缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/discord/Code Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "comm_caches-4",
+          "name": "Telegram 更新缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Telegram Desktop/tupdates",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "game_caches",
+      "label": "游戏平台缓存",
+      "risk": "caution",
+      "categoryId": "apps",
+      "rules": [
+        {
+          "id": "game_caches-1",
+          "name": "完美世界更新包缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/perfectworldarena-updater/pending",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_caches-2",
+          "name": "完美世界更新安装包残留",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/perfectworldarena-updater",
+            "pattern": "installer*.exe",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_caches-3",
+          "name": "Steam 应用缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Steam/appcache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_caches-4",
+          "name": "Steam 日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Steam/logs",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_caches-5",
+          "name": "Steam 网页缓存日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Steam/htmlcache",
+            "pattern": "*.log",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_caches-6",
+          "name": "Steam 着色器缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "find_dirs",
+            "bases": [
+              "%PROGRAMFILES(X86)%/Steam/steamapps",
+              "%PROGRAMFILES%/Steam/steamapps",
+              "D:/Steam/steamapps",
+              "E:/Steam/steamapps",
+              "D:/Program Files (x86)/Steam/steamapps",
+              "E:/Program Files/Steam/steamapps"
+            ],
+            "names": [
+              "shadercache"
+            ],
+            "action": "clear",
+            "skipIfInUse": true,
+            "maxDepth": 3
+          }
+        },
+        {
+          "id": "game_caches-7",
+          "name": "Epic 启动器网页缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/EpicGamesLauncher/Saved/webcache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_caches-8",
+          "name": "Battle.net 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Battle.net/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_caches-9",
+          "name": "GOG Galaxy 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/GOG.com/Galaxy/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_caches-10",
+          "name": "Riot 客户端缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Riot Games/Riot Client/Cache",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "game_runtime_cache",
+      "label": "游戏运行时缓存",
+      "risk": "caution",
+      "categoryId": "apps",
+      "rules": [
+        {
+          "id": "game_runtime_cache-1",
+          "name": "无畏契约缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/VALORANT/Saved/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_runtime_cache-2",
+          "name": "无畏契约日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/VALORANT/Saved/Logs",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_runtime_cache-3",
+          "name": "三角洲行动缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/DeltaForce/Saved/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_runtime_cache-4",
+          "name": "Unreal Engine 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/UnrealEngine/Common/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_runtime_cache-5",
+          "name": "CS:GO 缓存（可能含配置，请确认）",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Counter-Strike Global Offensive",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "game_runtime_cache-6",
+          "name": "常见游戏 Cache 目录",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%",
+            "pattern": "*/Saved/Cache",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "live_stream_cache",
+      "label": "直播伴侣/电竞平台缓存",
+      "risk": "caution",
+      "categoryId": "apps",
+      "note": "抖音直播伴侣（webcast_mate）与完美世界竞技平台（Wmpvp / perfectworldarena）的网页分区缓存与运行日志，均基于 Chromium，可安全重建。请在对应应用退出后清理。",
+      "rules": [
+        {
+          "id": "live_stream_cache-1",
+          "name": "完美世界竞技平台缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/perfectworldarena/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "live_stream_cache-2",
+          "name": "完美世界竞技平台网页分区缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/perfectworldarena",
+            "pattern": "Partitions",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "live_stream_cache-3",
+          "name": "完美世界竞技平台缓存(兼容)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/perfectworldarena",
+            "pattern": "*/Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "live_stream_cache-4",
+          "name": "Wmpvp 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Wmpvp/cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "live_stream_cache-5",
+          "name": "Wmpvp 运行日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Wmpvp/Log",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "live_stream_cache-6",
+          "name": "直播伴侣网页分区缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/webcast_mate/Partitions",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "live_stream_cache-7",
+          "name": "直播伴侣 WebStore 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/webcast_mate/WBStore",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "live_stream_cache-8",
+          "name": "直播伴侣组件缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/webcast_mate",
+            "pattern": "*/Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "live_stream_cache-9",
+          "name": "直播伴侣运行日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/webcast_mate/logs",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "dev_caches",
+      "label": "开发工具缓存",
+      "risk": "caution",
+      "categoryId": "dev",
+      "rules": [
+        {
+          "id": "dev_caches-1",
+          "name": "pnpm 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/pnpm-cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-2",
+          "name": "pnpm store",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/pnpm/store",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-3",
+          "name": "D 盘 pnpm store",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "D:/.pnpm-store",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-4",
+          "name": "系统盘根 pnpm store",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%SYSTEMDRIVE%/",
+            "pattern": ".pnpm-store",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-5",
+          "name": "D 盘根 pnpm store",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "D:/",
+            "pattern": ".pnpm-store",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-6",
+          "name": "E 盘根 pnpm store",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "E:/",
+            "pattern": ".pnpm-store",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-7",
+          "name": "pip 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/pip/cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-8",
+          "name": "npm npx 安装目录（正在运行的 npx/AI 工具会被破坏，占用时自动跳过）",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/npm-cache/_npx",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-9",
+          "name": "npm 内容寻址缓存(_cacache)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/npm-cache/_cacache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-10",
+          "name": "npm 调试日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/npm-cache/_logs",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-11",
+          "name": "npm npx 缓存(Roaming)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/npm-cache/_npx",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-12",
+          "name": "corepack 包管理器缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/node/corepack",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-13",
+          "name": "uv 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/uv/cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-14",
+          "name": "yarn 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Yarn/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-15",
+          "name": "Go 构建缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/go-build",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-16",
+          "name": "Go 模块缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "~/go/pkg/mod/cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-17",
+          "name": "cargo 依赖缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "~/.cargo/registry",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-18",
+          "name": "Gradle 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "~/.gradle/caches",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-19",
+          "name": "NuGet 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/NuGet/v3-cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-20",
+          "name": "WinGet 临时安装包",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%TEMP%/WinGet",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-22",
+          "name": "Electron 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/electron/Cache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-23",
+          "name": "Docker 构建缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%/.docker/cache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-24",
+          "name": "VS Code 旧版本安装包残留",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Code/CachedData",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-25",
+          "name": "VS Code 日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Code/logs",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-26",
+          "name": "VS Code 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Code/Cache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-27",
+          "name": "Android SDK 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%/.android/cache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-28",
+          "name": "Maven 本地仓库",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%/.m2/repository",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-29",
+          "name": "Unity 编辑器缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Unity/Editor/Cache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-30",
+          "name": "JetBrains IDE 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/JetBrains",
+            "pattern": "*/cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-31",
+          "name": "JetBrains IDE 日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/JetBrains",
+            "pattern": "*/log",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-32",
+          "name": "Visual Studio 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/VisualStudio",
+            "pattern": "*/Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-33",
+          "name": "VS Common 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/VSCommon",
+            "pattern": "*/cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "dev_caches-34",
+          "name": "VS 组件模型缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/VisualStudio",
+            "pattern": "*/ComponentModelCache",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "downloads",
+      "label": "下载/旧文件",
+      "risk": "risky",
+      "categoryId": "disk",
+      "rules": [
+        {
+          "id": "downloads-1",
+          "name": "下载的大/旧文件",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "files_by_rule",
+            "base": "~/Downloads",
+            "olderThanDays": 180,
+            "minSizeMb": 100
+          }
+        },
+        {
+          "id": "downloads-2",
+          "name": "下载的安装包(.exe)",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "~/Downloads",
+            "pattern": "*.exe",
+            "olderThanDays": 30,
+            "minSizeMb": 1
+          }
+        },
+        {
+          "id": "downloads-3",
+          "name": "下载的安装包(.msi)",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "~/Downloads",
+            "pattern": "*.msi",
+            "olderThanDays": 30,
+            "minSizeMb": 1
+          }
+        }
+      ]
+    },
+    {
+      "key": "system_admin",
+      "label": "系统深度清理(需管理员)",
+      "risk": "caution",
+      "categoryId": "system",
+      "rules": [
+        {
+          "id": "system_admin-1",
+          "name": "Windows 更新缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/SoftwareDistribution/Download",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-2",
+          "name": "预读取(Prefetch)（清理后首次启动/常用程序可能变慢）",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Prefetch",
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-3",
+          "name": "系统临时文件(Windows\\Temp)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Temp",
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-4",
+          "name": "系统服务临时文件(Windows\\SystemTemp，24H2 新增)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/SystemTemp",
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-5",
+          "name": "chkdsk 残留(found.*)（只清空内容，恢复出的碎片无法找回）",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%SYSTEMDRIVE%/",
+            "pattern": "found.*",
+            "action": "clear",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-6",
+          "name": "Windows 更新日志(KB*.log)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%",
+            "pattern": "KB*.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-7",
+          "name": "Windows 备份残留(*.bak)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%",
+            "pattern": "*.bak",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-8",
+          "name": "Windows 更新诊断日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Logs/WindowsUpdate",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-9",
+          "name": "事件日志归档",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/System32/winevt/Logs",
+            "pattern": "Archive-*.evtx",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-10",
+          "name": "Windows 事件日志(evtx，仅 30 天以上且未被服务占用)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/System32/winevt/Logs",
+            "pattern": "*.evtx",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "olderThanDays": 30,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-11",
+          "name": "系统崩溃内存转储(MEMORY.DMP)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%",
+            "pattern": "MEMORY.DMP",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-12",
+          "name": "系统崩溃转储",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/Minidump",
+            "pattern": "*.dmp",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-13",
+          "name": "Live 内核报告",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/LiveKernelReports",
+            "pattern": "**/*.dmp",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-14",
+          "name": ".NET 原生映像缓存(可重建)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%WINDIR%/assembly",
+            "pattern": "NativeImages_*",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-15",
+          "name": "Windows 传递优化(P2P)缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%SYSTEMDRIVE%/ProgramData/DeliveryOptimization",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-16",
+          "name": "CBS 组件服务日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Logs/CBS",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_admin-17",
+          "name": "Windows 搜索索引缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/Microsoft/Search/Data/Applications/Windows/Projects",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "system_logs",
+      "label": "系统日志与诊断残留",
+      "risk": "safe",
+      "categoryId": "system",
+      "note": "Windows 自身的诊断日志与更新状态残留：DISM/CBS/waasmedic 服务日志、WMI 与安装日志、USB 设备安装日志、传递优化（Delivery Optimization）缓存、USOShared 更新编排状态。这些内容只记录诊断信息、不会被系统引用，可安全清空并自动重建；部分目录需要管理员权限。⚠ 少数日志目录（如 waasmedic、USOShared\\Logs）被正在运行的系统服务占用，会通过 skip_if_in_use 自动跳过并计入「跳过」，重启后再清即可。%WINDIR%\\System32\\LogFiles 与 %WINDIR%\\System32\\winevt\\Logs 位于受保护前缀之下，已通过 ALLOWED_CLEAR_UNDER_PROTECTED 白名单**仅允许清空内容**（根目录本身仍不可删除）。",
+      "rules": [
+        {
+          "id": "system_logs-1",
+          "name": "DISM 部署日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Logs/DISM",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-2",
+          "name": "CBS 组件服务日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Logs/CBS",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-3",
+          "name": "Windows 更新修复日志(waasmedic)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Logs/waasmedic",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-4",
+          "name": "模块安装日志(MoSetup)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Logs/MoSetup",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-5",
+          "name": "系统完整性诊断日志(SIH)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Logs/SIH",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-6",
+          "name": "Windows 更新诊断日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Logs/WindowsUpdate",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-7",
+          "name": "网络安装日志(NetSetup)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Logs/NetSetup",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-8",
+          "name": "Windows 根目录日志文件",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/Logs",
+            "pattern": "*.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-9",
+          "name": "Windows 根目录跟踪日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/Logs",
+            "pattern": "*.etl",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-10",
+          "name": "系统 LogFiles 诊断日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%WINDIR%/System32/LogFiles",
+            "pattern": "*",
+            "action": "clear",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-11",
+          "name": "驱动安装日志(setupapi)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/INF",
+            "pattern": "setupapi.*.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-12",
+          "name": "驱动安装日志(setupact)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/INF",
+            "pattern": "setupact.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-13",
+          "name": "驱动安装错误日志(setuperr)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/INF",
+            "pattern": "setuperr.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-14",
+          "name": "Windows 更新日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%",
+            "pattern": "WindowsUpdate.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-15",
+          "name": "DTC 安装日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%",
+            "pattern": "DtcInstall.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-16",
+          "name": "待处理文件重命名操作日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%",
+            "pattern": "PFRO.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-17",
+          "name": "更新编排服务日志(USOShared)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/USOShared/Logs",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-18",
+          "name": "更新状态存储(USOPrivate)（清空后 Windows 更新历史/编排状态重置）",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/USOPrivate/UpdateStore",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-19",
+          "name": "传递优化(P2P)缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/Microsoft/Windows/DeliveryOptimization/Cache",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-20",
+          "name": "传递优化缓存(兼容路径)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%PROGRAMDATA%/Microsoft/Windows/DeliveryOptimization",
+            "pattern": "Cache",
+            "action": "clear",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-21",
+          "name": "传递优化跟踪日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%PROGRAMDATA%/Microsoft/Windows/DeliveryOptimization/Logs",
+            "pattern": "*.etl",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-22",
+          "name": "安装程序日志(Panther)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Panther",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-23",
+          "name": "安装程序日志文件",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/Panther",
+            "pattern": "*.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-24",
+          "name": "Windows 调试输出目录",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/debug",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-25",
+          "name": "安全审计日志(security/logs)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/security/logs",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-26",
+          "name": "事件日志归档(可重建)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/System32",
+            "pattern": "winevt/Logs/Archive-*.evtx",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-27",
+          "name": "系统数据缓存(SystemData)（商店/系统应用状态，清空后个别应用可能需重置）",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/Microsoft/Windows/SystemData",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "system_logs-28",
+          "name": "设置同步缓存(SettingSync)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Windows/SettingSync",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "windows_old",
+      "label": "旧版 Windows 残留",
+      "risk": "risky",
+      "categoryId": "system",
+      "note": "Windows.old 是回滚到上一个 Windows 版本的唯一途径，删除不可恢复。建议优先使用「设置 → 系统 → 存储 → 临时文件 → 以前的 Windows 安装」或 cleanmgr 处理；本规则仅在你确认不再需要回滚时使用。",
+      "rules": [
+        {
+          "id": "windows_old-1",
+          "name": "Windows.old 残留（不可恢复，建议优先用 设置→系统→存储）",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "delete_dir",
+            "path": "%SYSTEMDRIVE%/Windows.old",
+            "requiresAdmin": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "browser_privacy",
+      "label": "浏览器隐私数据(高风险)",
+      "risk": "risky",
+      "categoryId": "privacy",
+      "rules": [
+        {
+          "id": "browser_privacy-1",
+          "name": "Edge Cookie",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Cookies",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_privacy-2",
+          "name": "Edge Cookie(新版路径)",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Network/Cookies",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_privacy-3",
+          "name": "Edge 浏览历史",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/History",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_privacy-4",
+          "name": "Chrome Cookie",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Cookies",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_privacy-5",
+          "name": "Chrome Cookie(新版路径)",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Network/Cookies",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_privacy-6",
+          "name": "Chrome 浏览历史",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/History",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_privacy-7",
+          "name": "Firefox Cookie",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/cookies.sqlite",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_privacy-8",
+          "name": "Firefox 浏览历史",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/places.sqlite",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_privacy-9",
+          "name": "Firefox 历史图标",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/favicons.sqlite",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "browser_data",
+      "label": "浏览器站点数据(高风险)",
+      "risk": "risky",
+      "categoryId": "privacy",
+      "note": "BleachBit 的 Edge/Chrome 站点数据：DOM(本地)存储、表单历史、登录密码、搜索引擎、会话、站点偏好与同步数据。**删除这些会退出登录并重置站点设置，默认隐藏，请谨慎开启。** 清理前请退出对应浏览器。",
+      "rules": [
+        {
+          "id": "browser_data-1",
+          "name": "Edge DOM/本地存储",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Local Storage",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-2",
+          "name": "Edge 会话存储",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Session Storage",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-3",
+          "name": "Edge 会话",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Sessions",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-4",
+          "name": "Edge 同步数据（清空后需重新登录并全量重新同步）",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Edge/User Data/Sync Data",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-5",
+          "name": "Edge 表单记录/搜索引擎",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Web Data",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-6",
+          "name": "Edge 登录密码",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Login Data",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-7",
+          "name": "Edge 账户登录数据",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Login Data For Account",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-8",
+          "name": "Edge 站点偏好/默认搜索引擎",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Preferences",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-9",
+          "name": "Edge 当前会话",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Current Session",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-10",
+          "name": "Edge 当前标签页",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Current Tabs",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-11",
+          "name": "Chrome DOM/本地存储",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Local Storage",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-12",
+          "name": "Chrome 会话存储",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Session Storage",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-13",
+          "name": "Chrome 会话",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Sessions",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-14",
+          "name": "Chrome 同步数据（清空后需重新登录并全量重新同步）",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Google/Chrome/User Data/Sync Data",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-15",
+          "name": "Chrome 表单记录/搜索引擎",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Web Data",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-16",
+          "name": "Chrome 登录密码",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Login Data",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-17",
+          "name": "Chrome 账户登录数据",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Login Data For Account",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-18",
+          "name": "Chrome 站点偏好/默认搜索引擎",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Preferences",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-19",
+          "name": "Chrome 当前会话",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Current Session",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-20",
+          "name": "Chrome 当前标签页",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Current Tabs",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-21",
+          "name": "Firefox 表单历史",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/formhistory.sqlite",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-22",
+          "name": "Firefox 登录密码",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/logins.json",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-23",
+          "name": "Firefox 站点偏好",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/content-prefs.sqlite",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-24",
+          "name": "Firefox 站点权限",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/permissions.sqlite",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-25",
+          "name": "Firefox 搜索引擎",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/search.json.mozlz4",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-26",
+          "name": "Firefox 会话备份",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/sessionstore-backups",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "browser_data-27",
+          "name": "Firefox 会话",
+          "risk": "risky",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/sessionstore.jsonlz4",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "database_compact",
+      "label": "浏览器数据库压缩",
+      "risk": "safe",
+      "categoryId": "browser",
+      "note": "BleachBit「整理优化数据库」：对浏览器的 History / Web Data / Login Data / Cookies / places.sqlite 等 SQLite 数据库执行 VACUUM 重写以释放碎片。**它不删除数据**，仅去掉空闲页，浏览器下次运行自动重建；所以它与「清除浏览记录/密码」是两回事，属于安全分类。⚠ 本分类显示的体积是**数据库文件大小**，不是 VACUUM 实际可回收量（通常只占其中几个百分点），实际释放量以执行后实测为准。⚠ **请先完全退出对应浏览器（含系统托盘/后台进程）**，否则 SQLite 文件被浏览器进程占用、独占锁定，会报「unable to open database file」而失败——这不是错误，文件被占用时工具会安全跳过；对「删掉历史/密码/退出登录」的需求请改用高风险分类「浏览器隐私数据/站点数据」。",
+      "rules": [
+        {
+          "id": "database_compact-1",
+          "name": "Edge 历史库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/History"
+          }
+        },
+        {
+          "id": "database_compact-2",
+          "name": "Edge 表单库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Web Data"
+          }
+        },
+        {
+          "id": "database_compact-3",
+          "name": "Edge 登录库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Login Data"
+          }
+        },
+        {
+          "id": "database_compact-4",
+          "name": "Edge Cookie 库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Cookies"
+          }
+        },
+        {
+          "id": "database_compact-5",
+          "name": "Edge Cookie 库压缩(新版)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Microsoft/Edge/User Data",
+            "pattern": "*/Network/Cookies"
+          }
+        },
+        {
+          "id": "database_compact-6",
+          "name": "Chrome 历史库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/History"
+          }
+        },
+        {
+          "id": "database_compact-7",
+          "name": "Chrome 表单库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Web Data"
+          }
+        },
+        {
+          "id": "database_compact-8",
+          "name": "Chrome 登录库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Login Data"
+          }
+        },
+        {
+          "id": "database_compact-9",
+          "name": "Chrome Cookie 库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Cookies"
+          }
+        },
+        {
+          "id": "database_compact-10",
+          "name": "Chrome Cookie 库压缩(新版)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
+            "pattern": "*/Network/Cookies"
+          }
+        },
+        {
+          "id": "database_compact-11",
+          "name": "Firefox 历史库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/places.sqlite"
+          }
+        },
+        {
+          "id": "database_compact-12",
+          "name": "Firefox 表单库压缩",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "compact_db",
+            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
+            "pattern": "*/formhistory.sqlite"
+          }
+        }
+      ]
+    },
+    {
+      "key": "webview2_caches",
+      "label": "WebView2 嵌入式浏览器缓存",
+      "risk": "caution",
+      "categoryId": "browser",
+      "note": "Windows Store/UWP 应用、系统组件（如 Windows 应用、Office、照片等）内嵌的 WebView2 会把网页/GPU/着色器缓存与组件包写入各自安装目录。删除后自动重建；不含 Cookie 与登录状态等站点数据。请关闭相关应用后清理。",
+      "rules": [
+        {
+          "id": "webview2_caches-1",
+          "name": "WebView2 图形缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Packages",
+            "pattern": "*/LocalState/EBWebView/GrShaderCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "webview2_caches-2",
+          "name": "WebView2 GPU 持久缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Packages",
+            "pattern": "*/LocalState/EBWebView/GPUPersistentCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "webview2_caches-3",
+          "name": "WebView2 着色器缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Packages",
+            "pattern": "*/LocalState/EBWebView/ShaderCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "webview2_caches-4",
+          "name": "WebView2 Dawn 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Packages",
+            "pattern": "*/LocalState/EBWebView/GraphiteDawnCache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "webview2_caches-5",
+          "name": "WebView2 组件缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Packages",
+            "pattern": "*/LocalState/EBWebView/component_crx_cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "webview2_caches-6",
+          "name": "WebView2 扩展缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Packages",
+            "pattern": "*/LocalState/EBWebView/extensions_crx_cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "webview2_caches-7",
+          "name": "Windows 商店缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Packages/Microsoft.WindowsStore_8wekyb3d8bbwe/LocalCache",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "webview2_caches-8",
+          "name": "WebView2 崩溃转储",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Packages",
+            "pattern": "*/LocalState/EBWebView/Crashpad",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "hidden_installer_backups",
+      "label": "隐蔽的安装包/升级残留",
+      "risk": "caution",
+      "categoryId": "system",
+      "note": "仅保留 Windows 大版本升级残留（$Windows.~BT / $Windows.~WS）。⚠ 已移除 MSI Package Cache 与 WinSxS 子目录：Package Cache 删除会破坏软件的修复/卸载（不可恢复），WinSxS 只能由 DISM 处理（DISM /Online /Cleanup-Image /StartComponentCleanup），本工具不再触碰它们。",
+      "rules": [
+        {
+          "id": "hidden_installer_backups-1",
+          "name": "Windows 大版本升级残留(Windows.~BT)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%SYSTEMDRIVE%/$Windows.~BT",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "hidden_installer_backups-2",
+          "name": "Windows 更新服务残留(Windows.~WS)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%SYSTEMDRIVE%/$Windows.~WS",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "recycle_and_diagnostics",
+      "label": "回收站与诊断日志(ETL)",
+      "risk": "caution",
+      "categoryId": "system",
+      "note": "ETL 诊断跟踪日志与 WinSAT 性能评估缓存（可能高达数 GB）。⚠ 回收站不再用「删文件」方式处理：$Recycle.Bin 属受保护路径，且逐目录删除无法正确处理其它用户/多分区回收站，请用 --clean recycle_bin 走系统 API 清空。",
+      "rules": [
+        {
+          "id": "recycle_and_diagnostics-1",
+          "name": "Windows 诊断跟踪日志(ETL)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/Microsoft/Diagnosis/ETLLogs",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "recycle_and_diagnostics-2",
+          "name": "事件追踪日志(ETL文件)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/System32/winevt/Logs",
+            "pattern": "*.etl",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "recycle_and_diagnostics-3",
+          "name": "WinSAT 性能评估缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%/Performance/WinSAT",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "cloud_app_hidden",
+      "label": "云盘与商店应用缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "note": "OneDrive 本地缓存、Windows Store 应用临时文件。删除后云盘会重新同步，商店应用会自动重建。",
+      "rules": [
+        {
+          "id": "cloud_app_hidden-1",
+          "name": "OneDrive 本地缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/OneDrive/cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "cloud_app_hidden-2",
+          "name": "OneDrive 文件授权缓存（清空后需重新登录 OneDrive）",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/OneDrive/FileCoAuth",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "cloud_app_hidden-3",
+          "name": "Windows Store 应用状态缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Windows/AppRepository/State",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "cloud_app_hidden-4",
+          "name": "UWP应用临时文件(AC/Temp)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Packages",
+            "pattern": "*/AC/Temp",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "cloud_app_hidden-5",
+          "name": "UWP应用网页缓存(AC/INetCache)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/Packages",
+            "pattern": "*/AC/INetCache",
+            "action": "clear",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "java_rdp_legacy",
+      "label": "Java/远程桌面/字体缓存",
+      "risk": "safe",
+      "categoryId": "system",
+      "note": "Java部署缓存、远程桌面位图缓存、系统字体缓存(FNTCACHE)。这些目录极其隐蔽，普通用户从不清理。v0.9.10：原本挂在 safe 下的「文档\\Remote Desktop\\Cache」已拆到独立分类 rdp_legacy_cache（moderate），safe 分类不再触碰用户文档目录。",
+      "rules": [
+        {
+          "id": "java_rdp_legacy-1",
+          "name": "Java 运行时缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Sun/Java/Deployment/cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "java_rdp_legacy-2",
+          "name": "远程桌面位图缓存(RDP)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Terminal Server Client/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "java_rdp_legacy-3",
+          "name": "系统字体缓存(FontCache)",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%WINDIR%/ServiceProfiles/LocalService/AppData/Local",
+            "pattern": "FontCache",
+            "action": "clear",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "java_rdp_legacy-4",
+          "name": "系统字体缓存旧文件",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/ServiceProfiles/LocalService/AppData/Local",
+            "pattern": "FontCache*.old",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "rdp_legacy_cache",
+      "label": "远程桌面旧版缓存(用户文档)",
+      "risk": "caution",
+      "categoryId": "system",
+      "note": "v0.9.10 从 java_rdp_legacy 拆出：该目录位于「文档」之下，虽然 Windows 只把它当剪贴板/位图缓存、Windows 自身也有清理入口，但它物理上处于用户文档目录内（历史上也曾同步过内容到 OneDrive）。因此不再放在 risk=safe（会进 --all）里，改为独立 moderate 分类，由用户显式选择。",
+      "rules": [
+        {
+          "id": "rdp_legacy_cache-1",
+          "name": "远程桌面旧版缓存(剪贴板/位图)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%/Documents/Remote Desktop/Cache",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "crash_telemetry",
+      "label": "崩溃上报与遥测数据",
+      "risk": "safe",
+      "categoryId": "system",
+      "note": "Windows 错误报告(WER)的队列和临时归档，以及微软遥测数据。不仅限于.dmp，很多压缩包和XML长期堆积。",
+      "rules": [
+        {
+          "id": "crash_telemetry-1",
+          "name": "WER 错误报告归档",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Windows/WER/ReportArchive",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "crash_telemetry-2",
+          "name": "WER 错误报告队列",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Microsoft/Windows/WER/ReportQueue",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "crash_telemetry-3",
+          "name": "WER 系统级报告归档",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/Microsoft/Windows/WER/ReportArchive",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "crash_telemetry-4",
+          "name": "微软遥测服务存储",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/Microsoft/Diagnosis/ServiceStore",
+            "deepOnly": true,
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "crash_telemetry-5",
+          "name": "WER 临时转储片段",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%TEMP%",
+            "pattern": "WER*.tmp",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "extreme_stealth",
+      "label": "变态级隐蔽缓存(系统账户/下载中断/媒体应用)",
+      "risk": "caution",
+      "categoryId": "system",
+      "note": "Steam/Epic 中断下载残留、国内主流音视频客户端缓存、CBS/事件日志归档大文件。⚠ 已移除 %WINDIR%/System32/config/systemprofile 下的 SYSTEM 账户缓存（位于受保护路径且需 SYSTEM 权限，请改用系统自带磁盘清理）。请确认无进行中的下载任务后再执行。",
+      "rules": [
+        {
+          "id": "extreme_stealth-1",
+          "name": "CBS组件服务历史日志(可超大)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/Logs/CBS",
+            "pattern": "CbsPersist*.log",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "extreme_stealth-2",
+          "name": "超30天的大体积事件日志(>50MB)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_files",
+            "base": "%WINDIR%/System32/winevt/Logs",
+            "pattern": "*.evtx",
+            "skipIfInUse": true,
+            "olderThanDays": 30,
+            "minSizeMb": 50,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "extreme_stealth-3",
+          "name": "AppRepository 商店仓库日志",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%/Microsoft/Windows/AppRepository/Logs",
+            "skipIfInUse": true,
+            "requiresAdmin": true
+          }
+        },
+        {
+          "id": "extreme_stealth-4",
+          "name": "Steam下载中断残留(downloading)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%PROGRAMFILES(X86)%/Steam/steamapps",
+            "pattern": "downloading",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-5",
+          "name": "D盘Steam下载中断残留",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "D:/Steam/steamapps",
+            "pattern": "downloading",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-6",
+          "name": "E盘Steam下载中断残留",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "E:/Steam/steamapps",
+            "pattern": "downloading",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-7",
+          "name": "网易云音乐缓存(Cache)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Netease/CloudMusic/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-8",
+          "name": "网易云音乐播放缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Netease/CloudMusic/PlayCache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-9",
+          "name": "QQ音乐缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/QQMusic/Cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-10",
+          "name": "QQ临时文件(Temp)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%/Tencent/QQ/Temp",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-11",
+          "name": "微信日志(Logs)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Tencent/WeChat/Logs",
+            "deepOnly": true,
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-12",
+          "name": "优酷客户端缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Youku/Client/cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-13",
+          "name": "PPTV/PPStream缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/PPStream/cache",
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "extreme_stealth-14",
+          "name": "Epic生成缓存(Generated/Cache)",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "glob_dirs",
+            "base": "%LOCALAPPDATA%/EpicGamesLauncher/Generated",
+            "pattern": "*/Cache",
+            "action": "clear",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    },
+    {
+      "key": "usage_traces",
+      "label": "使用痕迹",
+      "risk": "caution",
+      "categoryId": "privacy",
+      "rules": [
+        {
+          "id": "usage_traces-1",
+          "name": "最近打开的文档",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "paths": [
+              "%APPDATA%/Microsoft/Windows/Recent",
+              "%LOCALAPPDATA%/Microsoft/Windows/Recent"
+            ],
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "usage_traces-2",
+          "name": "跳转列表缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "paths": [
+              "%APPDATA%/Microsoft/Windows/Recent/AutomaticDestinations",
+              "%APPDATA%/Microsoft/Windows/Recent/CustomDestinations"
+            ],
+            "skipIfInUse": true
+          }
+        },
+        {
+          "id": "usage_traces-3",
+          "name": "PowerShell 命令历史",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%/Microsoft/Windows/PowerShell/PSReadLine",
+            "skipIfInUse": true
+          }
+        }
+      ]
+    }
+  ]
+}

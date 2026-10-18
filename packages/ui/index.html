@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CordClean · 模块化电脑清理工具</title>
+    <!-- 先于样式应用主题，避免刷新时闪白/闪黑；默认亮色 -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('cordclean.theme') === 'dark') {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (error) {}
+      })()
+    </script>
+    <!--CORDCLEAN_BOOT-->
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
