@@ -1,8 +1,0 @@
-fix: 一键启动改用 PowerShell 启动器（彻底解决 bat 中文串行/乱码），并迁移旧模型名
-
-- 启动.bat 改为纯 ASCII 包装：powershell -File scripts/launch.ps1（UTF-8 BOM）
-- launch.ps1 负责 Node/pnpm/依赖检查与启动；依赖就绪时跳过 pnpm install
-- 修掉 bat 中因中文+括号导致被当成命令执行的报错行
-- AI 配置中 deepseek-chat/reasoner/coder 自动迁移为 deepseek-flash，并打印提示
-- 规则包拒绝日志降到 debug，启动时汇总一条 info，避免刷屏
-- AiView 改为静态导入 fetchEgress，消除 Vite 动态/静态混合导入警告
