@@ -381,11 +381,11 @@ export class AiService extends Service implements AiLike {
     if (!gate.allowed) throw new AiError(gate.reason ?? '在线 AI 已被关闭', 'NETWORK')
   }
 
-  async analyze(options: { taskIds?: string[]; extraContext?: string } = {}): Promise<AiAnalysis> {
+  async analyze(options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] } = {}): Promise<AiAnalysis> {
     const key = this.requireKey()
     const config = this.rawConfig
     const profile = await this.buildProfile(options.extraContext)
-    const contextSections = await this.ctx.aiContext.collect(config.contextProviders)
+    const contextSections = await this.ctx.aiContext.collect(options.contextProviders ?? config.contextProviders)
     this.lastContextUsed = contextSections.map((section) => section.id)
     const contextText = contextSections.length
       ? '\n\n补充上下文（脱敏摘要）：\n' +

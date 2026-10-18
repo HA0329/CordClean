@@ -12,6 +12,7 @@ import path from 'node:path'
 import { Service, type Context } from 'cordis'
 import type { AiContextLike, AiContextProviderInfo, AiContextSection } from '@cordclean/shared'
 import { formatBytes } from '@cordclean/shared'
+import { folderSize, mapLimit } from '@cordclean/utils'
 
 export interface AiContextProvider {
   id: string
@@ -32,6 +33,7 @@ export class AiContextService extends Service implements AiContextLike {
   static inject = ['system']
 
   private providers = new Map<string, AiContextProvider>()
+  private appsCache?: { at: number; lines: string[] }
 
   constructor(ctx: Context) {
     super(ctx, 'aiContext')
@@ -54,36 +56,46 @@ export class AiContextService extends Service implements AiContextLike {
     this.providers.set('installed-apps', {
       id: 'installed-apps',
       name: '已安装软件',
-      description: '从常见安装目录统计软件名（不含路径、不含用户数据）',
+      description: '从常见安装目录统计软件名与体积（不含路径、不含用户数据）',
       defaultEnabled: true,
-      async collect() {
-        const env = ctx.system.env
+      collect: async (serviceCtx: Context) => {
+        const now = Date.now()
+        if (this.appsCache && now - this.appsCache.at < 10 * 60_000) {
+          return { id: 'installed-apps', title: '已安装软件（部分，按体积）', lines: this.appsCache.lines }
+        }
+        const env = serviceCtx.system.env
         const roots = [
           env.get('ProgramFiles'),
           env.get('ProgramFiles(x86)'),
           env.get('ProgramW6432'),
           path.join(env.localAppData, 'Programs'),
         ].filter((value): value is string => !!value)
-        const names = new Set<string>()
+        const entries: Array<{ name: string; dir: string }> = []
+        const seen = new Set<string>()
         for (const root of roots) {
           try {
-            const entries = await readdir(root, { withFileTypes: true })
-            for (const entry of entries) {
+            for (const entry of await readdir(root, { withFileTypes: true })) {
               if (!entry.isDirectory()) continue
-              if (entry.name.startsWith('.')) continue
+              if (entry.name.startsWith('.') || seen.has(entry.name.toLowerCase())) continue
               if (/^(Windows|Common Files|WindowsApps|Microsoft|Temp|Package Cache)$/i.test(entry.name)) continue
-              names.add(entry.name)
-              if (names.size >= 40) break
+              seen.add(entry.name.toLowerCase())
+              entries.push({ name: entry.name, dir: path.join(root, entry.name) })
             }
           } catch {
-            /* 目录不存在或不可读，忽略 */
+            /* 忽略不可读目录 */
           }
         }
-        return {
-          id: 'installed-apps',
-          title: '已安装软件（部分）',
-          lines: cleanLines([...names].sort()),
-        }
+        const measured = await mapLimit(entries.slice(0, 40), 4, async (entry) => {
+          const size = await folderSize(entry.dir, { maxEntries: 4000 }).catch(() => ({ bytes: 0 }))
+          return { name: entry.name, bytes: size.bytes ?? 0 }
+        })
+        const lines = measured
+          .filter((item) => item.bytes > 1024 * 1024)
+          .sort((a, b) => b.bytes - a.bytes)
+          .slice(0, 15)
+          .map((item) => `${item.name}：${formatBytes(item.bytes)}`)
+        this.appsCache = { at: now, lines }
+        return { id: 'installed-apps', title: '已安装软件（部分，按体积）', lines }
       },
     })
   }

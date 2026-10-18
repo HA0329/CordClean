@@ -100,7 +100,12 @@ function syncFromConfig() {
   form.asEvaluator = config.asEvaluator === true
   const configuredContext = Array.isArray(config.contextProviders) ? [...config.contextProviders] : []
   const defaultContext = (state.aiStatus.contextAvailable ?? []).filter((item) => item.defaultEnabled).map((item) => item.id)
-  form.contextProviders = configuredContext.length ? configuredContext : defaultContext
+  let savedContext: string[] = []
+  try {
+    const raw = localStorage.getItem('cordclean.ai.context')
+    savedContext = Array.isArray(JSON.parse(raw ?? '[]')) ? JSON.parse(raw ?? '[]') : []
+  } catch {}
+  form.contextProviders = savedContext.length ? savedContext : (configuredContext.length ? configuredContext : defaultContext)
   form.extraBody = config.extraBody && Object.keys(config.extraBody).length ? JSON.stringify(config.extraBody, null, 2) : ''
   form.extraHeaders = config.extraHeaders && Object.keys(config.extraHeaders).length ? JSON.stringify(config.extraHeaders, null, 2) : ''
 }
@@ -204,7 +209,7 @@ async function loadEgress() {
 async function run() {
   running.value = true
   try {
-    await analyzeAi()
+    await analyzeAi(undefined, form.contextProviders)
     ElMessage.success('AI 分析完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -226,6 +231,16 @@ async function adoptRule(rule: any, index: number) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
+
+watch(
+  () => form.contextProviders,
+  (value) => {
+    try {
+      localStorage.setItem('cordclean.ai.context', JSON.stringify(value))
+    } catch {}
+  },
+  { deep: true },
+)
 
 const shapeLabel = computed(() => SHAPES.find((item) => item.value === state.aiStatus.shape)?.value ?? state.aiStatus.shape)
 const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.aiStatus.effort)?.value ?? state.aiStatus.effort)
@@ -397,7 +412,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       <div class="cc-card">
         <div class="cc-card-title">
           <h3>🔍 分析范围（上下文采集器）</h3>
-          <span class="cc-faint">不选 = 默认集合；采集器只输出脱敏摘要</span>
+          <span class="cc-faint">勾选即生效（分析时按当前勾选发送）；采集器只输出脱敏摘要</span>
         </div>
         <el-checkbox-group v-model="form.contextProviders">
           <el-checkbox

@@ -263,7 +263,7 @@ export interface PluginManagerLike {
  * 用户改配置即可适配，不需要重新编译插件。
  */
 export interface AiLike {
-  analyze(options?: { taskIds?: string[]; extraContext?: string }): Promise<AiAnalysis>
+  analyze(options?: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] }): Promise<AiAnalysis>
   last(): AiAnalysis | undefined
   configured(): boolean
   /** 拉取可用模型列表（失败时返回内置兜底列表） */

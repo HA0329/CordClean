@@ -287,10 +287,10 @@ export async function clearHistory(): Promise<void> {
 
 /* ---------------------------------- AI / 系统交互 ---------------------------------- */
 
-export async function analyzeAi(taskIds?: string[]): Promise<void> {
+export async function analyzeAi(taskIds?: string[], contextProviders?: string[]): Promise<void> {
   state.busy = true
   try {
-    state.ai = await requireTransport().request('ai/analyze', { taskIds })
+    state.ai = await requireTransport().request('ai/analyze', { taskIds, contextProviders })
     const status = await requireTransport().request('ai/status', undefined).catch(() => state.aiStatus)
     state.aiStatus = status
     state.aiModels = status.models?.length ? status.models : state.aiModels
