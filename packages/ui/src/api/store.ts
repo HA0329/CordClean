@@ -1,3 +1,4 @@
+import { ElMessage, ElNotification } from 'element-plus'
 /**
  * 全局状态与动作（轻量级响应式 store，不引入额外状态库）。
  *
@@ -79,7 +80,22 @@ function requireTransport(): ApiTransport {
 export async function init(): Promise<void> {
   try {
     state.transport = createTransport()
-    state.transport.on('scan/progress', (event) => {
+    state.transport.on('scheduler/scan', (event) => {
+      if (event.error) {
+        ElNotification({ title: '定时扫描失败', message: event.error, type: 'error' })
+        return
+      }
+      const mb = ((event.bytes ?? 0) / 1024 / 1024).toFixed(1)
+      const count = event.items ?? 0
+      ElNotification({
+        title: '定时扫描完成',
+        message: '发现 ' + count + ' 项可清理，约 ' + mb + ' MB。点「清理」页查看。',
+        type: count > 0 ? 'warning' : 'success',
+        duration: 8000,
+      })
+    })
+
+  state.transport.on('scan/progress', (event) => {
       state.scanProgress = event
       state.scanning = !event.done
     })

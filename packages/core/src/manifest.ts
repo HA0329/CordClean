@@ -16,6 +16,15 @@ export const BUILTIN_MANIFEST: PluginManifestEntry[] = [
     load: () => import('@cordclean/plugin-rule-pack'),
   },
   {
+    id: 'scheduler',
+    name: '定时扫描',
+    description: '按间隔自动扫描并通知；只提醒，不会在后台自动删除',
+    category: 'system',
+    version: '1.0.0',
+    defaultEnabled: false,
+    load: () => import('@cordclean/plugin-scheduler'),
+  },
+  {
     id: 'shortcuts',
     name: '失效快捷方式',
     description: '纯二进制解析 .lnk，只清理目标确实不存在的死链（Startup 默认排除）',

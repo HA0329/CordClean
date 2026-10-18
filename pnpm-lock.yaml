@@ -275,6 +275,9 @@ importers:
       '@cordclean/plugin-rule-pack':
         specifier: workspace:*
         version: link:../plugins/rule-pack
+      '@cordclean/plugin-scheduler':
+        specifier: workspace:*
+        version: link:../plugins/scheduler
       '@cordclean/plugin-shortcuts':
         specifier: workspace:*
         version: link:../plugins/shortcuts
@@ -397,6 +400,18 @@ importers:
         version: 3.18.0
 
   packages/plugins/rule-pack:
+    dependencies:
+      '@cordclean/shared':
+        specifier: workspace:*
+        version: link:../../shared
+      '@cordclean/utils':
+        specifier: workspace:*
+        version: link:../../utils
+      schemastery:
+        specifier: ^3.17.2
+        version: 3.18.0
+
+  packages/plugins/scheduler:
     dependencies:
       '@cordclean/shared':
         specifier: workspace:*

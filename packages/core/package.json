@@ -17,6 +17,7 @@
     "@cordclean/plugin-large-files": "workspace:*",
     "@cordclean/plugin-duplicates": "workspace:*",
     "@cordclean/plugin-empty-dirs": "workspace:*",
+    "@cordclean/plugin-scheduler": "workspace:*",
     "@cordclean/plugin-leftovers": "workspace:*",
     "@cordclean/plugin-startup": "workspace:*",
     "@cordclean/plugin-registry": "workspace:*",

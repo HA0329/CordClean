@@ -1,0 +1,8 @@
+feat(scheduler): 第4步(4a)——定时扫描插件，完成后通知（不自动删除）
+
+- 新增 @cordclean/plugin-scheduler：config(enabled/everyMinutes≥15/taskIds)，ctx.effect 管理定时器，禁用或热重载自动清理
+- 每 30 秒检查是否到期；扫描结果通过 scheduler/scan 事件广播
+- 事件桥接：内核 → WebSocket/IPC → 前端 ElNotification（发现 N 项 / 失败原因）
+- 插件清单新增「定时扫描」，默认关闭；插件页可启用并配置间隔/任务范围
+- 本轮只做扫描+通知；自动清理与计划级授权（规则版本绑定）留到 4b
+- E2E：11 个插件卡片，6 页面正常
