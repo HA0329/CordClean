@@ -541,7 +541,10 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
               <p class="cc-faint">{{ rule.reason }}</p>
               <code>{{ rule.target.type }} · {{ rule.target.path || rule.target.base || rule.target.pattern }}</code>
             </div>
-            <div class="rule-actions">`n              <el-button size="small" @click="previewRule(rule)">试运行</el-button>`n              <el-button size="small" type="primary" plain @click="adoptRule(rule, index)">采纳</el-button>`n            </div>
+            <div class="rule-actions">
+              <el-button size="small" @click="previewRule(rule)">试运行</el-button>
+              <el-button size="small" type="primary" plain @click="adoptRule(rule, index)">采纳</el-button>
+            </div>
           </div>
         </div>
 
