@@ -1,0 +1,7 @@
+feat: cmd 窗口可选显示 + 网页/桌面通用一键退出
+
+- 启动.bat / 启动-桌面版.bat：后台隐藏启动（无 cmd 窗口），日志写入 .run/launch.log
+- 启动-显示控制台.bat：需要看日志时使用
+- launch.ps1 记录 PID 到 .run/cordclean.pid，退出时清理；改为 UTF-8 BOM 兼容 Windows PowerShell 5.1
+- 关闭.bat + scripts/stop.ps1：按 PID 结束整棵进程树，兜底按命令行匹配；网页版/桌面版都适用
+- 新增 RPC app/quit 与界面右上角电源按钮（二次确认），网页版/桌面版一键退出

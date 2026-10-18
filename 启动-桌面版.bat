@@ -1,4 +1,5 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-call "%~dp0启动.bat" desktop
+start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0scripts\launch.ps1" desktop
+exit /b 0

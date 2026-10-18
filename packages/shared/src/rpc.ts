@@ -77,6 +77,7 @@ export type ServerEventMap = {
 export interface ApiMap {
   'app/info': { params: void; result: AppInfo }
   'app/open-path': { params: { path: string }; result: void }
+  'app/quit': { params: void; result: { ok: true } }
   'app/open-data-dir': { params: void; result: string }
 
   'system/info': { params: void; result: SystemInfo }

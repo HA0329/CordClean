@@ -363,6 +363,10 @@ export async function openPath(target: string): Promise<void> {
   await requireTransport().request('app/open-path', { path: target })
 }
 
+export async function quitApp(): Promise<void> {
+  await requireTransport().request('app/quit', undefined)
+}
+
 export async function openDataDir(): Promise<string> {
   return requireTransport().request('app/open-data-dir', undefined)
 }

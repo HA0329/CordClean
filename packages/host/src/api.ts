@@ -83,6 +83,10 @@ export function createHandlers(api: ApiContext): HandlerMap {
       await api.shell.openPath(path)
     },
 
+    'app/quit': async () => {
+      setTimeout(() => process.exit(0), 300)
+      return { ok: true as const }
+    },
     'app/open-data-dir': async () => {
       await api.shell.openDataDir(api.dataDir)
       return api.dataDir

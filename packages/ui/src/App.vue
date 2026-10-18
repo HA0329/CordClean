@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { state, init, openDataDir } from './api/store.ts'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { state, init, openDataDir, quitApp } from './api/store.ts'
 import { formatBytes } from '@cordclean/shared'
 import OverviewView from './views/OverviewView.vue'
 import CleanView from './views/CleanView.vue'
@@ -92,6 +92,23 @@ onMounted(() => {
   bootstrap()
 })
 
+async function quitCordClean() {
+  try {
+    await ElMessageBox.confirm('退出后后台服务/桌面进程会立即结束，正在进行的扫描或清理会被中断。', '退出 CordClean', {
+      type: 'warning',
+      confirmButtonText: '退出',
+    })
+  } catch {
+    return
+  }
+  try {
+    await quitApp()
+    ElMessage.success('CordClean 已退出，可以关闭此页面')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 async function revealDataDir() {
   try {
     await openDataDir()
@@ -156,6 +173,7 @@ async function revealDataDir() {
         <div class="topbar-right">
           <span class="cc-faint" v-if="state.app">启动耗时 {{ state.app.bootMs }} ms</span>
           <span class="cc-faint">累计释放 {{ formatBytes(state.totals.freedBytes) }}</span>
+          <button class="theme-toggle" title="退出 CordClean" @click="quitCordClean">⏻</button>
           <button class="theme-toggle" :title="theme === 'dark' ? '切换到亮色' : '切换到暗色'" @click="toggleTheme">
             {{ theme === 'dark' ? '☀️' : '🌙' }}
           </button>
