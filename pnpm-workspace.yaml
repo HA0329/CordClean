@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+  - packages/plugins/*
+  - apps/*
+
+allowBuilds:
+  electron: true
+  esbuild: true

@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": false,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@cordclean/shared": ["packages/shared/src/index.ts"],
+      "@cordclean/core": ["packages/core/src/index.ts"],
+      "@cordclean/host": ["packages/host/src/index.ts"],
+      "@cordclean/plugin-*": ["packages/plugins/*/src/index.ts"]
+    }
+  },
+  "include": [
+    "packages/**/src/**/*.ts",
+    "apps/**/src/**/*.ts",
+    "apps/**/scripts/**/*.ts",
+    "bench/**/*.ts",
+    "vitest.config.ts",
+    "packages/ui/src/**/*.ts"
+  ],
+  "exclude": ["**/node_modules", "**/dist"]
+}

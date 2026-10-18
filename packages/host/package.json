@@ -1,0 +1,16 @@
+{
+  "name": "@cordclean/host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cordclean/core": "workspace:*",
+    "@cordclean/shared": "workspace:*",
+    "@cordclean/utils": "workspace:*",
+    "cordis": "4.0.0-rc.11",
+    "ws": "^8.18.0"
+  }
+}

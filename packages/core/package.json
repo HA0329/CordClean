@@ -1,0 +1,28 @@
+{
+  "name": "@cordclean/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cordclean/shared": "workspace:*",
+    "@cordclean/utils": "workspace:*",
+    "cordis": "4.0.0-rc.11",
+    "schemastery": "^3.17.2",
+    "@cordclean/plugin-temp": "workspace:*",
+    "@cordclean/plugin-recycle": "workspace:*",
+    "@cordclean/plugin-browser": "workspace:*",
+    "@cordclean/plugin-thumbnails": "workspace:*",
+    "@cordclean/plugin-system-logs": "workspace:*",
+    "@cordclean/plugin-dev-cache": "workspace:*",
+    "@cordclean/plugin-large-files": "workspace:*",
+    "@cordclean/plugin-duplicates": "workspace:*",
+    "@cordclean/plugin-empty-dirs": "workspace:*",
+    "@cordclean/plugin-leftovers": "workspace:*",
+    "@cordclean/plugin-startup": "workspace:*",
+    "@cordclean/plugin-registry": "workspace:*",
+    "@cordclean/plugin-ai": "workspace:*"
+  }
+}

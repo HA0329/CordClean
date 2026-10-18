@@ -1,0 +1,161 @@
+/**
+ * RPC 方法实现。
+ *
+ * 这一层把内核服务「翻译」成面向界面的 API，不包含任何传输相关代码：
+ * - Web 外壳：由 `server.ts` 通过 WebSocket 调用；
+ * - 桌面外壳：由 Electron 主进程通过 ipcMain 调用。
+ *
+ * 外壳差异（打开资源管理器、退出应用等）通过 `ShellAdapter` 注入，
+ * 因此同一个 API 层可以在浏览器与 Electron 中复用。
+ */
+import type { Context } from 'cordis'
+import type {
+  ApiMap,
+  ApiMethod,
+  ApiParams,
+  ApiResult,
+  CleanItem,
+  CleanItemRef,
+} from '@cordclean/shared'
+import { RpcError } from '@cordclean/shared'
+
+/** 外壳能力适配器（不同运行环境的系统交互） */
+export interface ShellAdapter {
+  /** 是否运行在 Electron 中 */
+  electron: boolean
+  /** 用系统默认方式打开文件/目录 */
+  openPath(target: string): Promise<void>
+  /** 打开数据目录 */
+  openDataDir(target: string): Promise<void>
+}
+
+export interface ApiContext {
+  ctx: Context
+  dataDir: string
+  version: string
+  bootMs: number
+  shell: ShellAdapter
+}
+
+export type HandlerMap = { [M in ApiMethod]: (params: ApiParams<M>) => Promise<ApiResult<M>> | ApiResult<M> }
+
+/** 把界面回传的精简项补全为完整 CleanItem */
+function toCleanItem(ref: CleanItemRef): CleanItem {
+  return {
+    id: ref.id,
+    taskId: ref.taskId,
+    path: ref.path,
+    title: ref.title,
+    kind: ref.kind,
+    size: ref.size,
+    risk: ref.risk,
+    category: ref.category as CleanItem['category'],
+    defaultSelected: true,
+    note: ref.note,
+    meta: ref.meta,
+  }
+}
+
+/** 构造 RPC 处理方法表 */
+export function createHandlers(api: ApiContext): HandlerMap {
+  const { ctx } = api
+
+  const requireAi = () => {
+    const ai = (ctx as any).ai as { analyze: (o?: any) => Promise<any>; last: () => any; configured: () => boolean } | undefined
+    if (!ai) throw new RpcError(-32002, 'AI 插件未启用，请先在「插件」页面启用 AI 清理顾问')
+    return ai
+  }
+
+  return {
+    'app/info': () => ({
+      name: 'CordClean',
+      version: api.version,
+      node: process.versions.node,
+      platform: process.platform,
+      electron: api.shell.electron ? process.versions.electron : undefined,
+      dataDir: api.dataDir,
+      elevated: ctx.system.env.elevated,
+      bootMs: api.bootMs,
+    }),
+
+    'app/open-path': async ({ path }) => {
+      await api.shell.openPath(path)
+    },
+
+    'app/open-data-dir': async () => {
+      await api.shell.openDataDir(api.dataDir)
+      return api.dataDir
+    },
+
+    'system/info': () => ctx.system.info(),
+    'system/hotspots': () => ctx.system.hotspots(),
+
+    'tasks/list': () => ctx.cleaner.list(),
+
+    'scan/start': async ({ taskIds }) => ctx.cleaner.scan({ taskIds }),
+    'scan/cancel': () => {
+      ctx.cleaner.cancelScan()
+    },
+    'scan/last': () => ctx.cleaner.lastScan() ?? null,
+
+    'clean/start': async ({ itemIds, items, dryRun, forceQuarantine }) => {
+      if (items?.length) {
+        return ctx.cleaner.clean({ items: items.map(toCleanItem), dryRun, forceQuarantine })
+      }
+      return ctx.cleaner.clean({ itemIds, dryRun, forceQuarantine })
+    },
+    'clean/cancel': () => {
+      ctx.cleaner.cancelClean()
+    },
+
+    'plugins/list': () => ctx.plugins.list(),
+    'plugins/enable': async ({ id }) => {
+      await ctx.plugins.enable(id)
+    },
+    'plugins/disable': async ({ id }) => {
+      await ctx.plugins.disable(id)
+    },
+    'plugins/reload': async ({ id }) => {
+      await ctx.plugins.reload(id)
+    },
+    'plugins/config': async ({ id, config }) => {
+      await ctx.plugins.updateConfig(id, config)
+    },
+    'plugins/defaults': ({ id }) => ctx.plugins.defaults(id),
+
+    'settings/get': () => ctx.settings.get(),
+    'settings/patch': ({ patch }) => {
+      ctx.settings.patch(patch as any)
+      return ctx.settings.get()
+    },
+    'settings/set': ({ path, value }) => {
+      ctx.settings.set(path, value)
+      return ctx.settings.get()
+    },
+
+    'history/list': ({ limit }) => ctx.history.list(limit ?? 50),
+    'history/totals': () => ctx.history.totals(),
+    'history/clear': () => {
+      ctx.history.clear()
+    },
+
+    'quarantine/list': () => ctx.quarantine.list(),
+    'quarantine/restore': ({ ids }) => ctx.quarantine.restore(ids),
+    'quarantine/purge': ({ ids }) => ctx.quarantine.purge(ids),
+    'quarantine/stats': () => ctx.quarantine.stats(),
+
+    'ai/analyze': async (params) => requireAi().analyze(params),
+    'ai/last': () => {
+      const ai = (ctx as any).ai
+      return ai?.last?.() ?? null
+    },
+    'ai/status': () => {
+      const ai = (ctx as any).ai
+      return {
+        available: !!ai,
+        configured: !!ai?.configured?.(),
+        model: ai?.model,
+      }
+    },
+  }
+}

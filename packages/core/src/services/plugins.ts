@@ -1,0 +1,252 @@
+/**
+ * 插件管理器（内核服务）。
+ *
+ * 它把 Cordis 的 `ctx.plugin()` 包装成「可持久化、可热插拔、可容错」的插件单元：
+ *
+ * - **启停**：`enable()` 加载插件模块并启动 fiber，`disable()` 销毁 fiber；
+ * - **热重载**：`reload()` = 销毁 + 重新加载，插件在重载时重新注册自己的清理任务；
+ * - **配置持久化**：每个插件的 `enabled` 与 `config` 写入 settings.json；
+ * - **故障隔离**：单个插件抛错只标记该插件为 error，不影响其它插件与内核；
+ * - **任务归属**：通过「加载前后任务集合求差」自动把任务归属到插件，
+ *   插件因此不需要知道自己的 id，也不需要修改内核代码。
+ */
+import { Service, type Context, type Fiber } from 'cordis'
+import type {
+  CategoryId,
+  CleanerPluginModule,
+  PluginManagerLike,
+  PluginRuntimeInfo,
+} from '@cordclean/shared'
+import { errorMessage } from '@cordclean/utils'
+
+/** 插件清单项 */
+export interface PluginManifestEntry {
+  id: string
+  name: string
+  description: string
+  category: CategoryId
+  version?: string
+  /** 默认是否启用 */
+  defaultEnabled?: boolean
+  /** 懒加载插件模块 */
+  load(): Promise<{ default?: CleanerPluginModule } & Record<string, unknown>>
+}
+
+interface RuntimeRecord {
+  entry: PluginManifestEntry
+  module?: CleanerPluginModule
+  fiber?: Fiber
+  status: 'active' | 'stopped' | 'error' | 'loading'
+  error?: string
+  errorStack?: string
+  config: Record<string, any>
+  taskIds: string[]
+}
+
+export interface PluginManagerConfig {
+  manifest: PluginManifestEntry[]
+}
+
+/** cordis 的 FiberState.ACTIVE（const enum 在 isolatedModules 下不能直接引用，这里用等值常量） */
+const FIBER_STATE_ACTIVE = 2
+
+/** 从 Schemastery 风格的 Config 推导默认配置 */
+export function defaultConfigOf(plugin: any): Record<string, any> {
+  const schema = plugin?.Config
+  if (!schema) return {}
+  try {
+    if (typeof schema === 'function') {
+      const value = schema({})
+      return value && typeof value === 'object' ? value : {}
+    }
+    const result = schema['~standard']?.validate({})
+    if (result && !result.issues && result.value && typeof result.value === 'object') return result.value
+  } catch {
+    /* 默认值推导失败不应影响插件加载 */
+  }
+  return {}
+}
+
+export class PluginManagerService extends Service implements PluginManagerLike {
+  static inject = ['cleaner', 'settings']
+
+  private records = new Map<string, RuntimeRecord>()
+
+  constructor(ctx: Context, config: PluginManagerConfig) {
+    super(ctx, 'plugins')
+    for (const entry of config.manifest) {
+      const stored = ctx.settings.get().plugins[entry.id]
+      this.records.set(entry.id, {
+        entry,
+        status: 'stopped',
+        config: stored?.config ?? {},
+        taskIds: [],
+      })
+    }
+  }
+
+  /** 启动时加载全部启用的插件（顺序加载，确保任务归属统计准确） */
+  async loadAll(): Promise<void> {
+    const settings = this.ctx.settings.get()
+    for (const [id, record] of this.records) {
+      const stored = settings.plugins[id]
+      const enabled = stored?.enabled ?? record.entry.defaultEnabled ?? true
+      if (!enabled) continue
+      await this.enable(id)
+    }
+  }
+
+  private emitChanged(): void {
+    this.ctx.emit('plugins/changed')
+  }
+
+  list(): PluginRuntimeInfo[] {
+    return [...this.records.values()].map((record) => {
+      const descriptor = record.module
+      const tasks = this.ctx.cleaner
+        .list()
+        .filter((task) => record.taskIds.includes(task.id))
+        .map((task) => ({ id: task.id, name: task.name, risk: task.risk, description: task.description }))
+      return {
+        id: record.entry.id,
+        name: record.entry.name,
+        description: record.entry.description,
+        category: record.entry.category,
+        source: 'builtin',
+        version: record.entry.version ?? descriptor?.version ?? '0.1.0',
+        taskCount: tasks.length,
+        status: record.status,
+        error: record.error,
+        errorStack: record.errorStack,
+        enabled: record.status === 'active' || record.status === 'loading',
+        tasks,
+        config: record.config,
+        configurable: !!descriptor?.Config,
+      }
+    })
+  }
+
+  /** 加载插件模块（带缓存） */
+  private async loadModule(record: RuntimeRecord): Promise<CleanerPluginModule> {
+    if (record.module) return record.module
+    const namespace = await record.entry.load()
+    const plugin = (namespace.default ?? namespace) as CleanerPluginModule
+    if (!plugin || typeof plugin.apply !== 'function') {
+      throw new Error(`插件 ${record.entry.id} 没有导出 apply 函数`)
+    }
+    record.module = plugin
+    return plugin
+  }
+
+  async enable(id: string): Promise<void> {
+    const record = this.records.get(id)
+    if (!record) throw new Error(`插件不存在：${id}`)
+    if (record.status === 'active' || record.status === 'loading') return
+
+    record.status = 'loading'
+    record.error = undefined
+    record.errorStack = undefined
+    this.emitChanged()
+
+    const before = new Set(this.ctx.cleaner.list().map((task) => task.id))
+    let fiber: Fiber | undefined
+    try {
+      const plugin = await this.loadModule(record)
+      if (!Object.keys(record.config).length) {
+        record.config = defaultConfigOf(plugin)
+      }
+      fiber = this.ctx.plugin(plugin as any, record.config) as Fiber
+      await fiber
+      record.fiber = fiber
+      record.status = (fiber.state as unknown as number) === FIBER_STATE_ACTIVE ? 'active' : 'stopped'
+      const registered = new Set(this.ctx.cleaner.list().map((task) => task.id))
+      record.taskIds = [...registered].filter((taskId) => !before.has(taskId))
+    } catch (error) {
+      record.status = 'error'
+      record.error = errorMessage(error)
+      record.errorStack = error instanceof Error ? error.stack : undefined
+      record.taskIds = []
+      if (fiber) {
+        try {
+          await fiber.dispose()
+        } catch {
+          /* 启动失败的 fiber 销毁也可能抛错，忽略 */
+        }
+      }
+      this.ctx.logger?.warn?.(`插件 ${id} 启动失败：%s`, record.error)
+    }
+    this.persist(record, true)
+    this.emitChanged()
+  }
+
+  async disable(id: string): Promise<void> {
+    const record = this.records.get(id)
+    if (!record) throw new Error(`插件不存在：${id}`)
+    const fiber = record.fiber
+    record.fiber = undefined
+    record.status = 'stopped'
+    record.taskIds = []
+    record.error = undefined
+    record.errorStack = undefined
+    if (fiber) {
+      try {
+        await fiber.dispose()
+      } catch (error) {
+        record.error = errorMessage(error)
+        record.status = 'error'
+      }
+    }
+    this.persist(record, false)
+    this.emitChanged()
+  }
+
+  async reload(id: string): Promise<void> {
+    const record = this.records.get(id)
+    if (!record) throw new Error(`插件不存在：${id}`)
+    const wasEnabled = record.status === 'active' || record.status === 'loading'
+    await this.disable(id)
+    if (wasEnabled) await this.enable(id)
+  }
+
+  async updateConfig(id: string, config: Record<string, any>): Promise<void> {
+    const record = this.records.get(id)
+    if (!record) throw new Error(`插件不存在：${id}`)
+    record.config = config ?? {}
+    this.ctx.settings.patch({ plugins: { [id]: { config: record.config } } })
+    if (record.status === 'active' && record.fiber) {
+      try {
+        record.fiber.update(record.config)
+        await record.fiber
+      } catch (error) {
+        record.status = 'error'
+        record.error = errorMessage(error)
+        record.errorStack = error instanceof Error ? error.stack : undefined
+      }
+    }
+    this.emitChanged()
+  }
+
+  async defaults(id: string): Promise<Record<string, any>> {
+    const record = this.records.get(id)
+    if (!record) throw new Error(`插件不存在：${id}`)
+    try {
+      const plugin = await this.loadModule(record)
+      return defaultConfigOf(plugin)
+    } catch {
+      return {}
+    }
+  }
+
+  private persist(record: RuntimeRecord, enabled: boolean): void {
+    this.ctx.settings.patch({
+      plugins: {
+        [record.entry.id]: { enabled, config: record.config },
+      },
+    })
+  }
+
+  /** 供 RPC 查询单个插件 */
+  find(id: string): PluginRuntimeInfo | undefined {
+    return this.list().find((item) => item.id === id)
+  }
+}

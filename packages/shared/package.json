@@ -1,0 +1,15 @@
+{
+  "name": "@cordclean/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./rpc": "./src/rpc.ts",
+    "./task": "./src/task.ts",
+    "./services": "./src/services.ts"
+  },
+  "peerDependencies": {
+    "cordis": "4.0.0-rc.11"
+  }
+}
