@@ -415,7 +415,7 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
   border: 1px solid var(--cc-border);
   border-radius: 12px;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.022);
+  background: var(--cc-primary-soft);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -519,7 +519,7 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
   padding: 14px 18px;
   border: 1px solid var(--cc-border);
   border-radius: 14px;
-  background: rgba(18, 24, 34, 0.92);
+  background: var(--cc-panel-solid);
   backdrop-filter: blur(12px);
 }
 

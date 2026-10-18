@@ -224,7 +224,18 @@ try {
     for (const error of [...new Set(errors)].slice(0, 20)) console.log('  -', error)
     shutdown(1)
   } else {
-    console.log('\n✅ 界面端到端检查通过：6 个页面渲染正常、扫描全链路成功、无 JS 异常')
+    // 主题切换：默认亮色 → 点击切到暗色 → 再切回亮色
+  const themeBefore = await evaluate("document.documentElement.classList.contains('dark')")
+  await evaluate("document.querySelector('.theme-toggle')?.click()")
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  const themeAfter = await evaluate("document.documentElement.classList.contains('dark')")
+  console.log(`✓ 主题切换：${themeBefore ? 'dark' : 'light'} → ${themeAfter ? 'dark' : 'light'}`)
+  await capture('theme-dark')
+  await evaluate("document.querySelector('.theme-toggle')?.click()")
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  const themeBack = await evaluate("document.documentElement.classList.contains('dark')")
+  console.log(`✓ 主题切回：${themeBack ? 'dark' : 'light'}`)
+  console.log('\n✅ 界面端到端检查通过：6 个页面渲染正常、扫描全链路成功、无 JS 异常')
     shutdown(0)
   }
 } catch (error) {

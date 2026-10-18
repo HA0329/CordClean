@@ -204,7 +204,7 @@ function categoryName(id: string) {
   font-size: 11.5px;
   padding: 3px 8px;
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--cc-primary-soft);
   border: 1px solid var(--cc-border);
 }
 

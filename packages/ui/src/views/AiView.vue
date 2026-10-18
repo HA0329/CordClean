@@ -543,7 +543,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
   margin: 0;
   line-height: 1.8;
   font-size: 13.5px;
-  color: #d7deea;
+  color: var(--cc-text);
 }
 
 .observations {
@@ -611,7 +611,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
   font-size: 11px;
   background: rgba(79, 140, 255, 0.1);
   border: 1px solid rgba(79, 140, 255, 0.28);
-  color: #b9cdff;
+  color: var(--cc-primary);
   padding: 2px 7px;
   border-radius: 6px;
   word-break: break-all;
@@ -627,7 +627,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
 }
 
 code {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--cc-primary-soft);
   padding: 1px 5px;
   border-radius: 4px;
 }

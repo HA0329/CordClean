@@ -36,6 +36,23 @@ if (nav.some((item) => item.id === initialPage)) state.page = initialPage
 watch(() => state.page, (page) => {
   if (location.hash !== '#' + page) location.hash = page
 })
+// 主题：默认亮色，手动切换并记忆（index.html 已做首屏防闪）
+type Theme = 'light' | 'dark'
+const theme = ref<Theme>('light')
+try {
+  if (localStorage.getItem('cordclean.theme') === 'dark') theme.value = 'dark'
+} catch {}
+function applyTheme(value: Theme) {
+  document.documentElement.classList.toggle('dark', value === 'dark')
+  try {
+    localStorage.setItem('cordclean.theme', value)
+  } catch {}
+}
+watch(theme, applyTheme)
+onMounted(() => applyTheme(theme.value))
+function toggleTheme() {
+  theme.value = theme.value === 'dark' ? 'light' : 'dark'
+}
 const bootError = ref<string>()
 const loading = ref(true)
 
@@ -115,6 +132,9 @@ async function revealDataDir() {
         <div class="topbar-right">
           <span class="cc-faint" v-if="state.app">启动耗时 {{ state.app.bootMs }} ms</span>
           <span class="cc-faint">累计释放 {{ formatBytes(state.totals.freedBytes) }}</span>
+          <button class="theme-toggle" :title="theme === 'dark' ? '切换到亮色' : '切换到暗色'" @click="toggleTheme">
+            {{ theme === 'dark' ? '☀️' : '🌙' }}
+          </button>
         </div>
       </header>
 
@@ -150,7 +170,7 @@ async function revealDataDir() {
   flex-direction: column;
   padding: 20px 14px;
   border-right: 1px solid var(--cc-border);
-  background: linear-gradient(180deg, rgba(18, 24, 34, 0.92), rgba(11, 15, 22, 0.92));
+  background: var(--cc-sidebar-bg);
   gap: 18px;
 }
 
@@ -212,7 +232,7 @@ async function revealDataDir() {
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--cc-hover-bg);
   color: var(--cc-text);
 }
 
@@ -297,7 +317,7 @@ async function revealDataDir() {
   justify-content: space-between;
   padding: 0 26px;
   border-bottom: 1px solid var(--cc-border);
-  background: rgba(11, 15, 22, 0.55);
+  background: var(--cc-topbar-bg);
   backdrop-filter: blur(10px);
 }
 
