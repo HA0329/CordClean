@@ -1,3 +1,8 @@
+import { existsSync } from 'node:fs'
+import { readdir } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { folderSize } from '@cordclean/utils'
 import { RULE_TARGET_TYPES, SUPPORTED_RULE_TYPES } from '@cordclean/shared'
 import type { AiRuleSuggestion } from '@cordclean/shared'
 /**
@@ -121,6 +126,34 @@ export class AiService extends Service implements AiLike {
   private lastProbe?: AiProbeResult
   /** 规则评估结果缓存（同一批规则的重复评估直接复用） */
   private evalCache = new Map<string, { at: number; result: Map<string, RuleEvalResult> }>()
+  private rootCache?: { at: number; items: Array<{ id: string; path: string; size: number }> }
+
+  /** 用户目录下的一级目录（用于建议新增扫描根；只取名字与体积） */
+  private async collectRootCandidates(): Promise<Array<{ id: string; path: string; size: number }>> {
+    const now = Date.now()
+    if (this.rootCache && now - this.rootCache.at < 10 * 60_000) return this.rootCache.items
+    const home = os.homedir()
+    let names: string[] = []
+    try {
+      names = (await readdir(home, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+    } catch {
+      return []
+    }
+    const items: Array<{ id: string; path: string; size: number }> = []
+    for (const name of names.slice(0, 20)) {
+      const dir = path.join(home, name)
+      try {
+        const stat = await folderSize(dir, { maxEntries: 3000 })
+        if (stat.bytes > 200 * 1024 * 1024) items.push({ id: name, path: dir, size: stat.bytes })
+      } catch {
+        /* 忽略不可读目录 */
+      }
+    }
+    items.sort((a, b) => b.size - a.size)
+    this.rootCache = { at: now, items }
+    return items
+  }
+
   /** 本次分析实际用到的上下文采集器 */
   private lastContextUsed: string[] = []
 
@@ -393,6 +426,10 @@ export class AiService extends Service implements AiLike {
           .slice(0, 40)
           .map((item) => ({ id: item.id, mb: Math.round(item.size / 1024 / 1024), risk: item.risk, task: item.taskId }))
       : []
+    const rootCandidates = await this.collectRootCandidates()
+    const rootHint = rootCandidates.length
+      ? '\n\n可选的新增扫描根（来自用户目录下的一级目录，只能选这些 rootId）：\n' + JSON.stringify(rootCandidates.map((item) => ({ rootId: item.id, mb: Math.round(item.size / 1024 / 1024) })))
+      : ''
     const candidateHint = candidates.length
       ? '\n\n以下是本次扫描得到的候选清理项（只能从这些 id 中选择，不得虚构）：\n' + JSON.stringify(candidates)
       : '\n\n当前没有可用的扫描结果，selection 必须为空数组。'
@@ -402,7 +439,7 @@ export class AiService extends Service implements AiLike {
       ? '\n\n补充上下文（脱敏摘要）：\n' +
         contextSections.map((section) => `【${section.title}】\n` + section.lines.join('\n')).join('\n\n')
       : ''
-    const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext) + contextText + candidateHint + SELECTION_HINT + RULE_HINT)
+    const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext) + contextText + candidateHint + rootHint + SELECTION_HINT + ROOT_HINT + RULE_HINT)
     this.gate('analyze', request.url, request.body)
 
     const result = await requestJson(request.url, {
@@ -435,6 +472,14 @@ export class AiService extends Service implements AiLike {
       })
     }
 
+    const rootMap = new Map(rootCandidates.map((item) => [item.id, item]))
+    const configuredRoots = new Set((this.ctx.settings.get().analysis.roots ?? []).map((item) => String(item).toLowerCase()))
+    const rootSuggestions = (Array.isArray(data?.roots) ? data.roots : [])
+      .map((entry: any) => ({ rootId: String(entry?.rootId ?? ''), reason: String(entry?.reason ?? '').slice(0, 160) }))
+      .map((entry: any) => ({ ...entry, candidate: rootMap.get(entry.rootId) }))
+      .filter((entry: any) => entry.candidate && entry.reason && !configuredRoots.has(entry.candidate.path.toLowerCase()))
+      .slice(0, 3)
+      .map((entry: any) => ({ path: entry.candidate.path, reason: entry.reason, sizeBytes: entry.candidate.size }))
     const allowed = new Map(candidates.map((item) => [item.id, item]))
     const rawSelection: unknown[] = Array.isArray(data?.selection) ? data.selection : []
     const selection = rawSelection
@@ -455,6 +500,9 @@ export class AiService extends Service implements AiLike {
         ? data.observations.slice(0, 5).map((item: unknown) => String(item).slice(0, 200))
         : [],
       suggestions,
+      selection,
+      rootSuggestions,
+      selectionSummary: { count: selection.length, bytes: selectionBytes },
       ruleSuggestions,
       reasoning: parsed.reasoning ? parsed.reasoning.slice(0, REASONING_LIMIT) : undefined,
       usage: parsed.usage,
@@ -483,6 +531,12 @@ export function createAiService(ctx: Context, raw: Partial<AiConfig> | undefined
 
 /** 提示模型额外给出新规则建议（可选字段） */
 /** 让模型在候选列表内挑选清理项 */
+/** 让模型建议新增扫描根（只能从候选 rootId 中选） */
+const ROOT_HINT =
+  '\n\n如果发现「用户目录下某一级目录体积很大、但不在当前扫描根里」，请输出 roots 数组（最多 3 条）：' +
+  '[{"rootId":"候选里的 rootId","reason":"为什么建议加入扫描范围（中文，30 字内）"}]。' +
+  'rootId 必须逐字来自候选列表；没有把握就输出空数组。新增扫描根需要用户确认后才会生效。'
+
 const SELECTION_HINT =
   '\n\n另外，请从上面「候选清理项」中挑选你认为值得清理的项，输出 selection 数组（最多 30 条）：' +
   '[{"itemId":"候选里的 id","reason":"为什么建议清理（中文，30 字内）"}]。' +

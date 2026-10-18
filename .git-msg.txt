@@ -1,0 +1,8 @@
+feat(ai): 第2步补测 + 第3步 AI 建议新增扫描根（需确认）
+
+- 测试发现并修复真实缺陷：selection 解析后未挂到 AiAnalysis，界面卡片永远不会出现
+- 新增 tests/ai-selection.test.ts：候选内 id 通过、虚构 id 丢弃、空理由丢弃、字节由后端核算、请求不含真实路径
+- 第3步：分析时提供「用户目录一级目录」候选（仅名字+体积，≥200MB，10 分钟缓存）
+- 模型只能选候选 rootId；后端映射为真实路径、去重、最多 3 条
+- AI 页新增「AI 建议新增的扫描根」卡片，确认后 patchSettings 写入 analysis.roots，下次扫描生效
+- AI 测试与 E2E 通过

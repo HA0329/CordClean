@@ -15,6 +15,7 @@ import {
   probeAi,
   refreshAiStatus,
   saveAiConfig,
+  patchSettings,
   state,
 } from '../api/store.ts'
 
@@ -244,6 +245,22 @@ watch(
   },
   { deep: true },
 )
+
+const rootSuggestions = computed(() => analysis.value?.rootSuggestions ?? [])
+
+async function addSuggestedRoots() {
+  const existing = state.settings?.analysis.roots ?? []
+  const roots = [...existing]
+  for (const suggestion of rootSuggestions.value) {
+    if (!roots.includes(suggestion.path)) roots.push(suggestion.path)
+  }
+  try {
+    await patchSettings({ analysis: { roots } })
+    ElMessage.success(`已添加 ${rootSuggestions.value.length} 个扫描根，下次扫描生效`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
 
 const selectionOpen = ref(false)
 const selectionRows = computed(() => {
@@ -510,7 +527,21 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
           </div>
         </div>
 
-        <div v-if="analysis.selection?.length" class="cc-card">
+        <div v-if="rootSuggestions.length" class="cc-card">
+        <div class="cc-card-title">
+          <h3>📁 AI 建议新增的扫描根</h3>
+          <span class="cc-faint">只来自用户目录一级目录，确认后才写入设置</span>
+        </div>
+        <div v-for="suggestion in rootSuggestions" :key="suggestion.path" class="root-suggestion">
+          <div>
+            <div class="root-path">{{ suggestion.path }}</div>
+            <div class="cc-faint">{{ formatBytes(suggestion.sizeBytes) }} · {{ suggestion.reason }}</div>
+          </div>
+        </div>
+        <el-button type="primary" plain @click="addSuggestedRoots">添加这些扫描根</el-button>
+      </div>
+
+      <div v-if="analysis.selection?.length" class="cc-card">
         <div class="cc-card-title">
           <h3>✅ AI 推荐的清理项</h3>
           <span class="cc-faint">

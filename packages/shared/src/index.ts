@@ -295,6 +295,8 @@ export interface AiAnalysis {
   ruleSuggestions?: AiRuleSuggestion[]
   /** AI 从本次扫描结果中挑选的清理项（只能来自候选列表） */
   selection?: Array<{ itemId: string; reason: string }>
+  /** AI 建议新增的扫描根（必须经用户确认才写入设置） */
+  rootSuggestions?: Array<{ path: string; reason: string; sizeBytes: number }>
   /** 选中项的合计大小 */
   selectionSummary?: { count: number; bytes: number }
   /** 模型附带的其他观察 */
