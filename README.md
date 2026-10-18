@@ -5,6 +5,22 @@
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
 
+## 快速开始
+
+**Windows 一键启动（推荐）**：双击仓库根目录的 `启动.bat`
+
+- 自动检查 Node.js / pnpm；
+- 依赖已安装 → **跳过 pnpm install**，直接启动浏览器版（约 1~2 秒）；
+- 首次运行或依赖缺失 → 自动 `pnpm install`（已内置 Electron 国内镜像）；
+- 想启动桌面版：双击 `启动-桌面版.bat`，或在命令行执行 `启动.bat desktop`。
+
+手动方式：
+
+```bash
+pnpm install
+pnpm start:web        # 浏览器外壳
+pnpm start:desktop    # Electron 桌面应用
+```
 ## 1. 核心特性
 
 | 能力 | 说明 |
