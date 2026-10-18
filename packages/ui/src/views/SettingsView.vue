@@ -36,6 +36,7 @@ const form = reactive({
   quarantineMaxFiles: 20_000,
   retentionDays: 0,
   onlineAi: true,
+  editorCommand: '',
 })
 
 const newRoot = ref('')
@@ -76,6 +77,7 @@ function syncFromSettings() {
   form.retentionDays = s.quarantine.retentionDays
 
   form.onlineAi = s.privacy.onlineAi
+  form.editorCommand = s.ui.editorCommand
 }
 
 watch(() => state.settings, syncFromSettings, { immediate: true })
@@ -137,6 +139,7 @@ function buildPatch() {
       includeSystem: form.includeSystem,
     },
     privacy: { onlineAi: form.onlineAi },
+    ui: { editorCommand: form.editorCommand },
   }
 }
 
@@ -340,6 +343,9 @@ async function doClearEgress() {
           <el-form-item label="允许在线 AI">
             <el-switch v-model="form.onlineAi" />
             <span class="row-hint">关闭后完全离线，AI 请求一律拒绝</span>
+          </el-form-item>
+          <el-form-item label="编辑器命令">
+            <el-input v-model="form.editorCommand" placeholder="例如 code / notepad（留空用系统默认）" size="small" style="width: 240px" />
           </el-form-item>
           <el-form-item label="外发记录">
             <el-button size="small" @click="doClearEgress">清空外发记录</el-button>

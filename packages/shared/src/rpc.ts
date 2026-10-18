@@ -95,6 +95,8 @@ export interface ApiMap {
   }
   'clean/cancel': { params: { sessionId?: string }; result: void }
 
+  'plugins/source': { params: { id: string }; result: { path: string } }
+  'app/open-editor': { params: { path: string }; result: void }
   'plugins/install': { params: { path: string }; result: void }
   'plugins/uninstall': { params: { id: string }; result: void }
   'plugins/list': { params: void; result: PluginRuntime[] }

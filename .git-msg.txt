@@ -1,0 +1,7 @@
+feat(plugins): 插件页直达源码 + 配置表单化 + 设置里自选编辑器
+
+- 每个插件卡片新增「源码」按钮：内置插件打开 packages/plugins/<id>，外部插件打开安装路径
+- 新增 RPC plugins/source 与 app/open-editor；编辑器命令取设置 ui.editorCommand，留空用系统默认
+- 设置页「隐私与在线 AI」增加「编辑器命令」输入（如 code / notepad）
+- 配置弹窗支持 表单 / JSON 双模式：布尔/数字/字符串自动生成控件，复杂字段提示切 JSON
+- 外部插件安装时记录真实路径，卸载仍只移除运行时、不删文件

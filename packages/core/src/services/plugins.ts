@@ -205,7 +205,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       defaultEnabled: true,
       load: async () => ({ default: plugin }),
     }
-    this.records.set(id, { entry, module: plugin, status: 'stopped', config: {}, taskIds: [] })
+    this.records.set(id, { entry, module: plugin, status: 'stopped', config: {}, taskIds: [], externalPath: abs } as any)
     await this.enable(id)
     this.emitChanged()
   }
@@ -218,6 +218,16 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     await this.disable(id)
     this.records.delete(id)
     this.emitChanged()
+  }
+
+  /** 源码路径：内置插件返回 packages/plugins/<id>，外部插件返回安装时的绝对路径 */
+  sourcePath(id: string): string | undefined {
+    const record = this.records.get(id)
+    if (!record) return undefined
+    const external = (record as any).externalPath as string | undefined
+    if (external) return external
+    const dir = path.resolve('packages/plugins', id)
+    return existsSync(dir) ? dir : undefined
   }
 
   async disable(id: string): Promise<void> {

@@ -55,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ui: {
     theme: 'dark',
     lastPage: 'overview',
+    editorCommand: '',
   },
   version: SETTINGS_VERSION,
 }
@@ -160,6 +161,8 @@ export class SettingsService extends Service implements SettingsLike {
     clean.budget.maxBytes = Math.max(1, Number(clean.budget.maxBytes) || 20 * 1024 * 1024 * 1024)
     if (!settings.privacy || typeof settings.privacy !== 'object') settings.privacy = { onlineAi: true }
     settings.privacy.onlineAi = settings.privacy.onlineAi !== false
+    if (!settings.ui || typeof settings.ui !== 'object') settings.ui = { theme: 'dark', lastPage: 'overview', editorCommand: '' }
+    settings.ui.editorCommand = String(settings.ui.editorCommand ?? '')
     if (!Array.isArray(settings.analysis.roots)) settings.analysis.roots = []
     if (!Array.isArray(settings.analysis.excludes)) settings.analysis.excludes = []
     if (!isPlainObject(settings.plugins)) settings.plugins = {}

@@ -37,6 +37,7 @@ import type {
 /** 全局配置结构（持久化为 JSON） */
 export interface Settings {
   /** 隐私与外发 */
+  /** 界面偏好 */
   privacy: {
     /** 是否允许在线 AI（总开关） */
     onlineAi: boolean
@@ -115,6 +116,8 @@ export interface Settings {
   ui: {
     theme: 'dark' | 'light'
     lastPage: string
+    /** 打开源码用的编辑器命令；留空则用系统默认程序 */
+    editorCommand: string
   }
   /** 版本号，用于配置迁移 */
   version: number
@@ -238,6 +241,8 @@ export interface PluginManagerLike {
   enable(id: string): Promise<void>
   disable(id: string): Promise<void>
   reload(id: string): Promise<void>
+  /** 插件源码文件/目录路径（内置或外部） */
+  sourcePath(id: string): string | undefined
   /** 安装本地插件文件（.mjs/.js），会话内有效 */
   installExternal(filePath: string): Promise<void>
   /** 卸载外部插件（内置插件只能停用） */

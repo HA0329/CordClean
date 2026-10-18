@@ -363,6 +363,15 @@ export async function openPath(target: string): Promise<void> {
   await requireTransport().request('app/open-path', { path: target })
 }
 
+export async function pluginSource(id: string): Promise<string> {
+  const result = await requireTransport().request('plugins/source', { id })
+  return result.path
+}
+
+export async function openEditor(target: string): Promise<void> {
+  await requireTransport().request('app/open-editor', { path: target })
+}
+
 export async function quitApp(): Promise<void> {
   await requireTransport().request('app/quit', undefined)
 }

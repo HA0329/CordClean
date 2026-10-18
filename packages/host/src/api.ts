@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 /**
  * RPC 方法实现。
  *
@@ -83,6 +84,20 @@ export function createHandlers(api: ApiContext): HandlerMap {
       await api.shell.openPath(path)
     },
 
+    'app/open-editor': async ({ path: target }) => {
+      const command = ctx.settings.get().ui.editorCommand.trim()
+      if (!command) {
+        await api.shell.openPath(target)
+        return
+      }
+      const child = spawn(command, [target], { detached: true, stdio: 'ignore', windowsHide: true })
+      child.unref()
+    },
+    'plugins/source': ({ id }) => {
+      const source = ctx.plugins.sourcePath(id)
+      if (!source) throw new Error('找不到该插件的源码路径（可能来自打包文件）')
+      return { path: source }
+    },
     'app/quit': async () => {
       setTimeout(() => process.exit(0), 300)
       return { ok: true as const }

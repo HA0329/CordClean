@@ -7,6 +7,8 @@ import {
   loadPluginDefaults,
   refreshPlugins,
   reloadPlugin,
+  pluginSource,
+  openEditor,
   installPlugin,
   uninstallPlugin,
   savePluginConfig,
@@ -17,6 +19,10 @@ import {
 const editing = ref<PluginRuntime | null>(null)
 const editorValue = ref('')
 const configError = ref<string>()
+const formMode = ref(true)
+const editValues = ref<Record<string, any>>({})
+const primitiveKeys = computed(() => Object.keys(editValues.value).filter((key) => { const v = editValues.value[key]; return typeof v === 'boolean' || typeof v === 'number' || typeof v === 'string' }))
+const complexCount = computed(() => Object.keys(editValues.value).length - primitiveKeys.value.length)
 const saving = ref(false)
 const expanded = ref<Record<string, boolean>>({})
 const installOpen = ref(false)
@@ -82,15 +88,29 @@ async function install(plugin: PluginRuntime) {
   }
 }
 
+async function openSource(plugin: PluginRuntime) {
+  try {
+    const path = await pluginSource(plugin.id)
+    await openEditor(path)
+    ElMessage.success('已用编辑器打开：' + path)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 async function openConfig(plugin: PluginRuntime) {
   editing.value = plugin
   configError.value = undefined
   try {
     const defaults = plugin.configurable ? await loadPluginDefaults(plugin.id) : {}
     const merged = { ...defaults, ...(plugin.config ?? {}) }
+    editValues.value = merged
     editorValue.value = JSON.stringify(merged, null, 2)
+    formMode.value = true
   } catch {
+    editValues.value = { ...(plugin.config ?? {}) }
     editorValue.value = JSON.stringify(plugin.config ?? {}, null, 2)
+    formMode.value = true
   }
 }
 
@@ -98,12 +118,11 @@ async function saveConfig() {
   if (!editing.value) return
   let parsed: Record<string, unknown>
   try {
-    parsed = JSON.parse(editorValue.value)
+    parsed = formMode.value ? { ...editValues.value } : JSON.parse(editorValue.value)
   } catch (error) {
     configError.value = 'JSON 格式错误：' + (error instanceof Error ? error.message : String(error))
     return
-  }
-  saving.value = true
+  }  saving.value = true
   try {
     await savePluginConfig(editing.value.id, parsed)
     ElMessage.success('配置已保存并重新加载插件')
@@ -171,6 +190,7 @@ function categoryName(id: string) {
         <div class="plugin-actions">
           <el-button size="small" :disabled="!plugin.enabled" @click="openConfig(plugin)">配置</el-button>
           <el-button size="small" @click="reload(plugin)">热重载</el-button>
+          <el-button size="small" @click="openSource(plugin)">源码</el-button>
           <el-button v-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">卸载</el-button>
           <el-button v-else size="small" type="primary" plain @click="install(plugin)">安装</el-button>
           <span class="cc-faint" style="margin-left: auto">{{ plugin.configurable ? '支持配置' : '无配置项' }}</span>
@@ -194,7 +214,25 @@ function categoryName(id: string) {
       <p class="cc-hint">
         插件配置以 JSON 表示，保存后会调用 Cordis 的 <code>fiber.update()</code> 重新校验配置并热重载插件。
       </p>
-      <el-input v-model="editorValue" type="textarea" :rows="16" class="cc-mono" spellcheck="false" />
+            <div class="mode-row">
+        <el-radio-group v-model="formMode" size="small">
+          <el-radio-button :value="true">表单</el-radio-button>
+          <el-radio-button :value="false">JSON</el-radio-button>
+        </el-radio-group>
+        <span v-if="formMode && complexCount" class="cc-faint">有 {{ complexCount }} 个复杂字段需切到 JSON 编辑</span>
+      </div>
+
+      <div v-if="formMode" class="form-mode">
+        <el-form label-position="left" label-width="180px" size="small">
+          <el-form-item v-for="key in primitiveKeys" :key="key" :label="key">
+            <el-switch v-if="typeof editValues[key] === 'boolean'" v-model="editValues[key]" />
+            <el-input-number v-else-if="typeof editValues[key] === 'number'" v-model="editValues[key]" :step="1" />
+            <el-input v-else v-model="editValues[key]" />
+          </el-form-item>
+        </el-form>
+        <p v-if="!primitiveKeys.length" class="cc-faint">该插件没有可表单化的简单字段，请用 JSON 模式。</p>
+      </div>
+      <el-input v-else v-model="editorValue" type="textarea" :rows="16" class="cc-mono" spellcheck="false" />
       <p v-if="configError" class="error-text">{{ configError }}</p>
       <template #footer>
         <el-button @click="editing = null">取消</el-button>
@@ -311,4 +349,9 @@ code {
   border-radius: 4px;
   font-size: 11.5px;
 }
+</style>
+
+<style scoped>
+.mode-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.form-mode { max-height: 420px; overflow: auto; }
 </style>
