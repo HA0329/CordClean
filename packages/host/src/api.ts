@@ -122,6 +122,23 @@ export function createHandlers(api: ApiContext): HandlerMap {
       })
       return { path: file }
     },
+    'scheduler/authorize': async (patch) => {
+      let next: Record<string, any> | undefined
+      ;(ctx as any).emit('scheduler/authorize', patch, (config: Record<string, any>) => { next = config })
+      if (!next) throw new Error('请先在插件页启用「定时扫描」')
+      await ctx.plugins.updateConfig('scheduler', next)
+      return { hash: String(next.authorizedHash ?? '') }
+    },
+    'scheduler/run': () => {
+      ;(ctx as any).emit('scheduler/run')
+      return { ok: true as const }
+    },
+    'scheduler/revoke': async () => {
+      const plugin = ctx.plugins.list().find((item) => item.id === 'scheduler')
+      const config = { ...(plugin?.config ?? {}), mode: 'scan', authorizedHash: '' }
+      await ctx.plugins.updateConfig('scheduler', config)
+      return { ok: true as const }
+    },
     'app/quit': async () => {
       setTimeout(() => process.exit(0), 300)
       return { ok: true as const }

@@ -70,7 +70,7 @@ export type ServerEventMap = {
   'clean/done': CleanReport
   'plugins/changed': Record<string, never>
   'history/changed': Record<string, never>
-  'scheduler/scan': { at: number; items?: number; bytes?: number; elapsedMs?: number; errors?: number; error?: string }
+  'scheduler/scan': { at: number; items?: number; bytes?: number; elapsedMs?: number; errors?: number; error?: string; blocked?: boolean; reason?: string; autoCleaned?: boolean; cleaned?: number; freedBytes?: number; recycledBytes?: number; mode?: string }
   log: { level: string; message: string; time: number; name?: string }
 }
 
@@ -101,6 +101,9 @@ export interface ApiMap {
 
   'plugins/source': { params: { id: string }; result: { path: string } }
   'app/open-editor': { params: { path: string }; result: void }
+  'scheduler/authorize': { params: { everyMinutes?: number; taskIds?: string[] }; result: { hash: string } }
+  'scheduler/run': { params: void; result: { ok: true } }
+  'scheduler/revoke': { params: void; result: { ok: true } }
   'plugins/install': { params: { path: string }; result: void }
   'plugins/uninstall': { params: { id: string }; result: void }
   'plugins/list': { params: void; result: PluginRuntime[] }

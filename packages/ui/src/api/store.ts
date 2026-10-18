@@ -85,6 +85,20 @@ export async function init(): Promise<void> {
         ElNotification({ title: '定时扫描失败', message: event.error, type: 'error' })
         return
       }
+      if (event.blocked) {
+        ElNotification({ title: '自动清理已跳过', message: event.reason ?? '规则已变化，请重新授权', type: 'warning', duration: 8000 })
+        return
+      }
+      if (event.autoCleaned) {
+        ElNotification({
+          title: '定时清理完成',
+          message: '清理 ' + (event.cleaned ?? 0) + ' 项，释放 ' + ((event.freedBytes ?? 0) / 1024 / 1024).toFixed(1) + ' MB（回收站 ' + ((event.recycledBytes ?? 0) / 1024 / 1024).toFixed(1) + ' MB）',
+          type: 'success',
+          duration: 8000,
+        })
+        void refreshHistory()
+        return
+      }
       const mb = ((event.bytes ?? 0) / 1024 / 1024).toFixed(1)
       const count = event.items ?? 0
       ElNotification({
@@ -377,6 +391,21 @@ export async function enableAiPlugin(): Promise<void> {
 
 export async function openPath(target: string): Promise<void> {
   await requireTransport().request('app/open-path', { path: target })
+}
+
+export async function authorizeScheduler(patch: Record<string, unknown> = {}): Promise<string> {
+  const result = await requireTransport().request('scheduler/authorize', patch)
+  await refreshPlugins()
+  return result.hash
+}
+
+export async function revokeScheduler(): Promise<void> {
+  await requireTransport().request('scheduler/revoke', undefined)
+  await refreshPlugins()
+}
+
+export async function runSchedulerNow(): Promise<void> {
+  await requireTransport().request('scheduler/run', undefined)
 }
 
 export async function pluginSource(id: string): Promise<string> {

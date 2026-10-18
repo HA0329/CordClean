@@ -1,0 +1,10 @@
+feat(scheduler): 第4步(4b)——计划级授权 + 自动清理，规则变化授权即失效
+
+- scheduler 配置增加 mode(scan|clean) 与 authorizedHash，版本 1.1.0
+- 授权逻辑：计算规则指纹（includeRisky/Deep/Custom + rules.stats 的 sha1）写入 authorizedHash
+- 运行前重新计算指纹，不一致则跳过清理并通知「规则已变，请重新授权」
+- clean 模式只处理 risk=safe 且未被保护的项，仍走补偿链与回收站/隔离区
+- 新增 RPC：scheduler/authorize、scheduler/run、scheduler/revoke；插件卡片增加「立即运行/授权自动清理/仅通知」
+- 通知支持三种结果：扫描汇总、自动清理结果、授权失效跳过
+- 新增 tests/scheduler.test.ts：授权指纹格式、立即运行自动清理、历史记录 recycledBytes
+- E2E 通过

@@ -9,6 +9,9 @@ import {
   reloadPlugin,
   pluginSource,
   openEditor,
+  authorizeScheduler,
+  revokeScheduler,
+  runSchedulerNow,
   installPlugin,
   uninstallPlugin,
   savePluginConfig,
@@ -83,6 +86,40 @@ async function install(plugin: PluginRuntime) {
   try {
     await setPluginEnabled(plugin.id, true)
     ElMessage.success(plugin.name + ' 已安装并启用')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function authorizeAutoClean(plugin: PluginRuntime) {
+  try {
+    await ElMessageBox.confirm(
+      '授权后，定时任务会在扫描完成后自动清理 risk=safe 的项（仍走回收站/隔离区）。规则一旦变化，授权自动失效。',
+      '授权自动清理',
+      { type: 'warning', confirmButtonText: '授权' },
+    )
+  } catch { return }
+  try {
+    const hash = await authorizeScheduler({})
+    ElMessage.success('已授权自动清理，规则指纹 ' + hash)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function revokeAutoClean() {
+  try {
+    await revokeScheduler()
+    ElMessage.success('已改回「仅通知」并清除授权')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function runScheduler() {
+  try {
+    await runSchedulerNow()
+    ElMessage.success('已触发一次定时任务，完成后会弹出通知')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
@@ -191,6 +228,11 @@ function categoryName(id: string) {
           <el-button size="small" :disabled="!plugin.enabled" @click="openConfig(plugin)">配置</el-button>
           <el-button size="small" @click="reload(plugin)">热重载</el-button>
           <el-button size="small" @click="openSource(plugin)">源码</el-button>
+          <template v-if="plugin.id === 'scheduler'">
+            <el-button size="small" @click="runScheduler">立即运行</el-button>
+            <el-button size="small" type="warning" plain @click="authorizeAutoClean(plugin)">授权自动清理</el-button>
+            <el-button size="small" @click="revokeAutoClean">仅通知</el-button>
+          </template>
           <el-button v-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">卸载</el-button>
           <el-button v-else size="small" type="primary" plain @click="install(plugin)">安装</el-button>
           <span class="cc-faint" style="margin-left: auto">{{ plugin.configurable ? '支持配置' : '无配置项' }}</span>
