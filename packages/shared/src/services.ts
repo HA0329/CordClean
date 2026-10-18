@@ -238,6 +238,10 @@ export interface PluginManagerLike {
   enable(id: string): Promise<void>
   disable(id: string): Promise<void>
   reload(id: string): Promise<void>
+  /** 安装本地插件文件（.mjs/.js），会话内有效 */
+  installExternal(filePath: string): Promise<void>
+  /** 卸载外部插件（内置插件只能停用） */
+  uninstallExternal(id: string): Promise<void>
   updateConfig(id: string, config: Record<string, any>): Promise<void>
   /** 获取插件默认配置（用于界面渲染） */
   defaults(id: string): Promise<Record<string, any>>

@@ -104,7 +104,7 @@ async function revealDataDir() {
 <template>
   <div class="shell">
     <aside class="sidebar">
-      <div class="brand"><button class="collapse-btn" @click="toggleSidebar" :title="collapsed ? '展开侧边栏' : '折叠侧边栏'">{{ collapsed ? '»' : '«' }}</button>
+      <div class="brand">
         <div class="brand-mark">CC</div>
         <div class="brand-text">
           <strong>CordClean</strong>
@@ -136,6 +136,7 @@ async function revealDataDir() {
           </div>
         </div>
         <button class="link-btn" @click="revealDataDir">打开数据目录</button>
+        <button class="sidebar-toggle" @click="toggleSidebar" :title="collapsed ? '展开侧边栏' : '折叠侧边栏'">{{ collapsed ? '»' : '«' }}<span v-if="!collapsed">收起侧边栏</span></button>
         <div class="version">v{{ state.app?.version ?? '0.1.0' }}</div>
       </div>
     </aside>

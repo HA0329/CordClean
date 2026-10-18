@@ -7,6 +7,8 @@ import {
   loadPluginDefaults,
   refreshPlugins,
   reloadPlugin,
+  installPlugin,
+  uninstallPlugin,
   savePluginConfig,
   setPluginEnabled,
   state,
@@ -17,6 +19,24 @@ const editorValue = ref('')
 const configError = ref<string>()
 const saving = ref(false)
 const expanded = ref<Record<string, boolean>>({})
+const installOpen = ref(false)
+const installPath = ref('')
+const installing = ref(false)
+
+async function doInstall() {
+  if (!installPath.value.trim()) return
+  installing.value = true
+  try {
+    await installPlugin(installPath.value.trim())
+    ElMessage.success('插件已加载（本次运行有效）')
+    installOpen.value = false
+    installPath.value = ''
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    installing.value = false
+  }
+}
 
 function toggleExpanded(id: string) {
   expanded.value[id] = !expanded.value[id]
@@ -110,6 +130,7 @@ function categoryName(id: string) {
       <div class="cc-actions">
         <span class="cc-pill status-active">{{ enabledCount }} 个已启用</span>
         <span class="cc-pill">{{ taskCount }} 个清理任务</span>
+        <el-button @click="installOpen = true">添加插件</el-button>
         <el-button @click="refreshPlugins">刷新</el-button>
       </div>
     </div>
@@ -146,6 +167,7 @@ function categoryName(id: string) {
           <b>加载失败：</b>{{ plugin.error }}
         </div>
 
+        <div class="plugin-spacer"></div>
         <div class="plugin-actions">
           <el-button size="small" :disabled="!plugin.enabled" @click="openConfig(plugin)">配置</el-button>
           <el-button size="small" @click="reload(plugin)">热重载</el-button>
@@ -155,6 +177,18 @@ function categoryName(id: string) {
         </div>
       </div>
     </div>
+
+        <el-dialog v-model="installOpen" title="添加本地插件" width="560px">
+      <p class="cc-hint">
+        填写一个本地插件模块的绝对路径（<code>.mjs</code> / <code>.js</code>，需默认导出带 <code>apply()</code> 的 Cordis 插件，通常由 <code>defineCleanerPlugin</code> 生成）。
+        插件只加载到本次运行，不会复制或修改你的文件；重启后需重新添加。
+      </p>
+      <el-input v-model="installPath" placeholder="例如 D:\my-plugins\my-cleaner.mjs" />
+      <template #footer>
+        <el-button @click="installOpen = false">取消</el-button>
+        <el-button type="primary" :loading="installing" @click="doInstall">加载插件</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="editing" :title="`配置 · ${editing?.name ?? ''}`" width="620px">
       <p class="cc-hint">
@@ -254,13 +288,16 @@ function categoryName(id: string) {
 }
 
 .plugin-actions {
-  margin-top: auto;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-top: 4px;
+  padding-top: 8px;
   border-top: 1px solid var(--cc-border);
-  margin-top: 2px;
+}
+
+.plugin-spacer {
+  flex: 1;
+  min-height: 4px;
 }
 
 .error-text {

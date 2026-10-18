@@ -238,7 +238,7 @@ try {
   // 侧边栏折叠：应为 64px 窄轨道且图标仍可点击
   const collapsedNow = () => evaluate("document.documentElement.classList.contains('sidebar-collapsed')")
   if (!(await collapsedNow())) {
-    await evaluate("document.querySelector('.collapse-btn')?.click()")
+    await evaluate("document.querySelector('.sidebar-toggle')?.click()")
     await new Promise((resolve) => setTimeout(resolve, 400))
   }
   const railWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
@@ -248,7 +248,7 @@ try {
   const railHash = await evaluate("location.hash")
   console.log(`✓ 折叠轨道：宽度=${railWidth}px，图标数=${icons}，点击后 hash=${railHash}`)
   await capture("rail")
-  await evaluate("document.querySelector('.collapse-btn')?.click()")
+  await evaluate("document.querySelector('.sidebar-toggle')?.click()")
   await new Promise((resolve) => setTimeout(resolve, 300))
   const expandedWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
   console.log(`✓ 侧边栏展开：宽度=${expandedWidth}px`)

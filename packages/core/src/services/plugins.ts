@@ -10,6 +10,9 @@
  * - **任务归属**：通过「加载前后任务集合求差」自动把任务归属到插件，
  *   插件因此不需要知道自己的 id，也不需要修改内核代码。
  */
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Service, type Context, type Fiber } from 'cordis'
 import type {
   CategoryId,
@@ -176,6 +179,44 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       this.ctx.logger?.warn?.(`插件 ${id} 启动失败：%s`, record.error)
     }
     this.persist(record, true)
+    this.emitChanged()
+  }
+
+  /**
+   * 安装本地插件：import 任意本地 .mjs/.js 模块，校验其导出后挂到运行时。
+   * 说明：仅本次运行有效（不复制用户文件、不修改安装包）。
+   */
+  async installExternal(filePath: string): Promise<void> {
+    const abs = path.resolve(filePath)
+    if (!existsSync(abs)) throw new Error('插件文件不存在：' + abs)
+    const ns = await import(pathToFileURL(abs).href + '?t=' + Date.now())
+    const plugin = (ns.default ?? ns) as any
+    if (!plugin || typeof plugin.apply !== 'function') {
+      throw new Error('不是有效的 Cordis 插件：需要导出带 apply() 的对象（defineCleanerPlugin 的产物）')
+    }
+    const id = 'external:' + (plugin.name || path.basename(abs, path.extname(abs)))
+    if (this.records.has(id)) throw new Error('同名插件已加载：' + id)
+    const entry: PluginManifestEntry = {
+      id,
+      name: plugin.name || id,
+      description: plugin.description ?? '本地安装的外部插件',
+      category: 'apps',
+      version: plugin.version ?? '0.0.0',
+      defaultEnabled: true,
+      load: async () => ({ default: plugin }),
+    }
+    this.records.set(id, { entry, module: plugin, status: 'stopped', config: {}, taskIds: [] })
+    await this.enable(id)
+    this.emitChanged()
+  }
+
+  /** 卸载外部插件（内部插件只能停用，避免误删安装包） */
+  async uninstallExternal(id: string): Promise<void> {
+    if (!id.startsWith('external:')) throw new Error('内置插件只能停用，不能卸载')
+    const record = this.records.get(id)
+    if (!record) return
+    await this.disable(id)
+    this.records.delete(id)
     this.emitChanged()
   }
 

@@ -231,6 +231,16 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
   await refreshTasks()
 }
 
+export async function installPlugin(filePath: string): Promise<void> {
+  await requireTransport().request('plugins/install', { path: filePath })
+  await refreshPlugins()
+}
+
+export async function uninstallPlugin(id: string): Promise<void> {
+  await requireTransport().request('plugins/uninstall', { id })
+  await refreshPlugins()
+}
+
 export async function reloadPlugin(id: string): Promise<void> {
   await requireTransport().request('plugins/reload', { id })
   await refreshPlugins()
