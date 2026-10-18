@@ -298,6 +298,8 @@ declare module 'cordis' {
     plugins: PluginManagerLike
     /** 由 AI 插件提供，未安装时不可用 */
     ai?: AiLike
+    /** 外发出口（不变量 8）：在线请求统一放行、计数与预览 */
+    egress: EgressLike
   }
 
   interface Events {
@@ -452,6 +454,25 @@ export interface EvaluatorLike {
   strategies(): string[]
   current(): string
   use(id: string): void
+}
+
+/** 外发记录（预览用，已脱敏截断） */
+export interface EgressRecord {
+  at: number
+  purpose: string
+  url: string
+  bytes: number
+  preview: string
+  blocked?: string
+}
+
+/** 外发出口能力（`ctx.egress`） */
+export interface EgressLike {
+  check(request: { purpose: string; url: string; body?: unknown }): { allowed: boolean; reason?: string }
+  recordUsage(usage?: { input?: number; output?: number }): void
+  stats(): { requests: number; bytes: number; tokens: number }
+  preview(): EgressRecord[]
+  reset(): void
 }
 
 /** AI 建议的补类型导出，方便插件复用 */

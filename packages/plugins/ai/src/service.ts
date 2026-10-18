@@ -335,6 +335,7 @@ export class AiService extends Service implements AiLike {
     ].join('\n')
 
     const request = buildRequest(config, key, system, user)
+    this.gate('evaluate', request.url, request.body)
     const result = await requestJson(request.url, {
       headers: request.headers,
       body: request.body,
@@ -367,11 +368,18 @@ export class AiService extends Service implements AiLike {
     return map
   }
 
+  /** 外发出口（不变量 8）：在线 AI 被关闭时直接拒绝 */
+  private gate(purpose: string, url: string, body: unknown): void {
+    const gate = this.ctx.egress.check({ purpose, url, body })
+    if (!gate.allowed) throw new AiError(gate.reason ?? '在线 AI 已被关闭', 'NETWORK')
+  }
+
   async analyze(options: { taskIds?: string[]; extraContext?: string } = {}): Promise<AiAnalysis> {
     const key = this.requireKey()
     const config = this.rawConfig
     const profile = await this.buildProfile(options.extraContext)
     const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext))
+    this.gate('analyze', request.url, request.body)
 
     const result = await requestJson(request.url, {
       headers: request.headers,

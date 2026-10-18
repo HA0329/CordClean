@@ -25,7 +25,7 @@ export default defineCleanerPlugin<Partial<AiConfig>>({
   name: 'ai',
   version: '2.0.0',
   description: '支持 chat / messages / responses 三种接口形态，模型与推理等级可配置、可扩展',
-  inject: ['cleaner', 'system', 'settings', 'evaluator'],
+  inject: ['cleaner', 'system', 'settings', 'evaluator', 'egress'],
   Config,
   setup(ctx, config) {
     const normalized = normalizeConfig(config as Partial<AiConfig>)
