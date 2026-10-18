@@ -385,13 +385,24 @@ export class AiService extends Service implements AiLike {
     const key = this.requireKey()
     const config = this.rawConfig
     const profile = await this.buildProfile(options.extraContext)
+    const scan = this.ctx.cleaner.lastScan()
+    const candidates = scan
+      ? [...scan.items]
+          .filter((item) => !item.protected)
+          .sort((a, b) => b.size - a.size)
+          .slice(0, 40)
+          .map((item) => ({ id: item.id, mb: Math.round(item.size / 1024 / 1024), risk: item.risk, task: item.taskId }))
+      : []
+    const candidateHint = candidates.length
+      ? '\n\n以下是本次扫描得到的候选清理项（只能从这些 id 中选择，不得虚构）：\n' + JSON.stringify(candidates)
+      : '\n\n当前没有可用的扫描结果，selection 必须为空数组。'
     const contextSections = await this.ctx.aiContext.collect(options.contextProviders ?? config.contextProviders)
     this.lastContextUsed = contextSections.map((section) => section.id)
     const contextText = contextSections.length
       ? '\n\n补充上下文（脱敏摘要）：\n' +
         contextSections.map((section) => `【${section.title}】\n` + section.lines.join('\n')).join('\n\n')
       : ''
-    const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext) + contextText + RULE_HINT)
+    const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext) + contextText + candidateHint + SELECTION_HINT + RULE_HINT)
     this.gate('analyze', request.url, request.body)
 
     const result = await requestJson(request.url, {
@@ -424,6 +435,16 @@ export class AiService extends Service implements AiLike {
       })
     }
 
+    const allowed = new Map(candidates.map((item) => [item.id, item]))
+    const rawSelection: unknown[] = Array.isArray(data?.selection) ? data.selection : []
+    const selection = rawSelection
+      .map((entry: any) => ({ itemId: String(entry?.itemId ?? ''), reason: String(entry?.reason ?? '').slice(0, 160) }))
+      .filter((entry) => allowed.has(entry.itemId) && entry.reason)
+      .slice(0, 50)
+    const selectionBytes = selection.reduce((sum, entry) => {
+      const item = scan?.items.find((candidate) => candidate.id === entry.itemId)
+      return sum + (item?.size ?? 0)
+    }, 0)
     const suggestions = normalizeSuggestions(data?.suggestions)
     const ruleSuggestions = normalizeRuleSuggestions(data?.rules)
     const analysis: AiAnalysis = {
@@ -461,6 +482,12 @@ export function createAiService(ctx: Context, raw: Partial<AiConfig> | undefined
 }
 
 /** 提示模型额外给出新规则建议（可选字段） */
+/** 让模型在候选列表内挑选清理项 */
+const SELECTION_HINT =
+  '\n\n另外，请从上面「候选清理项」中挑选你认为值得清理的项，输出 selection 数组（最多 30 条）：' +
+  '[{"itemId":"候选里的 id","reason":"为什么建议清理（中文，30 字内）"}]。' +
+  'itemId 必须逐字来自候选列表；不确定就少选或不选。只依据体积、风险等级与任务归类判断，不要臆造路径。'
+
 const RULE_HINT =
   '\n\n如果发现有价值、但当前规则库未覆盖的可重建缓存，请另外输出 rules 数组（最多 5 条）：' +
   '[{"name":"名称","category":"分类key","risk":"safe|caution|risky","target":{"type":"clear_dir","path":"%LOCALAPPDATA%/某软件/Cache"},"reason":"依据"}]；没有则输出 "rules": []。' +

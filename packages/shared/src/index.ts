@@ -293,6 +293,10 @@ export interface AiAnalysis {
   suggestions: AiSuggestion[]
   /** AI 提出的新清理规则（必须经入库管线与用户确认） */
   ruleSuggestions?: AiRuleSuggestion[]
+  /** AI 从本次扫描结果中挑选的清理项（只能来自候选列表） */
+  selection?: Array<{ itemId: string; reason: string }>
+  /** 选中项的合计大小 */
+  selectionSummary?: { count: number; bytes: number }
   /** 模型附带的其他观察 */
   observations: string[]
   /** 思维链（若模型返回 reasoning_content / thinking_block） */

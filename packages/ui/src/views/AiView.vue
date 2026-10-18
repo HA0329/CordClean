@@ -4,6 +4,9 @@ import { ElMessage } from 'element-plus'
 import { RISK_META, formatBytes, formatTime } from '@cordclean/shared'
 import {
   analyzeAi,
+  startClean,
+  refreshHistory,
+  refreshQuarantine,
   applyAiRule,
   aiPluginConfig,
   enableAiPlugin,
@@ -242,6 +245,37 @@ watch(
   { deep: true },
 )
 
+const selectionOpen = ref(false)
+const selectionRows = computed(() => {
+  const items = new Map((state.scan?.items ?? []).map((item) => [item.id, item]))
+  return (analysis.value?.selection ?? []).map((entry) => {
+    const item = items.get(entry.itemId)
+    return {
+      id: entry.itemId,
+      path: item?.path ?? '(不在当前扫描结果中，已失效)',
+      size: item?.size ?? 0,
+      task: item?.taskId ?? '',
+      reason: entry.reason,
+    }
+  })
+})
+
+async function applyAiSelection() {
+  const ids = selectionRows.value.filter((row) => row.size > 0).map((row) => row.id)
+  if (!ids.length) {
+    ElMessage.warning('这些项已不在当前扫描结果中，请重新扫描后再试')
+    return
+  }
+  try {
+    const report = await startClean(ids)
+    await Promise.all([refreshHistory(), refreshQuarantine()])
+    selectionOpen.value = false
+    ElMessage.success(`已按 AI 建议清理 ${report.cleaned} 项，释放 ${formatBytes(report.freedBytes)}`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 const shapeLabel = computed(() => SHAPES.find((item) => item.value === state.aiStatus.shape)?.value ?? state.aiStatus.shape)
 const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.aiStatus.effort)?.value ?? state.aiStatus.effort)
 </script>
@@ -476,7 +510,34 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
           </div>
         </div>
 
-        <div class="suggestions">
+        <div v-if="analysis.selection?.length" class="cc-card">
+        <div class="cc-card-title">
+          <h3>✅ AI 推荐的清理项</h3>
+          <span class="cc-faint">
+            共 {{ analysis.selectionSummary?.count ?? analysis.selection.length }} 项 ·
+            {{ formatBytes(analysis.selectionSummary?.bytes ?? 0) }} · 只能来自本次扫描结果
+          </span>
+        </div>
+        <p class="cc-hint">确认后会调用补偿链（路径策略 / 预算 / 预览一致性 / 回收站），与手动清理完全同一条路径。</p>
+        <el-button type="primary" @click="selectionOpen = true">对比并应用</el-button>
+      </div>
+
+      <el-dialog v-model="selectionOpen" title="确认清理 AI 推荐的项" width="720px">
+        <p class="cc-hint">共 {{ selectionRows.length }} 项，合计 {{ formatBytes(analysis?.selectionSummary?.bytes ?? 0) }}。风险项仍会走隔离区/回收站。</p>
+        <el-table :data="selectionRows" size="small" max-height="360">
+          <el-table-column prop="path" label="路径" min-width="260" show-overflow-tooltip />
+          <el-table-column label="大小" width="100">
+            <template #default="{ row }">{{ formatBytes(row.size) }}</template>
+          </el-table-column>
+          <el-table-column prop="reason" label="AI 理由" min-width="160" show-overflow-tooltip />
+        </el-table>
+        <template #footer>
+          <el-button @click="selectionOpen = false">取消</el-button>
+          <el-button type="primary" @click="applyAiSelection">确认清理</el-button>
+        </template>
+      </el-dialog>
+
+      <div class="suggestions">
           <div v-for="suggestion in analysis.suggestions" :key="suggestion.id" class="suggestion-card">
             <div class="suggestion-head">
               <strong>{{ suggestion.title }}</strong>
