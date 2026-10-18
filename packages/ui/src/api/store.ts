@@ -276,6 +276,10 @@ export async function purgeQuarantine(ids?: string[]): Promise<void> {
   await refreshQuarantine()
 }
 
+export async function clearEgress(): Promise<void> {
+  await requireTransport().request('ai/egress/clear', undefined)
+}
+
 export async function clearHistory(): Promise<void> {
   await requireTransport().request('history/clear', undefined)
   await refreshHistory()
