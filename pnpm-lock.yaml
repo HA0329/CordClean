@@ -254,12 +254,6 @@ importers:
       '@cordclean/plugin-ai':
         specifier: workspace:*
         version: link:../plugins/ai
-      '@cordclean/plugin-browser':
-        specifier: workspace:*
-        version: link:../plugins/browser
-      '@cordclean/plugin-dev-cache':
-        specifier: workspace:*
-        version: link:../plugins/dev-cache
       '@cordclean/plugin-duplicates':
         specifier: workspace:*
         version: link:../plugins/duplicates
@@ -287,15 +281,6 @@ importers:
       '@cordclean/plugin-startup':
         specifier: workspace:*
         version: link:../plugins/startup
-      '@cordclean/plugin-system-logs':
-        specifier: workspace:*
-        version: link:../plugins/system-logs
-      '@cordclean/plugin-temp':
-        specifier: workspace:*
-        version: link:../plugins/temp
-      '@cordclean/plugin-thumbnails':
-        specifier: workspace:*
-        version: link:../plugins/thumbnails
       '@cordclean/shared':
         specifier: workspace:*
         version: link:../shared
@@ -328,30 +313,6 @@ importers:
         version: 8.22.0
 
   packages/plugins/ai:
-    dependencies:
-      '@cordclean/shared':
-        specifier: workspace:*
-        version: link:../../shared
-      '@cordclean/utils':
-        specifier: workspace:*
-        version: link:../../utils
-      schemastery:
-        specifier: ^3.17.2
-        version: 3.18.0
-
-  packages/plugins/browser:
-    dependencies:
-      '@cordclean/shared':
-        specifier: workspace:*
-        version: link:../../shared
-      '@cordclean/utils':
-        specifier: workspace:*
-        version: link:../../utils
-      schemastery:
-        specifier: ^3.17.2
-        version: 3.18.0
-
-  packages/plugins/dev-cache:
     dependencies:
       '@cordclean/shared':
         specifier: workspace:*
@@ -460,42 +421,6 @@ importers:
         version: 3.18.0
 
   packages/plugins/startup:
-    dependencies:
-      '@cordclean/shared':
-        specifier: workspace:*
-        version: link:../../shared
-      '@cordclean/utils':
-        specifier: workspace:*
-        version: link:../../utils
-      schemastery:
-        specifier: ^3.17.2
-        version: 3.18.0
-
-  packages/plugins/system-logs:
-    dependencies:
-      '@cordclean/shared':
-        specifier: workspace:*
-        version: link:../../shared
-      '@cordclean/utils':
-        specifier: workspace:*
-        version: link:../../utils
-      schemastery:
-        specifier: ^3.17.2
-        version: 3.18.0
-
-  packages/plugins/temp:
-    dependencies:
-      '@cordclean/shared':
-        specifier: workspace:*
-        version: link:../../shared
-      '@cordclean/utils':
-        specifier: workspace:*
-        version: link:../../utils
-      schemastery:
-        specifier: ^3.17.2
-        version: 3.18.0
-
-  packages/plugins/thumbnails:
     dependencies:
       '@cordclean/shared':
         specifier: workspace:*

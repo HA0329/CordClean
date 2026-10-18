@@ -4,7 +4,6 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-![概览](docs/screenshots/overview.png)
 
 ## 1. 核心特性
 
@@ -165,7 +164,6 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 | messages + effort=high | 7.9 s | ~1400 | ~900 |
 | responses + effort=high | 7.7 s | ~1370 | ~880 |
 
-![AI 顾问实测](docs/screenshots/ai-live.png)
 
 > Key 支持配置里填写，或使用环境变量 `DEEPSEEK_API_KEY` / `OPENAI_API_KEY`；
 > 发送给模型的画像已脱敏（无路径、文件名、用户名），有单元测试断言。
@@ -255,15 +253,12 @@ node scripts/e2e-ui.mjs                  # Electron 界面端到端点检（CDP�
 
 | 概览 | 清理 |
 | --- | --- |
-| ![概览](docs/screenshots/overview.png) | ![清理](docs/screenshots/clean.png) |
 
 | 插件管理 | 历史与隔离区 |
 | --- | --- |
-| ![插件](docs/screenshots/plugins.png) | ![历史](docs/screenshots/history.png) |
 
 | AI 建议 | 设置 |
 | --- | --- |
-| ![AI](docs/screenshots/ai.png) | ![设置](docs/screenshots/settings.png) |
 
 ## 10. 扩展一个新清理能力
 

@@ -16,6 +16,7 @@
     "build": "pnpm build:ui && pnpm build:desktop",
     "start:web": "pnpm build:ui && tsx apps/web/src/main.ts",
     "start:desktop": "pnpm build:ui && node scripts/build-desktop.mjs && electron apps/desktop/dist/main.mjs",
+    "pretest": "pnpm build:ui",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
