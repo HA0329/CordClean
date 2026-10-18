@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  authorizeScheduler,
   clearEgress,
+  revokeScheduler,
+  runSchedulerNow,
+  refreshPlugins,
+  savePluginConfig,
+  setPluginEnabled,
   exportDiagnostics,
   fetchLogs,
   openLogDir,
@@ -47,6 +53,80 @@ const newExclude = ref('')
 const saving = ref(false)
 const importText = ref('')
 const importOpen = ref(false)
+const schedulerPlugin = computed(() => state.plugins.find((plugin) => plugin.id === 'scheduler'))
+const schedule = reactive({
+  enabled: false,
+  daily: false,
+  everyMinutes: 120,
+  atHour: 3,
+  atMinute: 0,
+  taskIds: [] as string[],
+  mode: 'scan' as 'scan' | 'clean',
+  authorizedHash: '',
+})
+
+watch(
+  () => schedulerPlugin.value?.config,
+  (config) => {
+    if (!config) return
+    Object.assign(schedule, {
+      enabled: config.enabled === true,
+      daily: config.daily === true,
+      everyMinutes: Number(config.everyMinutes ?? 120),
+      atHour: Number(config.atHour ?? 3),
+      atMinute: Number(config.atMinute ?? 0),
+      taskIds: Array.isArray(config.taskIds) ? [...config.taskIds] : [],
+      mode: config.mode === 'clean' ? 'clean' : 'scan',
+      authorizedHash: String(config.authorizedHash ?? ''),
+    })
+  },
+  { deep: true, immediate: true },
+)
+
+async function saveSchedule() {
+  if (!schedulerPlugin.value) {
+    ElMessage.warning('插件页没有找到「定时扫描」插件')
+    return
+  }
+  try {
+    if (!schedulerPlugin.value.enabled) await setPluginEnabled('scheduler', true)
+    await savePluginConfig('scheduler', { ...(schedulerPlugin.value.config ?? {}), ...schedule })
+    await refreshPlugins()
+    ElMessage.success('定时任务已保存')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function authorizeSchedule() {
+  try {
+    await authorizeScheduler({ ...schedule })
+    await refreshPlugins()
+    ElMessage.success('已授权自动清理（规则变化后需重新授权）')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function revokeSchedule() {
+  try {
+    await revokeScheduler()
+    await refreshPlugins()
+    ElMessage.success('已清除授权，改为仅通知')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function runScheduleNow() {
+  try {
+    await runSchedulerNow()
+    ElMessage.success('已触发一次，完成后会弹通知')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 const logsOpen = ref(false)
 const logLines = ref<string[]>([])
 const loadingLogs = ref(false)
@@ -312,6 +392,54 @@ async function doClearEgress() {
     </div>
 
     <div class="settings-grid">
+      <div class="cc-card schedule-card">
+        <div class="cc-card-title">
+          <h3>⏰ 定时任务</h3>
+          <span class="cc-faint">按间隔或每天固定时间扫描；自动清理需授权，规则一变授权失效</span>
+        </div>
+        <p v-if="!schedulerPlugin" class="cc-hint">没有找到「定时扫描」插件：请到插件页启用它。</p>
+        <template v-else>
+          <el-form label-position="left" label-width="120px" size="small" class="schedule-form">
+            <el-form-item label="启用"><el-switch v-model="schedule.enabled" /></el-form-item>
+            <el-form-item label="执行方式">
+              <el-radio-group v-model="schedule.daily">
+                <el-radio-button :value="false">按间隔</el-radio-button>
+                <el-radio-button :value="true">每天固定时间</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="!schedule.daily" label="间隔（分钟）">
+              <el-input-number v-model="schedule.everyMinutes" :min="15" :max="1440" :step="15" />
+            </el-form-item>
+            <el-form-item v-else label="每天时间">
+              <el-input-number v-model="schedule.atHour" :min="0" :max="23" />
+              <span class="time-sep">:</span>
+              <el-input-number v-model="schedule.atMinute" :min="0" :max="59" />
+            </el-form-item>
+            <el-form-item label="任务范围">
+              <el-select v-model="schedule.taskIds" multiple collapse-tags clearable placeholder="留空 = 全部任务" style="width: 100%">
+                <el-option v-for="task in state.tasks" :key="task.id" :label="task.name" :value="task.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="模式">
+              <el-radio-group v-model="schedule.mode">
+                <el-radio value="scan">只扫描并通知</el-radio>
+                <el-radio value="clean">自动清理安全项（需授权）</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="授权状态">
+              <span v-if="schedule.authorizedHash">已授权 · 指纹 {{ schedule.authorizedHash }}</span>
+              <span v-else class="cc-faint">未授权（自动清理会被跳过）</span>
+            </el-form-item>
+          </el-form>
+          <div class="schedule-actions">
+            <el-button type="primary" @click="saveSchedule">保存</el-button>
+            <el-button @click="runScheduleNow">立即运行</el-button>
+            <el-button type="warning" plain @click="authorizeSchedule">授权自动清理</el-button>
+            <el-button @click="revokeSchedule">清除授权</el-button>
+          </div>
+        </template>
+      </div>
+
       <div class="cc-card">
         <div class="cc-card-title"><h3>🧹 清理行为</h3><span class="cc-faint">删除方式与安全边界</span></div>
         <el-form label-position="left" label-width="170px" size="small">
@@ -550,4 +678,11 @@ async function doClearEgress() {
   font-weight: 550;
 }
 .log-view { max-height: 520px; overflow: auto; font-family: Consolas, monospace; font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; background: var(--cc-primary-soft); padding: 12px; border-radius: 10px; }
+</style>
+
+<style scoped>
+.schedule-card { grid-column: 1 / -1; }
+.schedule-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+.schedule-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.time-sep { margin: 0 6px; }
 </style>

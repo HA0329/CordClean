@@ -228,11 +228,6 @@ function categoryName(id: string) {
           <el-button size="small" :disabled="!plugin.enabled" @click="openConfig(plugin)">配置</el-button>
           <el-button size="small" @click="reload(plugin)">热重载</el-button>
           <el-button size="small" @click="openSource(plugin)">源码</el-button>
-          <template v-if="plugin.id === 'scheduler'">
-            <el-button size="small" @click="runScheduler">立即运行</el-button>
-            <el-button size="small" type="warning" plain @click="authorizeAutoClean(plugin)">授权自动清理</el-button>
-            <el-button size="small" @click="revokeAutoClean">仅通知</el-button>
-          </template>
           <el-button v-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">卸载</el-button>
           <el-button v-else size="small" type="primary" plain @click="install(plugin)">安装</el-button>
           <span class="cc-faint" style="margin-left: auto">{{ plugin.configurable ? '支持配置' : '无配置项' }}</span>

@@ -25,6 +25,10 @@ export interface SchedulerConfig {
   mode: 'scan' | 'clean'
   /** 授权时的规则指纹；为空表示未授权 */
   authorizedHash: string
+  /** true=每天固定时间；false=按间隔 */
+  daily: boolean
+  atHour: number
+  atMinute: number
 }
 
 export const Config: Schema<SchedulerConfig> = Schema.object({
@@ -33,6 +37,9 @@ export const Config: Schema<SchedulerConfig> = Schema.object({
   taskIds: Schema.array(Schema.string()).default([]).description('只处理这些任务 id（留空 = 全部）'),
   mode: Schema.union(['scan', 'clean']).default('scan').description('scan=只扫描通知；clean=授权后自动清理安全项'),
   authorizedHash: Schema.string().default('').description('规则指纹（由「授权自动清理」写入，不要手改）'),
+  daily: Schema.boolean().default(false).description('true=每天固定时间执行；false=按间隔'),
+  atHour: Schema.number().min(0).max(23).default(3).description('每天执行的小时（0-23）'),
+  atMinute: Schema.number().min(0).max(59).default(0).description('每天执行的分钟（0-59）'),
 })
 
 const CHECK_INTERVAL_MS = 30_000
@@ -62,6 +69,16 @@ export default defineCleanerPlugin<SchedulerConfig>({
   Config,
   setup(ctx, config) {
     let lastRun = 0
+    let lastDay = ''
+    const due = () => {
+      if (config.daily) {
+        const now = new Date()
+        const today = now.toISOString().slice(0, 10)
+        const passed = now.getHours() * 60 + now.getMinutes() >= config.atHour * 60 + config.atMinute
+        return passed && lastDay !== today
+      }
+      return Date.now() - lastRun >= Math.max(15, config.everyMinutes) * 60_000
+    }
 
     const notify = (payload: Record<string, unknown>) => {
       ;(ctx.emit as any)('scheduler/scan', { at: Date.now(), ...payload })
@@ -123,9 +140,9 @@ export default defineCleanerPlugin<SchedulerConfig>({
       const everyMs = Math.max(15, config.everyMinutes) * 60_000
       ;(ctx.logger as any).info('定时任务已启用：每 %d 分钟一次，模式 %s', Math.max(15, config.everyMinutes), config.mode)
       const timer = setInterval(() => {
-        const now = Date.now()
-        if (now - lastRun < everyMs) return
-        lastRun = now
+        if (!due()) return
+        lastRun = Date.now()
+        lastDay = new Date().toISOString().slice(0, 10)
         void runOnce()
       }, CHECK_INTERVAL_MS)
       return () => clearInterval(timer)
