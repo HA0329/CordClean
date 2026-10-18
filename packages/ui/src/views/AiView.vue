@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from "vue"
 import { ElMessage } from 'element-plus'
 import { RISK_META, formatBytes, formatTime } from '@cordclean/shared'
 import {
@@ -9,6 +9,7 @@ import {
   enableAiPlugin,
   fetchAiModels,
   probeAi,
+  refreshAiStatus,
   saveAiConfig,
   state,
 } from '../api/store.ts'
@@ -65,6 +66,16 @@ const form = reactive({
 const onlineAi = computed(() => (state.settings as any).privacy?.onlineAi !== false)
 const egress = ref<{ stats: { requests: number; bytes: number; tokens: number }; records: any[] } | null>(null)
 const egressOpen = ref(false)
+// 打开页面或插件启用后刷新 AI 状态，避免插件页启用后这里仍显示未启用
+onMounted(() => {
+  refreshAiStatus().catch(() => undefined)
+})
+watch(
+  () => state.plugins?.find((plugin) => plugin.id === 'ai')?.enabled,
+  (enabled) => {
+    if (enabled) refreshAiStatus().catch(() => undefined)
+  },
+)
 const available = computed(() => state.aiStatus.available)
 const configured = computed(() => state.aiStatus.configured)
 const analysis = computed(() => state.ai)
@@ -258,7 +269,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       </div>
 
       <!-- 接口设置 -->
-      <div class="cc-card">
+    <div class="cc-card">
         <div class="cc-card-title">
           <h3>⚙️ 接口设置</h3>
           <div class="cc-actions">
@@ -376,7 +387,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       </div>
 
       <!-- 分析输入 -->
-      <div class="cc-card">
+    <div class="cc-card">
         <div class="cc-card-title">
           <h3>🧠 补充说明（可选）</h3>
           <span class="cc-faint">例如：这台机器主要用于视频剪辑，希望保留素材缓存</span>
@@ -386,7 +397,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
 
       <!-- 分析结果 -->
       <template v-if="analysis">
-        <div class="cc-card">
+    <div class="cc-card">
           <div class="cc-card-title">
             <h3>📌 分析摘要</h3>
             <div class="meta-chips">
@@ -446,8 +457,21 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       <div v-else class="cc-card cc-empty">
         点击右上角「开始分析」，AI 会读取磁盘占用、清理任务分布与系统信息后给出建议。
       </div>
-    </template>
+    <el-dialog v-model="egressOpen" title="外发记录（不变量 8）" width="760px">
+      <p class="cc-faint">
+        累计：{{ egress?.stats.requests ?? 0 }} 次请求 / {{ egress?.stats.bytes ?? 0 }} 字节 / token {{ egress?.stats.tokens ?? 0 }}
+      </p>
+      <div v-for="(record, index) in egress?.records ?? []" :key="index" class="egress-item">
+        <div class="cc-faint">
+          {{ new Date(record.at).toLocaleString() }} · {{ record.purpose }} · {{ record.url }}
+          <span v-if="record.blocked" class="risk-risky">已拦截：{{ record.blocked }}</span>
+        </div>
+        <pre class="reasoning-text">{{ record.preview || '(无请求体)' }}</pre>
+      </div>
+      <p v-if="!(egress?.records?.length)" class="cc-empty">还没有外发记录：发起一次分析或测试连接后即可看到。</p>
+    </el-dialog>
 
+    </template>
     <div class="cc-card">
       <div class="cc-card-title">
         <h3>🔒 隐私说明</h3>

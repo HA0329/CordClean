@@ -391,7 +391,8 @@ html.sidebar-collapsed .sidebar .engine-title,
 html.sidebar-collapsed .sidebar .engine-sub,
 html.sidebar-collapsed .sidebar .link-btn,
 html.sidebar-collapsed .sidebar .version { display: none; }
-html.sidebar-collapsed .sidebar .collapse-btn { display: none; }
+html.sidebar-collapsed .sidebar .brand { flex-direction: column; gap: 6px; }
+html.sidebar-collapsed .sidebar .collapse-btn { display: inline-grid; }
 html.sidebar-collapsed .sidebar .nav-item { justify-content: center; padding: 10px 0; }
 html.sidebar-collapsed .sidebar .sidebar-footer { align-items: center; }
 html.sidebar-collapsed .sidebar .engine { justify-content: center; }
@@ -435,5 +436,4 @@ html.sidebar-collapsed .sidebar .engine { justify-content: center; }
 .cc-pill { height: 21px; padding: 0 9px; line-height: 1; flex: 0 0 auto; }
 
 /* 折叠态：侧边栏完全隐藏，浮动按钮出现 */
-.sidebar-open { display: none; }
-html.sidebar-collapsed .sidebar-open { display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: 6px; border-radius: 9px; border: 1px solid var(--cc-border); background: var(--cc-bg-soft); color: var(--cc-text); cursor: pointer; }
+

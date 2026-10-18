@@ -248,7 +248,7 @@ try {
   const railHash = await evaluate("location.hash")
   console.log(`✓ 折叠轨道：宽度=${railWidth}px，图标数=${icons}，点击后 hash=${railHash}`)
   await capture("rail")
-  await evaluate("document.querySelector('.sidebar-open')?.click()")
+  await evaluate("document.querySelector('.collapse-btn')?.click()")
   await new Promise((resolve) => setTimeout(resolve, 300))
   const expandedWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
   console.log(`✓ 侧边栏展开：宽度=${expandedWidth}px`)

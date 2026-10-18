@@ -54,20 +54,21 @@ function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
 }
 const bootError = ref<string>()
-// 侧边栏折叠（记忆）：直接操作 DOM 样式，保证折叠后不占位
-function applySidebar(collapsed: boolean) {
-  document.documentElement.classList.toggle('sidebar-collapsed', collapsed)
+// 侧边栏折叠（记忆）：折叠后为 64px 图标轨道，展开/收起按钮都在侧边栏内
+const collapsed = ref(false)
+function applySidebar(value: boolean) {
+  collapsed.value = value
+  document.documentElement.classList.toggle('sidebar-collapsed', value)
   const aside = document.querySelector('.sidebar') as HTMLElement | null
   if (aside) {
-    aside.style.width = collapsed ? '64px' : ''
-    aside.style.flexBasis = collapsed ? '64px' : ''
+    aside.style.width = value ? '64px' : ''
+    aside.style.flexBasis = value ? '64px' : ''
   }
 }
 function toggleSidebar() {
-  const next = !document.documentElement.classList.contains('sidebar-collapsed')
-  applySidebar(next)
+  applySidebar(!collapsed.value)
   try {
-    localStorage.setItem('cordclean.sidebar', next ? 'collapsed' : 'expanded')
+    localStorage.setItem('cordclean.sidebar', collapsed.value ? 'collapsed' : 'expanded')
   } catch {}
 }
 const loading = ref(true)
@@ -103,7 +104,7 @@ async function revealDataDir() {
 <template>
   <div class="shell">
     <aside class="sidebar">
-      <div class="brand"><button class="collapse-btn" @click="toggleSidebar" title="折叠侧边栏">«</button>
+      <div class="brand"><button class="collapse-btn" @click="toggleSidebar" :title="collapsed ? '展开侧边栏' : '折叠侧边栏'">{{ collapsed ? '»' : '«' }}</button>
         <div class="brand-mark">CC</div>
         <div class="brand-text">
           <strong>CordClean</strong>
@@ -142,7 +143,7 @@ async function revealDataDir() {
 
     <main class="main">
       <header class="topbar">
-        <div class="topbar-left">`n          <button class="sidebar-open" title="展开侧边栏" @click="toggleSidebar">☰</button>
+        <div class="topbar-left">`n
           <span class="cc-pill">{{ state.app?.platform === 'win32' ? 'Windows' : state.app?.platform }}</span>
           <span class="cc-pill" :class="{ 'status-active': state.app?.elevated }">
             {{ state.app?.elevated ? '管理员权限' : '普通用户' }}

@@ -6,6 +6,18 @@ import type { CleanItem } from '@cordclean/shared'
 import { cancelClean, cancelScan, state, startClean, startScan, openPath } from '../api/store.ts'
 
 const selectedTaskIds = ref<string[]>([])
+const selectionReady = ref(false)
+
+// 默认勾选安全项，避免"不勾选=全扫"的误解
+watch(
+  () => state.tasks,
+  (tasks) => {
+    if (selectionReady.value || !tasks.length) return
+    selectedTaskIds.value = tasks.filter((task) => task.defaultSelected).map((task) => task.id)
+    selectionReady.value = true
+  },
+  { immediate: true },
+)
 const filterTask = ref<string>('all')
 const search = ref('')
 const onlyCleanable = ref(true)
@@ -96,19 +108,17 @@ function selectPage(value: boolean) {
 
 async function runScan() {
   try {
-    // 过滤掉已不存在的任务（插件停用/卸载后残留的勾选），避免提交到内核后报错
     const ids = selectedTaskIds.value.filter((id) => state.tasks.some((task) => task.id === id))
-    if (selectedTaskIds.value.length && !ids.length) {
-      ElMessage.warning('所选任务已失效（插件可能已卸载），已改为扫描全部')
-      selectedTaskIds.value = []
+    if (!ids.length) {
+      ElMessage.warning('请先勾选要扫描的清理项（默认已勾选安全项）')
+      return
     }
-    await startScan(ids.length ? ids : undefined)
+    await startScan(ids)
     ElMessage.success('扫描完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
-
 async function runScanSingle(taskId: string) {
   selectedTaskIds.value = [taskId]
   try {
@@ -178,7 +188,7 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
     <div class="cc-card">
       <div class="cc-card-title">
         <h3>🧩 清理能力（{{ tasks.length }}）</h3>
-        <span class="cc-faint">可勾选以限定扫描范围；全不选表示扫描全部任务</span>
+        <span class="cc-faint">默认勾选安全项，可增减后扫描</span>
       </div>
       <el-checkbox-group v-model="selectedTaskIds" class="task-groups">
         <div v-for="group in tasksByCategory" :key="group.category" class="task-group">
