@@ -1,0 +1,7 @@
+feat(launcher): 完全隐藏改用 Node detach（本机 WSH 不可用），补齐桌面版控制台入口与脚本清单
+
+- WScript 在本机被禁用（no script engine for .vbs），隐藏模式改为 node launch.mjs --detach 自派生子进程（windowsHide）
+- 新增 启动-桌面版-显示控制台.bat
+- 删除 launch-hidden.vbs
+- README 增加启动脚本一览表
+- 实测：完全隐藏 -> 状态运行中 -> 关闭成功

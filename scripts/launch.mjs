@@ -4,6 +4,8 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import http from 'node:http'
 import path from 'node:path'
 
+import { fileURLToPath } from 'node:url'
+
 const args = process.argv.slice(2)
 const mode = args.includes('desktop') ? 'desktop' : 'web'
 const hidden = args.includes('--hidden')
@@ -16,6 +18,17 @@ const logFile = path.join(runDir, 'launch.log')
 const port = process.env.CORDCLEAN_PORT || '7801'
 const url = `http://127.0.0.1:${port}/`
 
+// --detach：再生成一个隐藏的自身，然后立刻退出（无窗口常驻）
+if (args.includes('--detach')) {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), mode, '--hidden'], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    cwd: root,
+  })
+  child.unref()
+  process.exit(0)
+}
 const log = (...m) => { if (!hidden) console.log(...m) }
 const fail = (m) => { console.error(m); process.exitCode = 1 }
 

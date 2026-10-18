@@ -1,5 +1,5 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-wscript "%~dp0scripts\launch-hidden.vbs"
+node "%~dp0scripts\launch.mjs" web --detach
 exit /b 0
