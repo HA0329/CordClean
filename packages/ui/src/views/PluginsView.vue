@@ -136,7 +136,7 @@ function categoryName(id: string) {
         </div>
 
         <div v-if="plugin.tasks.length" class="task-chips">
-          <span v-for="task in plugin.tasks" :key="task.id" class="chip">
+          <span v-for="task in plugin.tasks.slice(0, 6)" :key="task.id" class="chip">
             {{ task.name }}
             <em :style="{ color: RISK_META[task.risk].color }">{{ RISK_META[task.risk].name }}</em>
           </span>
@@ -208,7 +208,8 @@ function categoryName(id: string) {
   font-size: 14.5px;
 }
 
-.plugin-desc.clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }`n`n.plugin-desc {
+.plugin-desc.clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.plugin-desc {
   margin: 0;
   font-size: 12.5px;
   color: var(--cc-text-dim);
@@ -253,6 +254,7 @@ function categoryName(id: string) {
 }
 
 .plugin-actions {
+  margin-top: auto;
   display: flex;
   align-items: center;
   gap: 8px;

@@ -143,7 +143,7 @@ async function revealDataDir() {
 
     <main class="main">
       <header class="topbar">
-        <div class="topbar-left">`n
+        <div class="topbar-left">
           <span class="cc-pill">{{ state.app?.platform === 'win32' ? 'Windows' : state.app?.platform }}</span>
           <span class="cc-pill" :class="{ 'status-active': state.app?.elevated }">
             {{ state.app?.elevated ? '管理员权限' : '普通用户' }}
