@@ -1,5 +1,0 @@
-fix(ui): 退出按钮改用独立样式类，避免 E2E 误点导致深色主题截图变成退出确认框
-
-- 右上角电源按钮 class 由 theme-toggle 改为 quit-btn，样式复用
-- 重新生成深色主题截图，确认是真正的深色界面
-- 同步更新 GitHub 包的 assets/screenshots/dark-theme.png 与 plugins.png，重建 zip
