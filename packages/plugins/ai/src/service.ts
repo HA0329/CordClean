@@ -1,3 +1,5 @@
+import { RULE_TARGET_TYPES, SUPPORTED_RULE_TYPES } from '@cordclean/shared'
+import type { AiRuleSuggestion } from '@cordclean/shared'
 /**
  * AI 服务实现：把「本机画像」变成「清理建议」。
  *
@@ -379,7 +381,7 @@ export class AiService extends Service implements AiLike {
     const key = this.requireKey()
     const config = this.rawConfig
     const profile = await this.buildProfile(options.extraContext)
-    const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext))
+    const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext) + RULE_HINT)
     this.gate('analyze', request.url, request.body)
 
     const result = await requestJson(request.url, {
@@ -413,6 +415,7 @@ export class AiService extends Service implements AiLike {
     }
 
     const suggestions = normalizeSuggestions(data?.suggestions)
+    const ruleSuggestions = normalizeRuleSuggestions(data?.rules)
     const analysis: AiAnalysis = {
       model: config.model,
       createdAt: Date.now(),
@@ -421,6 +424,7 @@ export class AiService extends Service implements AiLike {
         ? data.observations.slice(0, 5).map((item: unknown) => String(item).slice(0, 200))
         : [],
       suggestions,
+      ruleSuggestions,
       reasoning: parsed.reasoning ? parsed.reasoning.slice(0, REASONING_LIMIT) : undefined,
       usage: parsed.usage,
       latencyMs: result.latencyMs,
@@ -444,4 +448,45 @@ export class AiService extends Service implements AiLike {
 /** 从插件配置构造服务（便于测试与热重载） */
 export function createAiService(ctx: Context, raw: Partial<AiConfig> | undefined): AiService {
   return new AiService(ctx, normalizeConfig(raw))
+}
+
+/** 提示模型额外给出新规则建议（可选字段） */
+const RULE_HINT =
+  '\n\n如果发现有价值、但当前规则库未覆盖的可重建缓存，请另外输出 rules 数组（最多 5 条）：' +
+  '[{"name":"名称","category":"分类key","risk":"safe|caution|risky","target":{"type":"clear_dir","path":"%LOCALAPPDATA%/某软件/Cache"},"reason":"依据"}]；没有则输出 "rules": []。' +
+  '只建议可重建的缓存，不得建议删除用户数据。'
+
+/** 把 AI 给出的 rules 规范化成可校验的建议（最多 5 条） */
+function normalizeRuleSuggestions(input: unknown): AiRuleSuggestion[] {
+  if (!Array.isArray(input)) return []
+  const output: AiRuleSuggestion[] = []
+  for (const item of input.slice(0, 5)) {
+    if (!item || typeof item !== 'object') continue
+    const target = (item as any).target
+    if (!target || typeof target !== 'object') continue
+    if (!RULE_TARGET_TYPES.includes(target.type) || !SUPPORTED_RULE_TYPES.includes(target.type)) continue
+    if (!target.path && !target.paths?.length && !target.base && !target.bases?.length) continue
+    const risk = (item as any).risk === 'risky' || (item as any).risk === 'caution' ? (item as any).risk : 'safe'
+    output.push({
+      name: String((item as any).name ?? 'AI 建议规则').slice(0, 60),
+      category: String((item as any).category ?? 'ai-custom').slice(0, 40),
+      categoryLabel: String((item as any).categoryLabel ?? (item as any).category ?? 'AI 建议').slice(0, 40),
+      risk,
+      target: {
+        type: target.type,
+        ...(target.path ? { path: String(target.path) } : {}),
+        ...(Array.isArray(target.paths) ? { paths: target.paths.map(String) } : {}),
+        ...(target.base ? { base: String(target.base) } : {}),
+        ...(Array.isArray(target.bases) ? { bases: target.bases.map(String) } : {}),
+        ...(target.pattern ? { pattern: String(target.pattern) } : {}),
+        ...(Array.isArray(target.names) ? { names: target.names.map(String) } : {}),
+        ...(target.action === 'clear' || target.action === 'delete' ? { action: target.action } : {}),
+        ...(target.olderThanDays ? { olderThanDays: Number(target.olderThanDays) } : {}),
+        ...(target.minSizeMb ? { minSizeMb: Number(target.minSizeMb) } : {}),
+        ...(target.maxDepth ? { maxDepth: Number(target.maxDepth) } : {}),
+      },
+      reason: String((item as any).reason ?? '').slice(0, 160),
+    })
+  }
+  return output
 }

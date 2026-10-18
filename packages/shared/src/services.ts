@@ -97,6 +97,8 @@ export interface Settings {
     includeDeep: boolean
     /** 是否加载用户自定义规则 */
     includeCustom: boolean
+    /** 用户/AI 自定义规则（只有经过 importRules 管线的才允许写入） */
+    custom: Array<Record<string, any>>
   }
   /** 分析范围 */
   analysis: {

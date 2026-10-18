@@ -314,7 +314,29 @@ export default defineCleanerPlugin<RulePackConfig>({
     const settings = ctx.settings.get()
     if (!CATALOG?.categories?.length) return
 
-    const categories = CATALOG.categories.filter((category) => {
+    // 用户/AI 自定义规则（只有经 importRules 管线通过后才会写入 settings.rules.custom）
+    const customCategories: CatalogCategory[] = []
+    if (settings.rules.includeCustom) {
+      const groups = new Map<string, CatalogCategory>()
+      for (const rule of settings.rules.custom as unknown as CleanRule[]) {
+        if (!rule?.target?.type || !rule.id) continue
+        const key = rule.category || 'ai-custom'
+        let group = groups.get(key)
+        if (!group) {
+          group = {
+            key,
+            label: rule.categoryLabel ?? key,
+            risk: rule.risk ?? 'caution',
+            categoryId: (rule.categoryId as CategoryId) ?? 'apps',
+            rules: [],
+          }
+          groups.set(key, group)
+          customCategories.push(group)
+        }
+        group.rules.push(rule as unknown as CatalogRule)
+      }
+    }
+    const categories = [...CATALOG.categories, ...customCategories].filter((category) => {
       if (config.only.length && !config.only.includes(category.key)) return false
       if (category.risk === 'risky' && !settings.rules.includeRisky) return false
       return true

@@ -8,6 +8,7 @@ import { createApp, type App } from '@cordclean/core'
 import { validateRules } from '@cordclean/shared'
 import type { CleanRule } from '@cordclean/shared'
 import { expandTemplate, matchSegment, matchSegments, ruleRoots } from '@cordclean/plugin-rule-pack'
+import rulePack from '@cordclean/plugin-rule-pack'
 import { createSandbox, manifestOf } from './helpers.ts'
 
 const sandbox = createSandbox()
@@ -305,5 +306,35 @@ describe('唯一入库管线（不变量 7）', () => {
     const result = app.ctx.rules.importRules(app.ctx, [rule({ id: 'dup' })], () => [sandbox.root])
     expect(result.accepted).toHaveLength(0)
     expect(result.rejected[0].ruleId).toBe('dup')
+  })
+})
+
+describe('自定义规则（AI 建议入库后）', () => {
+  it('settings.rules.custom 的规则会进入规则注册表并生成任务', async () => {
+    const app = await createApp({
+      dataDir: path.join(sandbox.dataDir, 'custom-rules'),
+      logger: false,
+      manifest: manifestOf([{ id: 'rule-pack', plugin: rulePack }]),
+      settingsOverrides: {
+        rules: {
+          custom: [
+            {
+              id: 'custom-test-1',
+              category: 'custom-test',
+              categoryLabel: '自定义测试',
+              categoryId: 'apps',
+              name: '自定义缓存',
+              risk: 'safe',
+              source: 'ai',
+              version: 1,
+              target: { type: 'clear_dir', path: path.join(sandbox.root, 'custom-cache') },
+            },
+          ],
+        },
+      },
+    })
+    apps.push(app)
+    expect(app.ctx.rules.get('custom-test-1')).toBeDefined()
+    expect(app.ctx.cleaner.list().some((task) => task.id === 'rule:custom-test')).toBe(true)
   })
 })

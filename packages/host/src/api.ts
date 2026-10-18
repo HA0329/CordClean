@@ -168,6 +168,31 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'ai/models': async ({ refresh }) => requireAi().models({ refresh }),
     'ai/probe': () => requireAi().probe(),
+  'ai/apply-rule': async ({ suggestion }) => {
+    const rule: any = {
+      id: 'ai-' + Date.now().toString(36),
+      category: suggestion.category || 'ai-custom',
+      categoryLabel: suggestion.categoryLabel ?? suggestion.category ?? 'AI 建议',
+      categoryId: 'apps',
+      name: suggestion.name,
+      risk: suggestion.risk,
+      source: 'ai',
+      version: 1,
+      target: suggestion.target,
+      note: suggestion.reason,
+    }
+    const errors = ctx.rules.validate([rule]).filter((issue) => issue.level === 'error')
+    if (errors.length) return { applied: false as const, reason: errors[0].message }
+    const roots = [rule.target.path, ...(rule.target.paths ?? []), rule.target.base, ...(rule.target.bases ?? [])].filter(Boolean).map(String)
+    const clear = rule.target.type === 'clear_dir' || (rule.target.type === 'glob_dirs' && rule.target.action !== 'delete')
+    for (const root of roots) {
+      if (!clear && ctx.pathPolicy.isProtected(root)) return { applied: false as const, reason: '目标位于受保护目录：' + root }
+    }
+    const current = ctx.settings.get().rules.custom ?? []
+    ctx.settings.patch({ rules: { custom: [...current, rule] } })
+    await ctx.plugins.reload('rule-pack').catch(() => undefined)
+    return { applied: true as const, ruleId: rule.id }
+  },
   'ai/egress': async ({ limit }) => ({
     stats: ctx.egress.stats(),
     records: ctx.egress.preview().slice(0, Math.max(1, Math.min(20, limit ?? 5))),

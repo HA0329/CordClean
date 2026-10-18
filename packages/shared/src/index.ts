@@ -1,3 +1,4 @@
+import type { RuleTarget } from './rules.ts'
 /**
  * @cordclean/shared —— 与宿主环境无关的公共契约层。
  *
@@ -276,11 +277,22 @@ export interface AiSuggestion {
 }
 
 /** AI 分析结果 */
+export interface AiRuleSuggestion {
+  name: string
+  category: string
+  categoryLabel?: string
+  risk: RiskLevel
+  target: RuleTarget
+  reason?: string
+}
+
 export interface AiAnalysis {
   model: string
   createdAt: number
   summary: string
   suggestions: AiSuggestion[]
+  /** AI 提出的新清理规则（必须经入库管线与用户确认） */
+  ruleSuggestions?: AiRuleSuggestion[]
   /** 模型附带的其他观察 */
   observations: string[]
   /** 思维链（若模型返回 reasoning_content / thinking_block） */
