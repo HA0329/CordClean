@@ -54,15 +54,22 @@ function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
 }
 const bootError = ref<string>()
-// 侧边栏折叠（记忆）
-const collapsed = ref(false)
-try {
-  collapsed.value = localStorage.getItem('cordclean.sidebar') === 'collapsed'
-} catch {}
+// 侧边栏折叠（记忆）：直接操作 DOM 样式，保证折叠后不占位
+function applySidebar(collapsed: boolean) {
+  document.documentElement.classList.toggle('sidebar-collapsed', collapsed)
+  const aside = document.querySelector('.sidebar') as HTMLElement | null
+  if (aside) {
+    aside.style.width = collapsed ? '0px' : ''
+    aside.style.flexBasis = collapsed ? '0px' : ''
+    aside.style.padding = collapsed ? '0' : ''
+    aside.style.overflow = collapsed ? 'hidden' : ''
+  }
+}
 function toggleSidebar() {
-  collapsed.value = !collapsed.value
+  const next = !document.documentElement.classList.contains('sidebar-collapsed')
+  applySidebar(next)
   try {
-    localStorage.setItem('cordclean.sidebar', collapsed.value ? 'collapsed' : 'expanded')
+    localStorage.setItem('cordclean.sidebar', next ? 'collapsed' : 'expanded')
   } catch {}
 }
 const loading = ref(true)
@@ -79,7 +86,12 @@ async function bootstrap() {
   }
 }
 
-onMounted(bootstrap)
+onMounted(() => {
+  try {
+    applySidebar(localStorage.getItem('cordclean.sidebar') === 'collapsed')
+  } catch {}
+  bootstrap()
+})
 
 async function revealDataDir() {
   try {
@@ -92,8 +104,8 @@ async function revealDataDir() {
 
 <template>
   <div class="shell">
-    <aside class="sidebar" :class="{ collapsed }">
-      <div class="brand"><button class="collapse-btn" :title="collapsed ? '展开侧边栏' : '折叠侧边栏'" @click="toggleSidebar">{{ collapsed ? '»' : '«' }}</button>
+    <aside class="sidebar">
+      <div class="brand"><button class="collapse-btn" @click="toggleSidebar" title="折叠侧边栏">«</button>
         <div class="brand-mark">CC</div>
         <div class="brand-text">
           <strong>CordClean</strong>
@@ -129,9 +141,10 @@ async function revealDataDir() {
       </div>
     </aside>
 
+
     <main class="main">
       <header class="topbar">
-        <div class="topbar-left">
+        <div class="topbar-left">`n          <button class="sidebar-open" title="展开侧边栏" @click="toggleSidebar">☰</button>
           <span class="cc-pill">{{ state.app?.platform === 'win32' ? 'Windows' : state.app?.platform }}</span>
           <span class="cc-pill" :class="{ 'status-active': state.app?.elevated }">
             {{ state.app?.elevated ? '管理员权限' : '普通用户' }}
@@ -353,4 +366,33 @@ async function revealDataDir() {
   justify-content: center;
   gap: 14px;
 }
+</style>
+
+<style scoped>
+/* 折叠后彻底让出空间：宽度归零，仅保留浮动展开按钮 */
+.sidebar.collapsed {
+  width: 0;
+  flex-basis: 0;
+  padding: 0;
+  border-right: none;
+  overflow: hidden;
+}
+.sidebar-open {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 30;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--cc-border-strong);
+  background: var(--cc-panel-solid);
+  color: var(--cc-text);
+  cursor: pointer;
+  box-shadow: var(--cc-shadow);
+  font-size: 16px;
+}
+.sidebar-open:hover { border-color: var(--cc-primary); color: var(--cc-primary); }
 </style>

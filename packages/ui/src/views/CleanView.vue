@@ -96,7 +96,13 @@ function selectPage(value: boolean) {
 
 async function runScan() {
   try {
-    await startScan(selectedTaskIds.value.length ? selectedTaskIds.value : undefined)
+    // 过滤掉已不存在的任务（插件停用/卸载后残留的勾选），避免提交到内核后报错
+    const ids = selectedTaskIds.value.filter((id) => state.tasks.some((task) => task.id === id))
+    if (selectedTaskIds.value.length && !ids.length) {
+      ElMessage.warning('所选任务已失效（插件可能已卸载），已改为扫描全部')
+      selectedTaskIds.value = []
+    }
+    await startScan(ids.length ? ids : undefined)
     ElMessage.success('扫描完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))

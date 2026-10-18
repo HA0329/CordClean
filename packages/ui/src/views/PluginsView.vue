@@ -125,7 +125,7 @@ function categoryName(id: string) {
         </div>
 
         <p class="plugin-desc" :class="{ clamped: !expanded[plugin.id] }">{{ plugin.description }}</p>
-        <button v-if="plugin.description && plugin.description.length > 46" class="desc-toggle" @click="toggleExpanded(plugin.id)">
+        <button v-if="plugin.description" class="desc-toggle" @click="toggleExpanded(plugin.id)">
           {{ expanded[plugin.id] ? '收起' : '展开' }}
         </button>
 
@@ -208,7 +208,7 @@ function categoryName(id: string) {
   font-size: 14.5px;
 }
 
-.plugin-desc {
+.plugin-desc.clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }`n`n.plugin-desc {
   margin: 0;
   font-size: 12.5px;
   color: var(--cc-text-dim);

@@ -235,6 +235,14 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 300))
   const themeBack = await evaluate("document.documentElement.classList.contains('dark')")
   console.log(`✓ 主题切回：${themeBack ? 'dark' : 'light'}`)
+  // 侧边栏折叠：宽度应归零，并出现浮动展开按钮
+  await evaluate("document.querySelector('.collapse-btn')?.click()")
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  const sidebarWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
+  const reopen = await evaluate("!!document.querySelector('.sidebar-open')")
+  console.log(`✓ 侧边栏折叠：宽度=${sidebarWidth}px，浮动展开按钮=${reopen ? '有' : '无'}`)
+  await evaluate("document.querySelector('.sidebar-open')?.click()")
+  await new Promise((resolve) => setTimeout(resolve, 300))
   console.log('\n✅ 界面端到端检查通过：6 个页面渲染正常、扫描全链路成功、无 JS 异常')
     shutdown(0)
   }
