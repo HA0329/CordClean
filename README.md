@@ -130,39 +130,63 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 | `registry` | 注册表问题 | 高风险 | 无效卸载项 / App Paths；删除前导出 `.reg` |
 | `ai` | —（提供 `ctx.ai` 服务） | — | DeepSeek 等 OpenAI 兼容接口 |
 
-## 7. 安全设计（三层防护）
+## 7. 安全设计（四层防护）
 
 1. **路径策略**（`packages/core/src/services/path-policy.ts`）
    - 保护根：Windows、Program Files、ProgramData、用户桌面/文档/图片/视频/音乐/下载、`AppData\Roaming`、恢复分区等；
    - 名称黑名单：`pagefile.sys`、`NTUSER.DAT` 等；
    - **辖区机制**：插件必须 `addRoot()` 声明自己的清理范围，未声明的路径一律拒绝；
-   - 拒绝驱动器根目录、拒绝「包含受保护目录」的祖先目录。
-2. **隔离区**（`packages/core/src/services/quarantine.ts`）
+   - 拒绝驱动器根目录、拒绝「包含受保护目录」的祖先目录；
+   - 路径规范化：去掉 Windows 会静默忽略的尾部 `.` 与空格，并把 **8.3 短名**（`PROGRA~1`）一并纳入保护，
+     同时剥离 `\\?\` 长路径前缀，避免写法差异造成绕过；
+   - 保护目录用**前缀树**匹配，单次校验约 10 µs。
+2. **链接祖先检查**（`packages/utils/src/fs-ops.ts` + 清理引擎）
+   - 删除前从父目录向上检查到辖区根，**任一祖先为符号链接/联接点即拒绝**，
+     杜绝「辖区内的 junction 把删除引到辖区外」。
+3. **隔离区**（`packages/core/src/services/quarantine.ts`）
    - 谨慎/高风险项先移动到 `%LOCALAPPDATA%\CordClean\quarantine\<session>\`，记录 `manifest.jsonl`，支持一键恢复；
    - 容量与文件数上限、可配置保留天数。
-3. **注册表备份**（`startup` / `registry` / `leftovers` 插件）
+4. **注册表备份**（`startup` / `registry` / `leftovers` 插件）
    - 删除键/值之前先 `reg export` 到 `数据目录\backups\*.reg`，导出失败则放弃删除。
 
-此外：**不跟随符号链接与 NTFS 联接点**（`walk` 默认跳过，删除链接只删链接本身）；长路径统一 `\\?\` 前缀；文件被占用时记录失败而不是中断整个任务。
+此外：`walk` 默认不跟随链接；删除链接只删链接本身；长路径统一 `\\?\` 前缀；
+文件被占用时记录失败而不是中断整个任务；同一清理项重复提交只执行一次。
 
 ## 8. 测试与性能
 
 ```bash
-pnpm test    # 26 个用例：路径策略 / 清理引擎 / 插件管理 / 隔离区 / AI 插件
-pnpm bench   # 输出 docs/benchmark.md
+pnpm test          # 109 个用例 / 13 个文件
+pnpm bench         # 性能基准 → docs/benchmark.md
+pnpm smoke         # 内核冒烟
+pnpm exec tsx scripts/audit-plugins.ts   # 13 个插件的真实扫描审计（只读）
+pnpm exec tsx scripts/dryrun-clean.ts    # 真实环境预演清理验证（不删除文件）
+node scripts/e2e-ui.mjs                  # Electron 界面端到端点检（CDP）
 ```
 
-实测（Windows 11 / Ryzen 5 5600 / Node 24.19）：
+测试覆盖：
+
+| 测试文件 | 关注点 |
+| --- | --- |
+| `path-policy` / `path-attack` | 保护目录、辖区边界、14 种路径写法绕过 |
+| `fs-safety` | 联接点/符号链接、只读文件、长路径、中文/emoji 文件名 |
+| `engine` / `engine-robust` | 扫描/清理、取消、截断、去重、失败归因、自定义清理 |
+| `plugins` / `plugins-robust` | 启停、热重载、配置校验、异常隔离、持久化 |
+| `quarantine` / `state` | 隔离与恢复、设置边界、历史健壮性、反复启停不泄漏 |
+| `rpc` | 鉴权、错误码、超大请求体、目录穿越、WebSocket、事件广播 |
+| `ai` / `ai-robust` / `plugin-rules` | AI 异常路径、隐私约束、回收站 `$I` 解析、注册表判定规则 |
+
+实测（Windows 11 / Ryzen 5 5600 / Node 24.19，详见 [性能基准](docs/benchmark.md)）：
 
 | 指标 | 数值 |
 | --- | --- |
-| 内核启动（仅服务） | 3.9 ms |
-| 完整启动（13 插件 / 15 任务） | 17.8 ms |
-| 扫描吞吐（4000 文件 / 40 目录） | 7284 文件/秒 |
-| 删除吞吐 | 3539 文件/秒 |
-| 隔离区写入 | 1.35 ms/文件 |
-| SHA-256 吞吐 | 383 MB/秒 |
-| 全量扫描本机（1721 项 / 2.39 GB 可释放） | 7.3 s |
+| 内核启动（仅服务） | 4.4 ms |
+| 完整启动（13 插件 / 15 任务） | 18 ms |
+| 扫描吞吐（4000 文件 / 40 目录） | **33 551 文件/秒**（0.12 s） |
+| 删除吞吐 | **6 616 文件/秒** |
+| 隔离区写入 | 1.38 ms/文件 |
+| SHA-256 吞吐 | 384 MB/秒 |
+| 全量扫描本机（≈1800 项 / 2.2 GB 可释放） | 6.9 s |
+| 单次路径校验 | 10.4 µs |
 
 ## 9. 界面
 
@@ -192,6 +216,7 @@ pnpm bench   # 输出 docs/benchmark.md
 - [架构设计](docs/architecture.md) —— 论文第 3、4 章可直接引用
 - [插件开发规范](docs/plugin-authoring.md)
 - [论文写作大纲](docs/thesis-outline.md) —— 章节结构、图表清单、数据引用
+- [缺陷记录](docs/defect-log.md) —— 自测发现并修复的 11 个问题（含 1 个高危越界删除）
 - [性能基准](docs/benchmark.md)
 
 ## 12. 已知限制
@@ -200,4 +225,6 @@ pnpm bench   # 输出 docs/benchmark.md
 - 未做代码签名与安装包（可用 electron-builder 补充）；
 - 计划任务类启动项只报告、不支持在本工具内禁用；
 - `Program Files` 下的残留目录只提示、不允许删除（保守策略）；
+- 扫描结果不持久化：重启应用后需要重新扫描才能继续清理；
+- 8.3 短名解析依赖 `cmd.exe`，失败时静默降级（少一层保护，不影响主流程）。
 - AI 插件依赖外网 API，离线时不可用。

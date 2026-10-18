@@ -229,6 +229,8 @@ declare module 'cordis' {
       roots(): string[]
       /** 判断某目录是否包含受保护子目录（删除该目录前必须检查） */
       containsProtected(path: string): boolean
+      /** 找出路径命中的允许根（用于删除前检查链接祖先） */
+      rootOf(path: string): string | undefined
       addRoot(path: string, source?: string): () => void
       addUserRoot(path: string): () => void
     }
@@ -260,7 +262,8 @@ export interface CleanerPluginModule<TConfig = any> {
   tasks?: string[]
   Config?: any
   inject?: string[]
-  apply(ctx: Context, config: TConfig): void
+  /** 返回值会交给 Cordis 处理：返回 Promise 时其拒绝会使插件进入 error 状态 */
+  apply(ctx: Context, config: TConfig): void | Promise<void>
 }
 
 /** 定义清理插件的参数 */
@@ -273,8 +276,8 @@ export interface CleanerPluginOptions<TConfig = any> {
   inject?: string[]
   /** Schemastery 配置模式，用于配置校验与「设置」界面自动生成 */
   Config?: any
-  /** 插件主体：在这里注册清理任务、声明清理辖区 */
-  setup(ctx: Context, config: TConfig): void
+  /** 插件主体：在这里注册清理任务、声明清理辖区（允许 async，异常会被内核捕获为 error 状态） */
+  setup(ctx: Context, config: TConfig): void | Promise<void>
 }
 
 /**
@@ -300,7 +303,9 @@ export function defineCleanerPlugin<TConfig = any>(options: CleanerPluginOptions
     Config: options.Config,
     inject: options.inject ?? ['cleaner'],
     apply(ctx, config) {
-      options.setup(ctx, config)
+      // 必须把 setup 的返回值交还 Cordis：异步 setup 的拒绝会转变为插件启动失败，
+      // 否则会变成「悬空的 Promise 拒绝」，在 Node 中可能直接终止进程。
+      return options.setup(ctx, config)
     },
   }
   return plugin

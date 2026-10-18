@@ -17,6 +17,39 @@ export interface DeleteResult {
   linkOnly: boolean
 }
 
+/**
+ * 检查目标路径的祖先目录中是否含有符号链接 / NTFS 联接点。
+ *
+ * 这是「路径策略」之外的第二道防线：即使某个路径字符串通过了白名单校验，
+ * 只要它的祖先目录是链接（例如 `%TEMP%\link → C:\Windows`），
+ * 真实删除就会穿透到链接目标，造成越界删除。
+ *
+ * @param target 目标文件/目录
+ * @param stopAt 停止上溯的边界（通常是命中的允许根目录，含自身）
+ * @returns 命中的链接路径；未发现返回 undefined
+ */
+export async function findLinkAncestor(target: string, stopAt?: string): Promise<string | undefined> {
+  const boundary = stopAt ? normalizePath(stopAt).toLowerCase() : undefined
+  let current = normalizePath(target)
+  // 从父目录开始检查（目标自身由 deletePath 以「只删链接」方式处理）
+  current = current.slice(0, current.lastIndexOf('\\'))
+  let guard = 0
+  while (current && guard++ < 64) {
+    const lower = current.toLowerCase()
+    if (boundary && (lower === boundary || !lower.startsWith(boundary + '\\'))) break
+    try {
+      const stat = await fs.lstat(toLongPath(current))
+      if (stat.isSymbolicLink()) return current
+    } catch {
+      // 不存在或不可访问：继续向上检查
+    }
+    const index = current.lastIndexOf('\\')
+    if (index <= 2) break
+    current = current.slice(0, index)
+  }
+  return undefined
+}
+
 /** 统计路径占用（文件直接返回大小；目录递归累加） */
 export async function measurePath(target: string): Promise<number> {
   const long = toLongPath(target)

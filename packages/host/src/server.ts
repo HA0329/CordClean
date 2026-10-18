@@ -61,21 +61,37 @@ const EVENT_BRIDGE: Array<[any, ServerEvent]> = [
   ['system/log', 'log'],
 ]
 
-/** 读取请求体（限制 2MB） */
-function readBody(req: IncomingMessage): Promise<string> {
+/** 带状态码的 HTTP 错误 */
+class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message)
+  }
+}
+
+/**
+ * 读取请求体（默认上限 2MB）。
+ * 超限时不销毁连接，而是排空数据后返回 413，让客户端能正常收到错误响应。
+ */
+function readBody(req: IncomingMessage, limit = 2 * 1024 * 1024): Promise<string> {
   return new Promise((resolve, reject) => {
     let size = 0
+    let overflow = false
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => {
+      if (overflow) return
       size += chunk.length
-      if (size > 2 * 1024 * 1024) {
-        reject(new Error('请求体过大'))
-        req.destroy()
+      if (size > limit) {
+        // 丢弃已缓存的数据并继续排空，避免 TCP 连接被重置
+        overflow = true
+        chunks.length = 0
         return
       }
       chunks.push(chunk)
     })
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('end', () => {
+      if (overflow) reject(new HttpError(413, `请求体过大（上限 ${Math.round(limit / 1024)} KB）`))
+      else resolve(Buffer.concat(chunks).toString('utf8'))
+    })
     req.on('error', reject)
   })
 }
@@ -135,8 +151,10 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     let pathname = decodeURIComponent(url.pathname)
     if (pathname === '/') pathname = '/index.html'
     // 防目录穿越
+    const base = path.normalize(staticDir)
     const resolved = path.normalize(path.join(staticDir, pathname))
-    if (!resolved.startsWith(path.normalize(staticDir))) {
+    // 必须以 base + 分隔符开头（或等于 base），避免 `C:\ui-evil` 被 `C:\ui` 前缀误判
+    if (resolved !== base && !resolved.startsWith(base.endsWith(path.sep) ? base : base + path.sep)) {
       res.writeHead(403).end('Forbidden')
       return
     }
@@ -192,7 +210,9 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify(response))
         } catch (error) {
-          res.writeHead(400).end(JSON.stringify({ error: String(error) }))
+          const status = error instanceof HttpError ? error.status : 400
+          res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: String(error instanceof Error ? error.message : error) }))
         }
         return
       }

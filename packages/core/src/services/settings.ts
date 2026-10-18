@@ -56,7 +56,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-/** 深合并（数组整体替换） */
+/** 深拷贝（避免共享默认值对象导致「一次校正污染全局」） */
+export function cloneSettings<T>(value: T): T {
+  return structuredClone(value)
+}
+
+/** 深合并（数组整体替换）。返回的对象与入参不共享嵌套对象。 */
 export function deepMerge<T>(base: T, patch: unknown): T {
   if (!isPlainObject(base) || !isPlainObject(patch)) return (patch === undefined ? base : (patch as T))
   const result: Record<string, unknown> = { ...(base as Record<string, unknown>) }
@@ -104,7 +109,9 @@ export class SettingsService extends Service implements SettingsLike {
         stored = {}
       }
     }
-    const merged = deepMerge(deepMerge(DEFAULT_SETTINGS, stored), overrides ?? {})
+    // 从默认值的深拷贝出发：sanitize() 会就地修正数值，若直接共享 DEFAULT_SETTINGS
+    // 会把「本次运行的校正结果」写进模块级默认对象，污染后续所有实例。
+    const merged = deepMerge(deepMerge(cloneSettings(DEFAULT_SETTINGS), stored), overrides ?? {})
     return this.sanitize(merged)
   }
 

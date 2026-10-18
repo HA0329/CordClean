@@ -11,9 +11,34 @@ import { win32 } from 'node:path'
 /** 统一为反斜杠、去除多余分隔符与结尾分隔符 */
 export function normalizePath(input: string): string {
   let path = input.trim().replace(/\//g, '\\').replace(/\\{2,}/g, '\\')
+  // 去掉 Win32 长路径前缀：`\\?\C:\x` → `C:\x`，`\\?\UNC\srv\sh` → `\\srv\sh`
+  if (path.startsWith('\\\\?\\UNC\\')) path = '\\\\' + path.slice(8)
+  else if (path.startsWith('\\\\?\\')) path = path.slice(4)
   path = win32.normalize(path)
   if (path.length > 3 && path.endsWith('\\')) path = path.slice(0, -1)
   return path
+}
+
+/**
+ * 清理路径中的「Windows 会静默修正、但字符串比较不会」的写法：
+ * 每段末尾的 `.` 与空格会被文件系统忽略（`C:\Windows\System32.` 实际指向 `System32`）。
+ * 返回规范化后的路径；`..` 已被 win32.normalize 解析掉。
+ */
+export function canonicalizePath(input: string): string {
+  const normalized = normalizePath(input)
+  const prefixMatch = /^([a-zA-Z]:\\|\\\\)/.exec(normalized)
+  const prefix = prefixMatch ? prefixMatch[1] : ''
+  const rest = normalized.slice(prefix.length)
+  const segments = rest
+    .split('\\')
+    .filter((segment) => segment.length > 0)
+    .map((segment) => segment.replace(/[. ]+$/, '') || segment)
+  return prefix + segments.join('\\')
+}
+
+/** 是否含有 `..` 段（规范化之后仍存在说明是异常输入） */
+export function hasParentSegment(input: string): boolean {
+  return input.split(/[\\/]/).some((segment) => segment === '..')
 }
 
 /** 用于比较的路径键：规范化 + 小写 */

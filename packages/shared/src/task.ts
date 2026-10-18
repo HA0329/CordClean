@@ -60,6 +60,10 @@ export interface PathPolicyLike {
   isProtected(path: string): boolean
   /** 当前允许的清理根目录（用于提示） */
   roots(): string[]
+  /** 目录是否包含受保护子目录（删除目录前必须为 false） */
+  containsProtected(path: string): boolean
+  /** 路径命中的允许根（用于删除前检查链接祖先） */
+  rootOf(path: string): string | undefined
 }
 
 /** 扫描上下文 */

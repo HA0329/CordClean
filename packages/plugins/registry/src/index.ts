@@ -73,7 +73,7 @@ export interface RegistryConfig {
 const Config = Schema.object({
   checkUninstall: Schema.boolean()
     .default(true)
-    .description('检查无效的卸载项（既没有 DisplayName 也没有 UninstallString 的垃圾键）'),
+    .description('检查完全空、或没有任何有效标识的卸载项（保守判定，避免误删系统组件登记）'),
   checkAppPaths: Schema.boolean()
     .default(true)
     .description('检查无效的 App Paths（默认值指向的 exe 已不存在）'),
@@ -178,6 +178,7 @@ if ($key) {
         displayName = [string]$child.GetValue('DisplayName')
         uninstallString = [string]$child.GetValue('UninstallString')
         valueCount = $valueNames.Count
+        valueNames = ($valueNames -join '|')
       }
       $child.Close()
     }
@@ -226,6 +227,43 @@ function parseJsonResult(text: string): any {
   }
 }
 
+/** 卸载项中「有业务含义」的值名：出现任意一个即视为真实产品注册，绝不当成垃圾键 */
+const MEANINGFUL_UNINSTALL_VALUES = new Set([
+  'displayname',
+  'uninstallstring',
+  'quietuninstallstring',
+  'displayversion',
+  'version',
+  'publisher',
+  'displayicon',
+  'installlocation',
+  'installdate',
+  'installsource',
+  'installfile',
+  'helplink',
+  'systemcomponent',
+  'norepair',
+  'nomodify',
+  'noremove',
+  'parentkeyname',
+  'pfn',
+  'windowsinstaller',
+  'estimatedsize',
+])
+
+/**
+ * 判断一个卸载项是否为「垃圾键」。
+ *
+ * 采用**保守策略**：只有完全空的键，或值很少且不含任何有含义字段的键才认定为垃圾。
+ * 这样可以避免把 `SystemComponent=1`（系统组件标记）或只登记了版本号的
+ * 更新器（如 Microsoft Edge Update）误判为残留 —— 误删它们会破坏系统组件的卸载信息。
+ */
+export function isJunkUninstall(valueNames: string[], valueCount = valueNames.length): boolean {
+  if (valueCount === 0) return true
+  if (valueCount > 3) return false
+  return !valueNames.some((name) => MEANINGFUL_UNINSTALL_VALUES.has(name.toLowerCase()))
+}
+
 /** 用 PowerShell 一次性读取卸载项与 App Paths */
 async function probeWithPowerShell(
   uninstallRoots: string[],
@@ -245,9 +283,17 @@ function buildJunkUninstall(raw: any[]): JunkUninstallKey[] {
   for (const item of raw) {
     const key = normalizeKeyPath(str(item?.key))
     if (!key) continue
-    if (str(item?.displayName).trim() || str(item?.uninstallString).trim()) continue
+    // PowerShell 可能拿到旧格式（没有 valueNames 字段），退化为按已知值名判断
+    const names = str(item?.valueNames)
+      ? str(item.valueNames).split('|').filter(Boolean)
+      : [
+          str(item?.displayName).trim() ? 'DisplayName' : '',
+          str(item?.uninstallString).trim() ? 'UninstallString' : '',
+        ].filter(Boolean)
     const valueCount = Number(item?.valueCount)
-    junk.push({ key, valueCount: Number.isFinite(valueCount) ? valueCount : 0 })
+    const count = Number.isFinite(valueCount) ? valueCount : names.length
+    if (!isJunkUninstall(names, count)) continue
+    junk.push({ key, valueCount: count })
   }
   return junk
 }
@@ -276,9 +322,9 @@ async function collectJunkUninstallViaReg(roots: string[]): Promise<{ junk: Junk
       const output = await regQuery(key)
       if (!output) return undefined
       const values = parseRegValues(output).filter((value) => !DEFAULT_VALUE_NAME.test(value.name))
-      const names = new Set(values.map((value) => value.name.toLowerCase()))
-      if (names.has('displayname') || names.has('uninstallstring')) return undefined
-      return { key: normalizeKeyPath(key), valueCount: values.length }
+      const names = values.map((value) => value.name)
+      if (!isJunkUninstall(names, names.length)) return undefined
+      return { key: normalizeKeyPath(key), valueCount: names.length }
     })
     for (const item of found) if (item) junk.push(item)
   }
@@ -455,8 +501,8 @@ export default defineCleanerPlugin<RegistryConfig>({
                 risk: 'risky',
                 defaultSelected: false,
                 note: junk.valueCount === 0
-                  ? '卸载项是空键：既没有 DisplayName 也没有 UninstallString'
-                  : '卸载项缺少 DisplayName 与 UninstallString，属于无效注册表键',
+                  ? '卸载项是空键：没有任何注册表值，确属卸载残留'
+                  : '卸载项没有任何有效标识字段（DisplayName / UninstallString / DisplayVersion 等）',
                 meta: { kind: 'uninstall', detail: `无效卸载项：${name}（值数量 ${junk.valueCount}）` },
               })
             }

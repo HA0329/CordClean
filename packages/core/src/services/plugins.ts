@@ -211,12 +211,17 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   async updateConfig(id: string, config: Record<string, any>): Promise<void> {
     const record = this.records.get(id)
     if (!record) throw new Error(`插件不存在：${id}`)
-    record.config = config ?? {}
+    // 先校验再落地：非法配置直接抛给调用方，运行中的插件保持原状
+    const plugin = await this.loadModule(record)
+    const validated = this.validateConfig(plugin, config ?? {})
+    record.config = validated
     this.ctx.settings.patch({ plugins: { [id]: { config: record.config } } })
     if (record.status === 'active' && record.fiber) {
       try {
         record.fiber.update(record.config)
         await record.fiber
+        record.error = undefined
+        record.errorStack = undefined
       } catch (error) {
         record.status = 'error'
         record.error = errorMessage(error)
@@ -224,6 +229,20 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       }
     }
     this.emitChanged()
+  }
+
+  /** 用插件的 Schemastery 配置校验（无效时抛错，避免污染运行中的 fiber） */
+  private validateConfig(plugin: any, config: Record<string, any>): Record<string, any> {
+    const schema = plugin?.Config
+    if (!schema?.['~standard']) return config
+    const result = schema['~standard'].validate(config)
+    if (result?.issues?.length) {
+      const detail = result.issues
+        .map((issue: any) => (issue.path?.length ? `${issue.path.join('.')}: ` : '') + issue.message)
+        .join('；')
+      throw new Error(`配置校验失败：${detail}`)
+    }
+    return (result?.value ?? config) as Record<string, any>
   }
 
   async defaults(id: string): Promise<Record<string, any>> {

@@ -30,8 +30,9 @@ import type {
   TaskScanContext,
   TaskScanResult,
 } from '@cordclean/shared'
-import { deletePath, describeDeleteError, errorMessage, isAbortError, mapLimit, normalizePath, pathKey, Pool } from '@cordclean/utils'
+import { deletePath, describeDeleteError, errorMessage, findLinkAncestor, isAbortError, mapLimit, normalizePath, pathKey, Pool } from '@cordclean/utils'
 import type { QuarantineSession } from './quarantine.ts'
+import type { PathPolicyLike } from '@cordclean/shared'
 
 interface RegisteredTask {
   task: TaskDefinition
@@ -55,6 +56,11 @@ export class CleanerService extends Service implements CleanerLike {
   private lastItems = new Map<string, CleanItem>()
   private currentScanId?: string
   private currentSessionId?: string
+  /**
+   * 「祖先目录链接检查」缓存：同一目录下的文件共享祖先，无需重复 lstat。
+   * key = 父目录键 + 辖区键，value = 命中的链接路径（空串表示无链接）。
+   */
+  private linkSafe = new Map<string, string>()
 
   constructor(ctx: Context) {
     super(ctx, 'cleaner')
@@ -135,6 +141,8 @@ export class CleanerService extends Service implements CleanerLike {
     let dirCount = 0
     let totalBytes = 0
     let duplicateCount = 0
+    // 服务引用只取一次：每次 `ctx.pathPolicy` 访问都会经过 Cordis 代理
+    const policyRef = this.ctx.pathPolicy
 
     const pushItem = (registered: RegisteredTask, draft: CleanItemDraft): boolean => {
       const { task } = registered
@@ -143,9 +151,8 @@ export class CleanerService extends Service implements CleanerLike {
       if (!rawPath) return false
       const path = kind === 'file' || kind === 'directory' ? normalizePath(rawPath) : rawPath
       const dedupeKey = kind === 'file' || kind === 'directory' ? pathKey(path) : `v:${path}`
-      const policy = kind === 'file' || kind === 'directory'
-        ? this.ctx.pathPolicy.check(path)
-        : { allowed: true }
+      // 服务引用在扫描开始时取一次：避免每个清理项都经过 Cordis 上下文代理
+      const policy = kind === 'file' || kind === 'directory' ? policyRef.check(path) : { allowed: true }
       const risk = draft.risk ?? task.risk
       const size = Math.max(0, Math.trunc(draft.size ?? 0))
       const item: CleanItem = {
@@ -210,7 +217,7 @@ export class CleanerService extends Service implements CleanerLike {
         signal: controller.signal,
         config: {},
         logger: this.taskLogger(task.id),
-        pathPolicy: this.ctx.pathPolicy,
+        pathPolicy: policyRef,
         env: this.ctx.system.env,
         emit: (draft) => {
           if (produced >= settings.scan.maxItemsPerTask) {
@@ -323,7 +330,12 @@ export class CleanerService extends Service implements CleanerLike {
   async clean(options: CleanOptions = {}): Promise<CleanReport> {
     const settings = this.ctx.settings.get()
     const dryRun = options.dryRun ?? settings.clean.dryRunDefault
-    const items = this.resolveItems(options)
+    // 去重：同一清理项被重复提交时只清理一次，避免重复计数
+    const unique = new Map<string, CleanItem>()
+    for (const item of this.resolveItems(options)) {
+      if (!unique.has(item.id)) unique.set(item.id, item)
+    }
+    const items = [...unique.values()]
     if (!items.length) throw new Error('没有选中任何可清理的项')
 
     const controller = new AbortController()
@@ -333,7 +345,10 @@ export class CleanerService extends Service implements CleanerLike {
     }
     this.cleanController?.abort()
     this.cleanController = controller
-
+    // 每次清理会话重新验证祖先目录（目录结构可能已变化）
+    this.linkSafe.clear()
+    // 服务引用只取一次：避免每个清理项都经过 Cordis 上下文代理
+    const policyRef = this.ctx.pathPolicy
     const sessionId = `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
     this.currentSessionId = sessionId
     const startedAt = Date.now()
@@ -394,7 +409,7 @@ export class CleanerService extends Service implements CleanerLike {
           signal: controller.signal,
           logger: this.taskLogger(taskId),
           env: this.ctx.system.env,
-          pathPolicy: this.ctx.pathPolicy,
+          pathPolicy: policyRef,
           dryRun,
           mode: forceQuarantine ? 'quarantine' : 'delete',
           quarantineDir: quarantineSession?.dir,
@@ -428,6 +443,7 @@ export class CleanerService extends Service implements CleanerLike {
                 signal: controller.signal,
                 quarantineSession,
                 forceQuarantine,
+                policy: policyRef,
               })
               done++
               reportProgress(item.path, done === total)
@@ -498,6 +514,22 @@ export class CleanerService extends Service implements CleanerLike {
     return report
   }
 
+  /**
+   * 带缓存的「祖先目录是否含链接」检查。
+   * 同一目录下的文件共享祖先链，按父目录缓存可把每个文件的多次 lstat 降到接近一次。
+   */
+  private async checkLinkAncestors(target: string, policy: PathPolicyLike): Promise<string | undefined> {
+    const normalized = normalizePath(target)
+    const parent = normalized.slice(0, normalized.lastIndexOf('\\'))
+    const root = policy.rootOf(target)
+    const cacheKey = `${parent.toLowerCase()}|${(root ?? '').toLowerCase()}`
+    const cached = this.linkSafe.get(cacheKey)
+    if (cached !== undefined) return cached || undefined
+    const found = (await findLinkAncestor(target, root)) ?? ''
+    this.linkSafe.set(cacheKey, found)
+    return found || undefined
+  }
+
   /** 单个文件/目录的清理（通用引擎） */
   private async cleanOne(
     item: CleanItem,
@@ -506,22 +538,29 @@ export class CleanerService extends Service implements CleanerLike {
       signal: AbortSignal
       quarantineSession?: QuarantineSession
       forceQuarantine: boolean
+      policy: PathPolicyLike
     },
   ): Promise<CleanItemResult> {
     const fail = (message: string): CleanItemResult => ({ itemId: item.id, path: item.path, ok: false, bytes: 0, error: message })
     if (options.signal.aborted) return fail('已取消')
     if (options.dryRun) return { itemId: item.id, path: item.path, ok: true, bytes: item.size }
 
+    // 注册表 / 命令行等非文件对象必须由插件自定义清理，走不到通用删除引擎
+    if (item.kind !== 'file' && item.kind !== 'directory') {
+      return fail('该类型需要插件自定义清理逻辑')
+    }
     // 二次校验：扫描后到清理前，路径策略或文件系统状态可能已变化
-    const check = this.ctx.pathPolicy.check(item.path)
+    const check = options.policy.check(item.path)
     if (!check.allowed) {
       return fail(`路径被策略保护（${check.reason ?? 'unknown'}）`)
     }
-    if (item.kind === 'directory' && this.ctx.pathPolicy.containsProtected(item.path)) {
+    if (item.kind === 'directory' && options.policy.containsProtected(item.path)) {
       return fail('目标目录包含受保护的系统目录，已跳过')
     }
-    if (item.kind !== 'file' && item.kind !== 'directory') {
-      return fail('该类型需要插件自定义清理逻辑')
+    // 第二道防线：祖先目录若是链接/联接点，删除会穿透到链接目标
+    const linkAncestor = await this.checkLinkAncestors(item.path, options.policy)
+    if (linkAncestor) {
+      return fail(`路径包含联接点或符号链接，已拒绝：${linkAncestor}`)
     }
 
     const settings = this.ctx.settings.get()
