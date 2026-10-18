@@ -97,7 +97,8 @@ const baseConfig = () => ({
   apiKey: 'k',
   baseUrl: `http://127.0.0.1:${port}`,
   model: 'mock',
-  timeout: 10_000,
+  timeoutMs: 10_000,
+  retries: 0,
 })
 
 describe('AI 接口异常', () => {
@@ -105,7 +106,7 @@ describe('AI 接口异常', () => {
     mode = 'http500'
     const app = await boot(baseConfig(), 'http500')
     try {
-      await expect(app.ctx.ai!.analyze()).rejects.toThrow(/接口返回 500/)
+      await expect(app.ctx.ai!.analyze()).rejects.toThrow(/HTTP 500/)
     } finally {
       await app.dispose()
     }
@@ -137,10 +138,10 @@ describe('AI 接口异常', () => {
 
   it('请求超时后返回可读错误', async () => {
     mode = 'slow'
-    // Schema 规定 timeout 最小 5000ms，这里用合法值并让服务端延迟 7s
-    const app = await boot({ ...baseConfig(), timeout: 5000 }, 'timeout')
+    // 服务端延迟 7s，客户端 3s 超时，验证超时错误可读且不会无限等待
+    const app = await boot({ ...baseConfig(), timeoutMs: 3000 }, 'timeout')
     try {
-      await expect(app.ctx.ai!.analyze()).rejects.toThrow(/AI 分析失败/)
+      await expect(app.ctx.ai!.analyze()).rejects.toThrow(/超时/)
     } finally {
       await app.dispose()
     }

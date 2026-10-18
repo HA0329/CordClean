@@ -82,7 +82,7 @@ async function createKernel() {
 async function createWindow() {
   window = new BrowserWindow({
     width: 1320,
-    height: 880,
+    height: Number(process.env.CORDCLEAN_SHOT_HEIGHT ?? 880),
     minWidth: 1080,
     minHeight: 720,
     show: false,

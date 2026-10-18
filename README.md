@@ -128,7 +128,45 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 | `leftovers` | 应用残留 | 高风险 | 注册表卸载项比对；目录类只提示 |
 | `startup` | 启动项 | 谨慎 | Run/RunOnce、启动文件夹、计划任务；删除前导出 `.reg` |
 | `registry` | 注册表问题 | 高风险 | 无效卸载项 / App Paths；删除前导出 `.reg` |
-| `ai` | —（提供 `ctx.ai` 服务） | — | DeepSeek 等 OpenAI 兼容接口 |
+| `ai` | —（提供 `ctx.ai` 服务） | — | 三种接口形态、模型与推理等级可配置（见 §6.1） |
+
+### 6.1 AI 顾问：接口可配置、可演进
+
+大模型接口是最容易变的部分（DeepSeek 已把 `deepseek-chat` 换成 `deepseek-flash`，
+并新增了思考模式 / 推理等级）。因此 AI 插件刻意不把任何接口细节写死：
+
+| 配置项 | 作用 |
+| --- | --- |
+| `apiShape` | `chat` / `messages` / `responses` 三种形态，分别对应 `/chat/completions`、`/anthropic/v1/messages`、`/responses` |
+| `baseUrl` + `chatPath` + `modelsPath` | 地址与路径都可改；`messages` 形态会自动补 `/anthropic` 前缀 |
+| `model` | 自由文本；界面「获取模型」会从 `/models` 动态拉取候选（失败则用内置目录） |
+| `reasoningEffort` | `auto/off/low/medium/high/max`，按形态映射：chat → `thinking`+`reasoning_effort`，messages → `output_config.effort`，responses → `reasoning.effort` |
+| `jsonMode` | chat 用 `response_format`，responses 用 `text.format`，messages 用提示词约束 |
+| `extraBody` | **逃生舱**：任意 JSON 深合并进请求体，可覆盖上述所有字段；厂商新增参数时改这里即可 |
+| `extraHeaders` | 追加/覆盖请求头（代理、beta 开关、自定义鉴权） |
+| `systemPrompt` | 覆盖内置提示词 |
+| `timeoutMs` / `retries` | 超时与重试（仅对超时/429/5xx 退避重试） |
+
+配套能力：
+
+- **测试连接**（`ai/probe`）：发一条最小请求，返回耗时、HTTP 状态与模型回复，用于排查 Key/地址/模型/参数组合；
+- **模型列表**（`ai/models`）：解析 `context_window`、`max_output_tokens`、`input_modalities`、`effort.supported_levels` 等能力信息；
+- **思维链展示**：把 `reasoning_content` / `thinking` / `responses.reasoning` 统一解析出来，界面可折叠查看；
+- **错误归类**：`AUTH / RATE_LIMIT / SERVER / TIMEOUT / NETWORK / BAD_REQUEST`，消息里保留 HTTP 状态码与厂商原始说明。
+
+实测（`deepseek-flash`，真实 Key，2026-10）：
+
+| 场景 | 耗时 | 输出 token | 思维链 token |
+| --- | --- | --- | --- |
+| chat + effort=high | 7.0 ~ 8.1 s | ~1370 | ~820 |
+| chat + effort=off | 4.0 ~ 4.1 s | ~485 | 0 |
+| messages + effort=high | 7.9 s | ~1400 | ~900 |
+| responses + effort=high | 7.7 s | ~1370 | ~880 |
+
+![AI 顾问实测](docs/screenshots/ai-live.png)
+
+> Key 支持配置里填写，或使用环境变量 `DEEPSEEK_API_KEY` / `OPENAI_API_KEY`；
+> 发送给模型的画像已脱敏（无路径、文件名、用户名），有单元测试断言。
 
 ## 7. 安全设计（四层防护）
 
@@ -155,11 +193,12 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 109 个用例 / 13 个文件
+pnpm test          # 127 个用例 / 14 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 13 个插件的真实扫描审计（只读）
 pnpm exec tsx scripts/dryrun-clean.ts    # 真实环境预演清理验证（不删除文件）
+$env:DEEPSEEK_API_KEY='sk-...'; pnpm exec tsx scripts/ai-live-test.ts   # AI 插件真实接口联调（三形态）
 node scripts/e2e-ui.mjs                  # Electron 界面端到端点检（CDP）
 ```
 
@@ -173,7 +212,8 @@ node scripts/e2e-ui.mjs                  # Electron 界面端到端点检（CDP�
 | `plugins` / `plugins-robust` | 启停、热重载、配置校验、异常隔离、持久化 |
 | `quarantine` / `state` | 隔离与恢复、设置边界、历史健壮性、反复启停不泄漏 |
 | `rpc` | 鉴权、错误码、超大请求体、目录穿越、WebSocket、事件广播 |
-| `ai` / `ai-robust` / `plugin-rules` | AI 异常路径、隐私约束、回收站 `$I` 解析、注册表判定规则 |
+| `ai` / `ai-robust` / `ai-shapes` | 三种接口形态、推理等级映射、extraBody 逃生舱、模型列表、探测、重试、隐私约束 |
+| `plugin-rules` | 回收站 `$I` 二进制解析、注册表垃圾键判定 |
 
 实测（Windows 11 / Ryzen 5 5600 / Node 24.19，详见 [性能基准](docs/benchmark.md)）：
 

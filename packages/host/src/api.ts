@@ -10,6 +10,7 @@
  */
 import type { Context } from 'cordis'
 import type {
+  AiLike,
   ApiMap,
   ApiMethod,
   ApiParams,
@@ -60,8 +61,8 @@ function toCleanItem(ref: CleanItemRef): CleanItem {
 export function createHandlers(api: ApiContext): HandlerMap {
   const { ctx } = api
 
-  const requireAi = () => {
-    const ai = (ctx as any).ai as { analyze: (o?: any) => Promise<any>; last: () => any; configured: () => boolean } | undefined
+  const requireAi = (): AiLike => {
+    const ai = (ctx as any).ai as AiLike | undefined
     if (!ai) throw new RpcError(-32002, 'AI 插件未启用，请先在「插件」页面启用 AI 清理顾问')
     return ai
   }
@@ -151,11 +152,21 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'ai/status': () => {
       const ai = (ctx as any).ai
-      return {
-        available: !!ai,
-        configured: !!ai?.configured?.(),
-        model: ai?.model,
+      if (!ai) {
+        return {
+          available: false,
+          configured: false,
+          shape: 'chat',
+          baseUrl: '',
+          model: '',
+          effort: 'auto',
+          jsonMode: 'auto',
+          models: [],
+        }
       }
+      return ai.status()
     },
+    'ai/models': async ({ refresh }) => requireAi().models({ refresh }),
+    'ai/probe': () => requireAi().probe(),
   }
 }

@@ -198,7 +198,21 @@ try {
   const file = await capture('clean-result')
   console.log('✓ 扫描结果截图：', path.relative(root, file))
 
-  // 4. 切到插件页检查插件列表非空
+  // 4. AI 页面：启用插件并验证新配置界面渲染（无 Key 时也能渲染表单）
+  await evaluate(`document.querySelectorAll('.nav-item')[4].click()`)
+  await new Promise((resolve) => setTimeout(resolve, 600))
+  const enabledAi = await evaluate(
+    `(() => { const btn = [...document.querySelectorAll('.el-button')].find(b => b.textContent.includes('立即启用')); if (!btn) return false; btn.click(); return true })()`,
+  )
+  if (enabledAi) {
+    await waitFor('AI 配置界面', async () => evaluate(`!!document.querySelector('.setting-form')`), 20_000)
+    console.log('✓ AI 插件已启用，接口设置表单渲染成功')
+    await capture('ai-config')
+  } else {
+    console.log('· AI 插件已是启用状态，跳过启用步骤')
+  }
+
+  // 5. 切到插件页检查插件列表非空
   await evaluate(`document.querySelectorAll('.nav-item')[2].click()`)
   const pluginCount = await waitFor('插件卡片', async () => evaluate('document.querySelectorAll(".plugin-card").length'), 15_000)
   console.log(`✓ 插件卡片数量：${pluginCount}`)

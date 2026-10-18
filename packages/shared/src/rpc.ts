@@ -14,6 +14,9 @@ import type {
   Settings,
   SystemInfo,
   AiAnalysis,
+  AiModelInfo,
+  AiProbeResult,
+  AiRuntimeStatus,
 } from './index.ts'
 import type { CleanProgressEvent, ScanProgressEvent, TaskDescriptor } from './task.ts'
 
@@ -111,7 +114,9 @@ export interface ApiMap {
 
   'ai/analyze': { params: { taskIds?: string[]; extraContext?: string }; result: AiAnalysis }
   'ai/last': { params: void; result: AiAnalysis | null }
-  'ai/status': { params: void; result: { available: boolean; configured: boolean; model?: string } }
+  'ai/status': { params: void; result: AiRuntimeStatus }
+  'ai/models': { params: { refresh?: boolean }; result: { source: 'remote' | 'fallback'; models: AiModelInfo[] } }
+  'ai/probe': { params: void; result: AiProbeResult }
 }
 
 /** 清理项引用（界面回传选中项时使用的精简结构） */

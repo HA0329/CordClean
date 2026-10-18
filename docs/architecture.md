@@ -308,7 +308,75 @@ JSON 解析（含 ```json 围栏）、字段兜底（风险值非法时降级为
 自测阶段发现并修复的 11 个缺陷记录在 [缺陷记录](defect-log.md)，其中 D-01（越界删除）
 与 D-10（路径校验性能）具有代表性，可作为论文第 6 章「测试发现的问题与改进」的素材。
 
-## 10. 工程折中与反思
+## 10. AI 插件设计（接口可演进）
+
+大模型接口是本系统里**变化最快**的外部依赖：DeepSeek 在 2026 年把 `deepseek-chat`
+换成了 `deepseek-flash`，新增了思考模式开关（`thinking`）与推理等级（`reasoning_effort`），
+并同时提供 OpenAI / Anthropic / Responses 三套兼容接口。
+如果把这些写死在插件里，接口一改就得重新发版。
+
+因此 AI 插件按「**稳定的业务逻辑 + 可替换的适配层 + 用户可改的配置**」三层来设计：
+
+```
+service.ts      业务：取画像 → 发请求 → 解析建议（不含任何厂商字段名）
+  ├─ adapters.ts  形态适配：chat / messages / responses 的请求组装与响应解析
+  ├─ http.ts      传输：超时、429/5xx 退避重试、错误归类（AUTH/RATE_LIMIT/TIMEOUT…）
+  ├─ models.ts    模型发现：/models 动态拉取 + 内置目录兜底
+  └─ config.ts    配置与参数映射：effort/jsonMode/paths/extraBody/extraHeaders
+```
+
+### 10.1 三种接口形态的字段映射
+
+| 能力 | chat（OpenAI Chat） | messages（Anthropic） | responses（OpenAI Responses） |
+| --- | --- | --- | --- |
+| 端点 | `POST /chat/completions` | `POST /anthropic/v1/messages` | `POST /responses` |
+| 鉴权 | `Authorization: Bearer` | `x-api-key` + `anthropic-version` | `Authorization: Bearer` |
+| 系统提示 | `messages[0].role=system` | `system` 字段 | `instructions` |
+| 输出上限 | `max_tokens` | `max_tokens` | `max_output_tokens` |
+| JSON 输出 | `response_format:{type:'json_object'}` | 无原生支持 → 追加提示词 | `text.format:{type:'json_object'}` |
+| 关闭思考 | `thinking:{type:'disabled'}` | `thinking:{type:'disabled'}` | `reasoning:{effort:'none'}` |
+| 推理等级 | `reasoning_effort:low/high/max` | `output_config:{effort:...}` | `reasoning:{effort:...}` |
+| 取文本 | `choices[0].message.content` | `content[].text`（拼 `type='text'`） | `output[].content[].text`（`type='output_text'`） |
+| 取思维链 | `message.reasoning_content` | `content[].thinking` | `output[].content[].text`（`type='reasoning_text'`） |
+| token 用量 | `usage.prompt_tokens/completion_tokens` | `usage.input_tokens/output_tokens` | `usage.input_tokens/output_tokens` |
+
+`reasoningEffort` 在插件里抽象为 `auto/off/low/medium/high/max`（`medium` 映射为 `high`），
+由 `applyEffort()` 按形态翻译成上表的具体字段 —— 换模型/换接口时业务代码不变。
+
+### 10.2 配置即扩展点
+
+| 变更类型 | 用户怎么做 | 需要改代码吗 |
+| --- | --- | --- |
+| 模型改名/新增模型 | 界面「获取模型」下拉选，或直接输入模型名 | 否 |
+| 新增请求参数（如新的推理字段、缓存、工具） | 写进 `extraBody`（深合并、优先级最高） | 否 |
+| 换网关/代理/自定义鉴权 | 改 `baseUrl` / `chatPath` / `extraHeaders` | 否 |
+| 提示词调整 | 改 `systemPrompt` | 否 |
+| 出现第四种接口形态 | 在 `adapters.ts` 增加一个分支（约 40 行） | 是 |
+
+`extraBody` 的优先级高于插件生成的所有字段，因此厂商即使修改了默认行为，
+用户也能在界面上直接覆盖，不需要等新版本。
+
+### 10.3 模型发现与探测
+
+- `GET {baseUrl}/models` 解析 `context_window`、`max_output_tokens`、`input_modalities`、
+  `effort.supported_levels` 等能力信息；失败时回落到内置目录（保证离线可用）。
+- `probe()` 发一条最小请求（“回复 OK”），返回 HTTP 状态、耗时、模型原文，
+  用于快速定位「Key 错 / 地址错 / 模型名错 / 参数不兼容」。
+- 实测（2026-10，`deepseek-flash`）：probe 约 140~350 ms；
+  完整分析 `effort=high` 约 7~8 s（输出 ~1370 token，其中思维链 ~850），
+  `effort=off` 约 4 s（无思维链）—— 关闭思考能省一半时间，适合交互式场景。
+
+### 10.4 两个实测踩到的坑
+
+1. **`messages` 形态的路径拼接**：其 `baseUrl` 必须是 `.../anthropic`，
+   但用户通常只填 `https://api.deepseek.com`，直接拼默认路径会得到
+   `.../anthropic/anthropic/v1/messages` → 404。现在 `resolveChatUrl()`
+   会把默认路径 `/v1/messages` 与缺省的 `/anthropic` 前缀自动对齐。
+2. **延迟计时点**：非流式响应可能先回响应头、后回 body，
+   若在 `fetch` 返回时计时，会把 8 秒的生成过程显示成 0.2 秒。
+   `requestJson()` 改为读完 `response.text()` 再计时。
+
+## 11. 工程折中与反思
 
 1. **顺序加载插件**：为换取任务归属的零侵入，牺牲了并行加载速度（实测差异 < 20 ms，可接受）；
 2. **不引入 ORM/数据库**：历史用 JSONL 追加写，隔离区用目录 + manifest，简单且可人工修复；

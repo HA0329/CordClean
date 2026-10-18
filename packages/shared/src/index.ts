@@ -259,6 +259,67 @@ export interface AiAnalysis {
   suggestions: AiSuggestion[]
   /** 模型附带的其他观察 */
   observations: string[]
+  /** 思维链（若模型返回 reasoning_content / thinking_block） */
+  reasoning?: string
+  /** token 用量（若接口返回） */
+  usage?: AiUsage
+  /** 端到端耗时（毫秒） */
+  latencyMs?: number
+  /** 实际使用的接口形态：chat / messages / responses */
+  shape?: string
+}
+
+/** 模型能力信息（来自 /models 接口或内置兜底列表） */
+export interface AiModelInfo {
+  id: string
+  name?: string
+  description?: string
+  contextWindow?: number
+  maxOutputTokens?: number
+  inputModalities?: string[]
+  /** 支持的推理等级：low / high / max */
+  effortLevels?: string[]
+  defaultEffort?: string
+}
+
+/** token 用量（统一三种接口形态） */
+export interface AiUsage {
+  inputTokens: number
+  outputTokens: number
+  /** 其中思维链消耗的 token */
+  reasoningTokens: number
+  totalTokens?: number
+}
+
+/** 一次连通性探测的结果 */
+export interface AiProbeResult {
+  ok: boolean
+  latencyMs: number
+  model: string
+  shape: string
+  /** HTTP 状态码（网络失败时为 0） */
+  status: number
+  /** 模型返回的文本（截断） */
+  text: string
+  usage?: AiUsage
+  error?: string
+}
+
+/** AI 插件运行时状态（供界面展示与配置） */
+export interface AiRuntimeStatus {
+  available: boolean
+  configured: boolean
+  /** 接口形态：chat / messages / responses */
+  shape: string
+  baseUrl: string
+  model: string
+  /** 推理等级：auto / off / low / medium / high / max */
+  effort: string
+  /** JSON 输出模式：auto / on / off */
+  jsonMode: string
+  /** 已拉取到的模型列表（可能为空，界面可主动刷新） */
+  models: AiModelInfo[]
+  lastProbe?: AiProbeResult
 }
 
 /* ------------------------------------------------------------------ */

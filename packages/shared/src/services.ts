@@ -9,6 +9,9 @@
 import type { Context } from 'cordis'
 import type {
   AiAnalysis,
+  AiModelInfo,
+  AiProbeResult,
+  AiRuntimeStatus,
   AiSuggestion,
   CleanItem,
   CleanReport,
@@ -212,11 +215,24 @@ export interface PluginManagerLike {
   loadAll(): Promise<void>
 }
 
-/** AI 能力（由 ai 插件注册，其它模块可选依赖） */
+/**
+ * AI 能力（由 ai 插件注册，其它模块可选依赖）。
+ *
+ * 设计上刻意把「接口形态」「模型」「推理等级」都做成运行时可变的状态：
+ * 模型列表从 `/models` 动态获取，请求体可通过 `extraBody` 任意扩展，
+ * 因此厂商调整参数（如新增推理等级、新增接口形态）时，
+ * 用户改配置即可适配，不需要重新编译插件。
+ */
 export interface AiLike {
   analyze(options?: { taskIds?: string[]; extraContext?: string }): Promise<AiAnalysis>
   last(): AiAnalysis | undefined
   configured(): boolean
+  /** 拉取可用模型列表（失败时返回内置兜底列表） */
+  models(options?: { refresh?: boolean }): Promise<{ source: 'remote' | 'fallback'; models: AiModelInfo[] }>
+  /** 连通性探测：发一条最小请求，验证 Key / 地址 / 模型 / 参数是否可用 */
+  probe(): Promise<AiProbeResult>
+  /** 当前运行时状态（供界面展示与配置界面回填） */
+  status(): AiRuntimeStatus
 }
 
 declare module 'cordis' {
@@ -312,4 +328,4 @@ export function defineCleanerPlugin<TConfig = any>(options: CleanerPluginOptions
 }
 
 /** AI 建议的补类型导出，方便插件复用 */
-export type { AiAnalysis, AiSuggestion }
+export type { AiAnalysis, AiModelInfo, AiProbeResult, AiRuntimeStatus, AiSuggestion }

@@ -21,6 +21,9 @@
 | D-09 | 🟡 中（健壮性） | 插件配置更新未预校验，非法配置会把运行中的插件打成 error | 已修复 |
 | D-10 | 🟠 中（性能） | 单次路径校验 166 µs，扫描吞吐仅 4.5k 文件/秒 | 已修复（→ 10 µs、33k 文件/秒） |
 | D-11 | 🟡 中（安全加固） | 尾点（`System32.`）与 8.3 短名（`PROGRA~1`）可绕过字符串比较 | 已修复 |
+| D-12 | 🟡 中（功能） | Anthropic 兼容形态路径拼接错误导致 404 | 已修复 |
+| D-13 | 🟢 低（体验） | 延迟计时只算到响应头，8 秒显示成 0.2 秒 | 已修复 |
+| D-14 | 🟡 中（兼容） | 旧配置字段被 schema 丢弃，兼容映射失效 | 已修复 |
 
 ## 详细说明
 
@@ -165,6 +168,35 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **验证**：`tests/path-attack.test.ts` 覆盖 14 种写法（空路径、相对路径、盘符根、
 尾点、混合分隔符、长路径前缀、短名、大小写、UNC、辖区内前缀相同目录等）。
+
+> 以下三条是接入**真实大模型接口**联调时发现的（AI 插件 v2）。
+
+### D-12 `messages` 形态路径拼接错误（404）
+
+**现象**：用 Anthropic 兼容形态调用 `deepseek-flash` 时报 `404 Not Found`。
+**根因**：`baseUrl` 已是 `https://api.deepseek.com/anthropic`，而默认 `chatPath`
+也带 `/anthropic` 前缀，拼出 `.../anthropic/anthropic/v1/messages`。
+**修复**：默认路径改为 `/v1/messages`；`resolveChatUrl()` 检测到路径以 `/v1/messages`
+开头而 `baseUrl` 缺少 `/anthropic` 时自动补前缀，两种填法都可用。
+**验证**：`tests/ai-shapes.test.ts` →「messages 形态：baseUrl 不带 /anthropic 时自动补全路径」；
+真实接口联调脚本三种形态全部通过。
+
+### D-13 延迟计时只算到响应头
+
+**现象**：真实分析耗时约 8 秒，界面却显示 `0.2 s`。
+**根因**：`requestJson()` 在 `fetch` 返回（拿到响应头）时就计算耗时，
+而非流式补全会先回响应头、再逐步回 body，导致计时严重偏小。
+**修复**：改为读完 `response.text()` 之后再计时。
+**验证**：真实接口实测 `latencyMs` 从 161 ms 修正为 7 706 ms，与 wall time 一致。
+
+### D-14 旧配置字段被 schema 丢弃，兼容映射失效
+
+**现象**：升级到 v2 后，旧配置里的 `timeout: 5000` 不再生效，仍按默认 90 s 超时。
+**根因**：插件配置在加载时会先经过 Schemastery 校验，**schema 未声明的字段会被丢弃**，
+所以 `normalizeConfig()` 里的旧字段兼容逻辑永远拿不到 `timeout`。
+**修复**：把 `timeout` / `max_tokens` 作为「已废弃」字段写进 schema（默认 0），
+`normalizeConfig()` 在 `timeoutMs`/`maxTokens` 未设置时回落到旧字段。
+**验证**：`tests/ai-robust.test.ts` →「请求超时后返回可读错误」（用旧字段 `timeout` 触发）。
 
 ## 未修复但已知的限制
 

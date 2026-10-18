@@ -6,6 +6,9 @@
 import { computed, reactive } from 'vue'
 import type {
   AiAnalysis,
+  AiModelInfo,
+  AiProbeResult,
+  AiRuntimeStatus,
   AppInfo,
   CleanProgressEvent,
   CleanReport,
@@ -41,7 +44,12 @@ export interface UiState {
   quarantine: QuarantineRecord[]
   quarantineStats: { count: number; bytes: number }
   ai?: AiAnalysis | null
-  aiStatus: { available: boolean; configured: boolean; model?: string }
+  aiStatus: AiRuntimeStatus
+  /** 模型列表（来自 /models 或内置兜底） */
+  aiModels: AiModelInfo[]
+  aiModelsSource?: 'remote' | 'fallback'
+  /** 最近一次连通性探测结果 */
+  aiProbe?: AiProbeResult
   logs: Array<{ level: string; message: string; time: number }>
   page: string
 }
@@ -57,7 +65,8 @@ export const state = reactive<UiState>({
   totals: { sessions: 0, freedBytes: 0, cleaned: 0 },
   quarantine: [],
   quarantineStats: { count: 0, bytes: 0 },
-  aiStatus: { available: false, configured: false },
+  aiStatus: { available: false, configured: false, shape: 'chat', baseUrl: '', model: '', effort: 'auto', jsonMode: 'auto', models: [] },
+  aiModels: [],
   logs: [],
   page: 'overview',
 })
@@ -107,7 +116,7 @@ export async function init(): Promise<void> {
       requireTransport().request('plugins/list', undefined),
       requireTransport().request('settings/get', undefined),
       requireTransport().request('history/totals', undefined),
-      requireTransport().request('ai/status', undefined).catch(() => ({ available: false, configured: false })),
+      requireTransport().request('ai/status', undefined).catch(() => state.aiStatus),
       requireTransport().request('scan/last', undefined).catch(() => null),
       requireTransport().request('ai/last', undefined).catch(() => null),
     ])
@@ -118,6 +127,17 @@ export async function init(): Promise<void> {
     state.settings = settings
     state.totals = totals
     state.aiStatus = aiStatus
+    state.aiModels = aiStatus.models ?? []
+    // 已配置凭据时后台预取模型列表（失败静默，界面仍可用内置目录）
+    if (aiStatus.configured && !state.aiModels.length) {
+      void requireTransport()
+        .request('ai/models', { refresh: false })
+        .then((result) => {
+          state.aiModels = result.models
+          state.aiModelsSource = result.source
+        })
+        .catch(() => {})
+    }
     if (lastScan) state.scan = lastScan
     if (lastAi) state.ai = lastAi
     state.ready = true
@@ -259,9 +279,58 @@ export async function analyzeAi(taskIds?: string[]): Promise<void> {
     state.ai = await requireTransport().request('ai/analyze', { taskIds })
     const status = await requireTransport().request('ai/status', undefined).catch(() => state.aiStatus)
     state.aiStatus = status
+    state.aiModels = status.models?.length ? status.models : state.aiModels
   } finally {
     state.busy = false
   }
+}
+
+/** 刷新 AI 运行时状态（形态/模型/推理等级/是否配置） */
+export async function refreshAiStatus(): Promise<void> {
+  const status = await requireTransport().request('ai/status', undefined)
+  state.aiStatus = status
+  if (status.models?.length) state.aiModels = status.models
+}
+
+/** 拉取模型列表（refresh=true 强制绕过缓存） */
+export async function fetchAiModels(refresh = true): Promise<{ source: string; count: number; error?: string }> {
+  const result = await requireTransport().request('ai/models', { refresh })
+  state.aiModels = result.models
+  state.aiModelsSource = result.source
+  await refreshAiStatus()
+  return { source: result.source, count: result.models.length }
+}
+
+/** 连通性探测 */
+export async function probeAi(): Promise<AiProbeResult> {
+  const probe = await requireTransport().request('ai/probe', undefined)
+  state.aiProbe = probe
+  await refreshAiStatus()
+  return probe
+}
+
+/** 保存 AI 插件配置（与旧配置合并后写回，然后热重载插件） */
+export async function saveAiConfig(patch: Record<string, unknown>): Promise<Record<string, any>> {
+  const plugin = state.plugins.find((item) => item.id === 'ai')
+  const current = (plugin?.config ?? {}) as Record<string, any>
+  const merged = { ...current, ...patch }
+  await requireTransport().request('plugins/config', { id: 'ai', config: merged })
+  await refreshPlugins()
+  await refreshAiStatus()
+  return merged
+}
+
+/** 读取 AI 插件当前配置 */
+export function aiPluginConfig(): Record<string, any> {
+  const plugin = state.plugins.find((item) => item.id === 'ai')
+  return (plugin?.config ?? {}) as Record<string, any>
+}
+
+/** 启用 AI 插件并预热模型列表 */
+export async function enableAiPlugin(): Promise<void> {
+  await setPluginEnabled('ai', true)
+  await refreshAiStatus()
+  await fetchAiModels(true).catch(() => undefined)
 }
 
 export async function openPath(target: string): Promise<void> {
