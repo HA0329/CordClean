@@ -191,6 +191,8 @@ export class AiService extends Service implements AiLike {
       jsonMode: this.rawConfig.jsonMode,
       models: this.modelCache?.models ?? [],
       lastProbe: this.lastProbe,
+      contextAvailable: this.ctx.aiContext.list(),
+      contextUsed: this.lastContextUsed,
     }
   }
 

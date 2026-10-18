@@ -1,0 +1,6 @@
+fix(ai): 分析范围卡片补上并默认勾选内置采集器
+
+- 上一版卡片插入失败导致界面上看不到「分析范围」，已插入到「补充说明」之前
+- AI status 暴露 contextAvailable/contextUsed，界面据此渲染开关
+- 配置为空时按采集器 defaultEnabled 预勾选（磁盘热点 / 已安装软件），避免看起来全关
+- 构建与 E2E 通过

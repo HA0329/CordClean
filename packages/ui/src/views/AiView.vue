@@ -98,7 +98,9 @@ function syncFromConfig() {
   form.timeoutMs = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 90000
   form.apiKey = String(config.apiKey ?? '')
   form.asEvaluator = config.asEvaluator === true
-  form.contextProviders = Array.isArray(config.contextProviders) ? [...config.contextProviders] : []
+  const configuredContext = Array.isArray(config.contextProviders) ? [...config.contextProviders] : []
+  const defaultContext = (state.aiStatus.contextAvailable ?? []).filter((item) => item.defaultEnabled).map((item) => item.id)
+  form.contextProviders = configuredContext.length ? configuredContext : defaultContext
   form.extraBody = config.extraBody && Object.keys(config.extraBody).length ? JSON.stringify(config.extraBody, null, 2) : ''
   form.extraHeaders = config.extraHeaders && Object.keys(config.extraHeaders).length ? JSON.stringify(config.extraHeaders, null, 2) : ''
 }
@@ -391,6 +393,26 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       </div>
 
       <!-- 分析输入 -->
+
+      <div class="cc-card">
+        <div class="cc-card-title">
+          <h3>🔍 分析范围（上下文采集器）</h3>
+          <span class="cc-faint">不选 = 默认集合；采集器只输出脱敏摘要</span>
+        </div>
+        <el-checkbox-group v-model="form.contextProviders">
+          <el-checkbox
+            v-for="provider in state.aiStatus.contextAvailable ?? []"
+            :key="provider.id"
+            :value="provider.id"
+            :title="provider.description"
+          >
+            {{ provider.name }}
+            <span class="cc-faint">{{ provider.description }}</span>
+          </el-checkbox>
+        </el-checkbox-group>
+        <p v-if="!(state.aiStatus.contextAvailable ?? []).length" class="cc-faint">暂无采集器（需要 AI 插件处于启用状态）</p>
+      </div>
+
     <div class="cc-card">
         <div class="cc-card-title">
           <h3>🧠 补充说明（可选）</h3>
