@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { RISK_META, formatBytes, formatTime } from '@cordclean/shared'
 import {
   analyzeAi,
+  applyAiRule,
   aiPluginConfig,
   enableAiPlugin,
   fetchAiModels,
@@ -192,6 +193,20 @@ async function run() {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   } finally {
     running.value = false
+  }
+}
+
+async function adoptRule(rule: any, index: number) {
+  try {
+    const result = await applyAiRule(rule)
+    if (result.applied) {
+      ElMessage.success('规则已加入规则库并生效')
+      analysis.value?.ruleSuggestions?.splice(index, 1)
+    } else {
+      ElMessage.warning(result.reason ?? '规则被拒绝')
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
 
@@ -395,6 +410,20 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
           </el-collapse>
         </div>
 
+        <div v-if="analysis.ruleSuggestions?.length" class="cc-card">
+          <div class="cc-card-title"><h3>🧩 AI 建议的新规则</h3><span class="cc-faint">采纳后会经过校验并热加载，立即可用</span></div>
+          <div v-for="(rule, index) in analysis.ruleSuggestions" :key="index" class="rule-suggestion">
+            <div>
+              <strong>{{ rule.name }}</strong>
+              <span class="cc-pill">{{ rule.category }}</span>
+              <span class="cc-pill" :class="'risk-' + rule.risk">{{ rule.risk }}</span>
+              <p class="cc-faint">{{ rule.reason }}</p>
+              <code>{{ rule.target.type }} · {{ rule.target.path || rule.target.base || rule.target.pattern }}</code>
+            </div>
+            <el-button size="small" type="primary" plain @click="adoptRule(rule, index)">采纳</el-button>
+          </div>
+        </div>
+
         <div class="suggestions">
           <div v-for="suggestion in analysis.suggestions" :key="suggestion.id" class="suggestion-card">
             <div class="suggestion-head">
@@ -433,6 +462,8 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
 </template>
 
 <style scoped>
+.rule-suggestion { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--cc-border); }
+.rule-suggestion p { margin: 4px 0; }
 .alert-body {
   display: flex;
   align-items: center;

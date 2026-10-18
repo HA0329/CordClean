@@ -307,6 +307,13 @@ export async function fetchEgress(limit = 10) {
   return requireTransport().request('ai/egress', { limit })
 }
 
+/** 采纳 AI 建议的规则：经统一入库管线写入并热重载规则包 */
+export async function applyAiRule(suggestion: unknown): Promise<{ applied: boolean; ruleId?: string; reason?: string }> {
+  const result = await requireTransport().request('ai/apply-rule', { suggestion: suggestion as any })
+  if (result.applied) await refreshPlugins()
+  return result
+}
+
 export async function probeAi(): Promise<AiProbeResult> {
   const probe = await requireTransport().request('ai/probe', undefined)
   state.aiProbe = probe
