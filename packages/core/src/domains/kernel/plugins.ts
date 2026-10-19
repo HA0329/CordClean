@@ -12,6 +12,7 @@
  */
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { ExternalPluginProxy } from './external-proxy.ts'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Service, type Context, type Fiber } from 'cordis'
@@ -226,28 +227,71 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   async installExternal(filePath: string): Promise<void> {
     const abs = path.resolve(filePath)
     if (!existsSync(abs)) throw new Error('插件文件不存在：' + abs)
-    const ns = await import(pathToFileURL(abs).href + '?t=' + Date.now())
-    const plugin = (ns.default ?? ns) as any
-    if (!plugin || typeof plugin.apply !== 'function') {
-      throw new Error('不是有效的 Cordis 插件：需要导出带 apply() 的对象（defineCleanerPlugin 的产物）')
+    const code = await readFile(abs, 'utf8')
+    const { proxy, info } = await ExternalPluginProxy.create(abs)
+    let capabilities: PluginCapabilities
+    try {
+      capabilities = validateCapabilities({ capabilities: info.capabilities }, code)
+    } catch (error) {
+      await proxy.dispose()
+      throw error
     }
-    const id = 'external:' + (plugin.name || path.basename(abs, path.extname(abs)))
-    if (this.records.has(id)) throw new Error('同名插件已加载：' + id)
+    const id = 'external:' + (info.name || path.basename(abs, path.extname(abs)))
+    if (this.records.has(id)) {
+      await proxy.dispose()
+      throw new Error('同名插件已加载：' + id)
+    }
+    const proxyRef = proxy
+    const synthetic: any = {
+      name: info.name,
+      version: info.version ?? '0.0.0',
+      description: info.description ?? '外部插件（worker 隔离）',
+      capabilities,
+      inject: ['cleaner', 'pathPolicy'],
+      apply(ctx: any) {
+        for (const task of info.tasks) {
+          for (const target of task.targets ?? []) {
+            if (task.id && target) {
+              ctx.pathPolicy.addRoot(target)
+              ctx.pathPolicy.addClearRoot(target)
+            }
+          }
+          ctx.effect(() =>
+            ctx.cleaner.define({
+              ...task,
+              risk: task.risk ?? 'caution',
+              category: task.category ?? 'apps',
+              icon: task.icon ?? '🔌',
+              defaultSelected: task.defaultSelected === true,
+              targets: task.targets ?? [],
+              async scan(scanCtx: any) {
+                const items = await proxyRef.scan(task.id)
+                for (const item of items) {
+                  const check = ctx.pathPolicy.check(String(item.path))
+                  if (check.allowed) scanCtx.emit(item)
+                }
+              },
+            }),
+          )
+        }
+        ctx.effect(() => () => {
+          void proxyRef.dispose()
+        })
+      },
+    }
     const entry: PluginManifestEntry = {
       id,
-      name: plugin.name || id,
-      description: plugin.description ?? '本地安装的外部插件',
+      name: info.name || id,
+      description: info.description ?? '外部插件（worker 隔离）',
       category: 'apps',
-      version: plugin.version ?? '0.0.0',
+      version: info.version ?? '0.0.0',
       defaultEnabled: true,
-      load: async () => ({ default: plugin }),
+      load: async () => ({ default: synthetic }),
     }
-    const capabilities = validateCapabilities(plugin, await readFile(abs, 'utf8'))
-    this.records.set(id, { entry, module: plugin, status: 'stopped', config: {}, taskIds: [], externalPath: abs, capabilities } as any)
+    this.records.set(id, { entry, module: synthetic, status: 'stopped', config: {}, taskIds: [], externalPath: abs, capabilities } as any)
     await this.enable(id)
     this.emitChanged()
   }
-
   /** 卸载外部插件（内部插件只能停用，避免误删安装包） */
   async uninstallExternal(id: string): Promise<void> {
     if (!id.startsWith('external:')) throw new Error('内置插件只能停用，不能卸载')

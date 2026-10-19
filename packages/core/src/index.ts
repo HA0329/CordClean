@@ -24,3 +24,5 @@ export * from './env.ts'
 export * from './logger.ts'
 
 export * from './domains/kernel/worker-host.ts'
+
+export * from './domains/kernel/external-proxy.ts'
