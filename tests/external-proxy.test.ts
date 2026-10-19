@@ -44,4 +44,31 @@ describe('外部插件跨线程代理', () => {
     const bad = write('bad.mjs', "export default { name: 'bad', async setup(){ throw new Error('bad setup') } }")
     await expect(ExternalPluginProxy.create(bad, { timeoutMs: 2000 })).rejects.toThrow(/bad setup/)
   })
+it('configure 在同一个 worker 内重新校验配置并生效', async () => {
+    const file = write('configurable.mjs', `
+export default {
+  name: 'cfg-plugin',
+  capabilities: { fsRoots: ['C:\\\\Temp'] },
+  Config(raw) { const size = Number(raw.size ?? 1); if (size < 0) throw new Error('size 不能为负'); return { size } },
+  async setup(ctx, config) {
+    ctx.cleaner.define({
+      id: 'cfg-task', name: 'Cfg', category: 'system', risk: 'safe', targets: [],
+      scan(scan) { scan.emit({ path: 'C:\\\\Temp\\\\x.tmp', kind: 'file', size: config.size }) },
+    })
+  },
+}
+`)
+    const { proxy } = await ExternalPluginProxy.create(file)
+    try {
+      const before = await proxy.scan('cfg-task')
+      expect(before[0]).toMatchObject({ size: 1 })
+      const info = await proxy.configure({ size: 7 })
+      expect(info.tasks).toHaveLength(1)
+      const after = await proxy.scan('cfg-task')
+      expect(after[0]).toMatchObject({ size: 7 })
+      await expect(proxy.configure({ size: -1 })).rejects.toThrow(/size/)
+    } finally {
+      await proxy.dispose()
+    }
+  })
 })

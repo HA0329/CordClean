@@ -1,14 +1,15 @@
 /**
- * 路线 3A.2：外部插件跨线程协议与代理。
+ * 路线 3A：外部插件跨线程协议与代理。
  *
  * 安全边界：
- * - 外部插件的 setup/scan 全部在 worker 中执行，主进程只拿**可序列化的任务描述与候选列表**；
- * - worker 内没有删除能力：它只能 emit 候选，删除仍由主进程的补偿链 + 执行器完成；
- * - 崩溃/超时只影响该插件的 worker，主进程可继续工作。
+ * - 外部插件的 setup / scan 全部在 worker 中执行，主进程只拿可序列化的任务描述与候选；
+ * - worker 内没有删除能力：只能回传候选，删除仍由主进程补偿链 + 执行器完成；
+ * - 崩溃/超时只影响该插件 worker。
  *
  * 协议：
- *   parent → worker: { id, type: 'describe' } | { id, type: 'scan', taskId }
- *   worker → parent: { id, ok: true, value } | { id, ok: false, error }
+ *   describe  → { name, version, capabilities, tasks }
+ *   scan      → 候选数组
+ *   configure → 重新校验配置并重跑 setup，返回新的任务元数据（不销毁 worker）
  */
 import { Worker } from 'node:worker_threads'
 
@@ -32,9 +33,7 @@ export interface ExternalDescribe {
 }
 
 export interface ExternalProxyOptions {
-  /** 单次调用超时（默认 15s，扫描给 60s） */
   timeoutMs?: number
-  /** 传给插件的环境变量子集 */
   env?: Record<string, string>
 }
 
@@ -45,67 +44,86 @@ const { pathToFileURL } = require('node:url')
 const MAX_ITEMS = 5000
 const env = workerData.env || {}
 const noop = () => {}
-const tasks = []
-let loaded
+const state = { plugin: null, tasks: [], ctx: null, config: {} }
 
-async function load() {
-  if (loaded) return loaded
-  const mod = await import(pathToFileURL(workerData.modulePath).href)
-  const plugin = mod.default || mod
-  if (!plugin || typeof plugin.setup !== 'function') throw new Error('插件缺少 setup()')
-  const makeScanContext = (sink) => ({
-    emit(item) { if (sink.length < MAX_ITEMS) sink.push(item) },
+function makeScanContext(items) {
+  return {
+    emit(item) { if (items.length < MAX_ITEMS) items.push(item) },
     logger: { info: noop, warn: noop, debug: noop, error: noop },
     env: { get: (name) => env[name] ?? undefined, userProfile: env.USERPROFILE, localAppData: env.LOCALAPPDATA, windowsDir: env.WINDIR, temp: env.TEMP },
     pathPolicy: { addRoot: noop, addClearRoot: noop, check: () => ({ allowed: true }), checkClear: () => ({ allowed: true }), containsProtected: () => false },
     signal: undefined,
     throwIfAborted: noop,
-  })
-  const ctx = {
+  }
+}
+
+function makeCtx() {
+  return {
     logger: { info: noop, warn: noop, debug: noop, error: noop },
-    cleaner: {
-      define(definition) { tasks.push(definition); return () => {} },
-      list: () => tasks,
-    },
+    cleaner: { define(definition) { state.tasks.push(definition); return noop }, list: () => state.tasks },
     pathPolicy: { addRoot: noop, addClearRoot: noop, check: () => ({ allowed: true }), checkClear: () => ({ allowed: true }), containsProtected: () => false },
     settings: { get: () => ({}) },
     system: { env: { get: (name) => env[name] ?? undefined, userProfile: env.USERPROFILE, localAppData: env.LOCALAPPDATA, windowsDir: env.WINDIR, temp: env.TEMP } },
-    effect: (fn) => { try { fn() } catch {} ; return noop },
+    effect: (fn) => { try { fn() } catch {}; return noop },
     on: () => noop,
     emit: noop,
-    inject: () => {},
   }
-  await plugin.setup(ctx, plugin.Config ? plugin.Config({}) : {})
-  loaded = { plugin, tasks }
-  return loaded
+}
+
+async function load() {
+  if (state.plugin) return state
+  const mod = await import(pathToFileURL(workerData.modulePath).href)
+  const plugin = mod.default || mod
+  if (!plugin || typeof plugin.setup !== 'function') throw new Error('插件缺少 setup()')
+  state.plugin = plugin
+  state.ctx = makeCtx()
+  state.config = typeof plugin.Config === 'function' ? plugin.Config({}) : {}
+  await plugin.setup(state.ctx, state.config)
+  return state
+}
+
+async function reapply(rawConfig) {
+  await load()
+  const plugin = state.plugin
+  const next = typeof plugin.Config === 'function' ? plugin.Config(rawConfig || {}) : (rawConfig || {})
+  state.tasks.length = 0
+  state.config = next
+  await plugin.setup(state.ctx, next)
+  return state
+}
+
+function describe(state) {
+  return {
+    name: state.plugin.name,
+    version: state.plugin.version,
+    description: state.plugin.description,
+    capabilities: state.plugin.capabilities,
+    tasks: state.tasks.map((task) => ({
+      id: task.id, name: task.name, category: task.category, risk: task.risk,
+      icon: task.icon, defaultSelected: task.defaultSelected, description: task.description,
+      targets: task.targets,
+    })),
+  }
 }
 
 parentPort.on('message', async (message) => {
   try {
-    const state = await load()
     if (message.type === 'describe') {
-      const tasks = state.tasks.map((task) => ({
-        id: task.id, name: task.name, category: task.category, risk: task.risk,
-        icon: task.icon, defaultSelected: task.defaultSelected, description: task.description,
-        targets: task.targets,
-      }))
-      parentPort.postMessage({ id: message.id, ok: true, value: {
-        name: state.plugin.name, version: state.plugin.version, description: state.plugin.description,
-        capabilities: state.plugin.capabilities, tasks,
-      } })
+      const s = await load()
+      parentPort.postMessage({ id: message.id, ok: true, value: describe(s) })
+      return
+    }
+    if (message.type === 'configure') {
+      const s = await reapply(message.config)
+      parentPort.postMessage({ id: message.id, ok: true, value: describe(s) })
       return
     }
     if (message.type === 'scan') {
-      const task = state.tasks.find((item) => item.id === message.taskId)
+      const s = await load()
+      const task = s.tasks.find((item) => item.id === message.taskId)
       if (!task || typeof task.scan !== 'function') throw new Error('插件没有任务 ' + message.taskId)
       const items = []
-      await task.scan({
-        emit(item) { if (items.length < MAX_ITEMS) items.push(item) },
-        logger: { info: noop, warn: noop, debug: noop, error: noop },
-        env: { get: (name) => env[name] ?? undefined },
-        signal: undefined,
-        throwIfAborted: noop,
-      })
+      await task.scan(makeScanContext(items))
       parentPort.postMessage({ id: message.id, ok: true, value: items })
       return
     }
@@ -144,7 +162,10 @@ export class ExternalPluginProxy {
     })
   }
 
-  static async create(modulePath: string, options: ExternalProxyOptions = {}): Promise<{ proxy: ExternalPluginProxy; info: ExternalDescribe }> {
+  static async create(
+    modulePath: string,
+    options: ExternalProxyOptions = {},
+  ): Promise<{ proxy: ExternalPluginProxy; info: ExternalDescribe }> {
     const worker = new Worker(RUNTIME, {
       eval: true,
       workerData: { modulePath, env: options.env ?? process.env },
@@ -170,6 +191,11 @@ export class ExternalPluginProxy {
 
   scan(taskId: string, timeoutMs = 60_000): Promise<Array<Record<string, unknown>>> {
     return this.call({ type: 'scan', taskId }, timeoutMs) as Promise<Array<Record<string, unknown>>>
+  }
+
+  /** 热更新配置：worker 内重新校验并重跑 setup，不销毁 worker */
+  configure(config: Record<string, unknown>, timeoutMs = 15_000): Promise<ExternalDescribe> {
+    return this.call({ type: 'configure', config }, timeoutMs) as Promise<ExternalDescribe>
   }
 
   private failAll(error: Error): void {
