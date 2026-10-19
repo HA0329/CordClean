@@ -185,6 +185,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'scan/last': () => ctx.cleaner.lastScan() ?? null,
 
+    'files/move': ({ paths, targetDir }) => moveFiles({ paths, targetDir }, { check: (target) => ctx.pathPolicy.check(target) }),
     'clean/undo-state': () => {
       const state = readUndo()
       if (!state?.items?.length) return { available: false, quarantine: 0, recycle: 0, permanent: 0 }
