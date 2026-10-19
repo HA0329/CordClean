@@ -264,7 +264,7 @@ export class AiService extends Service implements AiLike {
     const model = this.modelCache?.models?.find((item) => item.id === this.rawConfig.model)
     return {
       contextWindow: model?.contextWindow ?? 128_000,
-      maxOutputTokens: model?.maxOutputTokens ?? 65_536,
+      maxOutputTokens: model?.maxOutputTokens ?? 393_216,
     }
   }
 
@@ -406,7 +406,7 @@ export class AiService extends Service implements AiLike {
   async evaluateRules(inputs: RuleEvalInput[]): Promise<Map<string, RuleEvalResult>> {
     const key = this.requireKey()
     const limits = this.modelLimits()
-    const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(16_384, this.rawConfig.maxTokens)) }
+    const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(32_768, this.rawConfig.maxTokens)) }
     const signature = JSON.stringify(inputs.map((item) => [item.ruleId, item.count, Math.round(item.bytes / 1024), item.risk]))
     const cached = this.evalCache.get(signature)
     if (cached && Date.now() - cached.at < 5 * 60_000) return cached.result
@@ -483,7 +483,7 @@ export class AiService extends Service implements AiLike {
       if (options.image.data.length > 4_000_000) throw new Error('图片过大（base64 超过 4MB），请压缩后再试')
     }
     const limits = this.modelLimits()
-    const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(16_384, this.rawConfig.maxTokens)) }
+    const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(32_768, this.rawConfig.maxTokens)) }
     const profile = await this.buildProfile(options.extraContext)
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan

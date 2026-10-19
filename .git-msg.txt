@@ -1,0 +1,6 @@
+chore(release): v0.2.0 —— AI 输出上限提升 + 全量测试 + GitHub 包
+
+- AI maxTokens 默认提升到 393216（按模型上限 384K 收敛，可配到 100 万上限）
+- 全量 37 文件 / 231 用例通过，UI/桌面构建通过
+- 版本号 0.1.0 → 0.2.0
+- 导出到 D:\桌面\deepseek-harness\CordClean-v0.2.0 与 zip（含 MIT/README/CI/截图）

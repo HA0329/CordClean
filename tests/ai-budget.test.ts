@@ -21,6 +21,7 @@ describe('AI token 预算', () => {
       const status = app.ctx.ai!.status()
       expect(status.contextWindow).toBe(1_048_576)
       expect(status.maxOutputTokens).toBe(393_216)
+      expect(estimateTokens('x'.repeat(1000))).toBe(286)
     } finally {
       await app.dispose()
     }
