@@ -49,6 +49,16 @@ describe('大文件搬家', () => {
     }
   })
 
+  it('同盘目录搬家：重命名移动，可选目录联接', async () => {
+    const src = path.join(sandbox.root, 'dir-src')
+    const dst = path.join(sandbox.root, 'dir-dst')
+    mkdirSync(path.join(src, 'sub'), { recursive: true })
+    writeFileSync(path.join(src, 'sub', 'f.txt'), 'dir')
+    const result = await moveFiles({ paths: [src], targetDir: dst }, { check: () => ({ allowed: true }), link: true })
+    expect(result.moved).toHaveLength(1)
+    expect(await statSafe(path.join(dst, 'dir-src', 'sub', 'f.txt'))).toBe(true)
+  })
+
   it('路径策略拒绝时不移动', async () => {
     const src = path.join(sandbox.root, 'deny-src')
     mkdirSync(src, { recursive: true })

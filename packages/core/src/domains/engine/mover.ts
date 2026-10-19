@@ -11,7 +11,7 @@
  * 注意：这是「移动」，不是删除。它不签发 CleanTicket，也不走执行器；
  * 因此不会计入清理历史，空间变化靠前后磁盘可用量观察。
  */
-import { copyFile, mkdir, stat, symlink, unlink } from 'node:fs/promises'
+import { copyFile, mkdir, rename, stat, symlink, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
 export interface MoveFileRequest {
@@ -70,10 +70,28 @@ export async function moveFiles(request: MoveFileRequest, options: MoveFileOptio
       if (!policy.allowed) throw new Error(policy.reason ? `路径被策略保护：${policy.reason}` : '路径被策略保护')
       if (!absolute(source)) throw new Error('源路径必须是绝对路径')
       const info = await stat(source)
-      if (!info.isFile()) throw new Error('只支持移动文件，不支持目录')
+      if (!info.isFile() && !info.isDirectory()) throw new Error('只支持移动文件或目录')
       if (path.dirname(source).toLowerCase() === path.resolve(request.targetDir).toLowerCase()) {
         throw new Error('目标目录与源目录相同')
       }
+      // 目录：仅支持同盘重命名（原子、快、可回滚）；跨盘目录搬家先拒绝，避免半复制
+      if (info.isDirectory()) {
+        const sameVolume = path.parse(source).root.toLowerCase() === path.parse(request.targetDir).root.toLowerCase()
+        if (!sameVolume) throw new Error('目录跨盘搬家暂不支持（请先手动复制到目标盘）')
+        const dirTarget = await uniqueTarget(request.targetDir, path.basename(source))
+        await rename(source, dirTarget)
+        if (options.link) {
+          try {
+            await symlink(dirTarget, source, 'junction')
+          } catch (error) {
+            await rename(dirTarget, source)
+            throw new Error('目录联接创建失败，已还原目录：' + (error instanceof Error ? error.message : String(error)))
+          }
+        }
+        outcome.moved.push({ from: source, to: dirTarget, bytes: info.size })
+        return
+      }
+
       const target = await uniqueTarget(request.targetDir, path.basename(source))
       try {
         await copyFile(source, target)
