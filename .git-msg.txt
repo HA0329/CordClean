@@ -1,0 +1,7 @@
+feat(ai): token 预算与模型上限对齐
+
+- 新增 estimateTokens（字符/3.5 估算）
+- 分析请求的 maxTokens 自动 clamp 到当前模型的 maxOutputTokens（来自 /models 缓存或内置目录）
+- status 暴露 contextWindow / maxOutputTokens，供界面展示
+- 新增 tests/ai-budget.test.ts：估算值 + deepseek-flash 上限（1M 上下文 / 384K 输出）
+- 全量 35 文件 / 223 用例通过

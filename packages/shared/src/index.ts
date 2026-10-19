@@ -355,6 +355,8 @@ export interface AiRuntimeStatus {
   contextAvailable?: Array<{ id: string; name: string; description?: string; defaultEnabled: boolean }>
   /** 本次分析实际使用的采集器 */
   contextUsed?: string[]
+  contextWindow?: number
+  maxOutputTokens?: number
   available: boolean
   configured: boolean
   /** 接口形态：chat / messages / responses */

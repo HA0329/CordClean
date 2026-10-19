@@ -120,6 +120,10 @@ export interface RuleEvalResult {
   reason: string
 }
 
+export function estimateTokens(text: string): number {
+  return Math.ceil(String(text).length / 3.5)
+}
+
 export class AiService extends Service implements AiLike {
   private cache?: AiAnalysis
   private modelCache?: { at: number; models: AiModelInfo[]; source: 'remote' | 'fallback' }
@@ -248,6 +252,15 @@ export class AiService extends Service implements AiLike {
     }
     throw new AiError(lastError, 'INVALID_RESPONSE')
   }
+  /** 当前模型的能力上限（来自 /models 缓存或内置目录） */
+  private modelLimits(): { contextWindow: number; maxOutputTokens: number } {
+    const model = this.modelCache?.models?.find((item) => item.id === this.rawConfig.model)
+    return {
+      contextWindow: model?.contextWindow ?? 128_000,
+      maxOutputTokens: model?.maxOutputTokens ?? 65_536,
+    }
+  }
+
   status(): AiRuntimeStatus {
     return {
       available: true,
@@ -261,6 +274,8 @@ export class AiService extends Service implements AiLike {
       lastProbe: this.lastProbe,
       contextAvailable: this.ctx.aiContext.list(),
       contextUsed: this.lastContextUsed,
+      contextWindow: this.modelLimits().contextWindow,
+      maxOutputTokens: this.modelLimits().maxOutputTokens,
     }
   }
 
@@ -383,7 +398,8 @@ export class AiService extends Service implements AiLike {
    */
   async evaluateRules(inputs: RuleEvalInput[]): Promise<Map<string, RuleEvalResult>> {
     const key = this.requireKey()
-    const config = { ...this.rawConfig, maxTokens: Math.max(16_384, this.rawConfig.maxTokens) }
+    const limits = this.modelLimits()
+    const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(16_384, this.rawConfig.maxTokens)) }
     const signature = JSON.stringify(inputs.map((item) => [item.ruleId, item.count, Math.round(item.bytes / 1024), item.risk]))
     const cached = this.evalCache.get(signature)
     if (cached && Date.now() - cached.at < 5 * 60_000) return cached.result
@@ -451,7 +467,8 @@ export class AiService extends Service implements AiLike {
 
   async analyze(options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] } = {}): Promise<AiAnalysis> {
     const key = this.requireKey()
-    const config = { ...this.rawConfig, maxTokens: Math.max(16_384, this.rawConfig.maxTokens) }
+    const limits = this.modelLimits()
+    const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(16_384, this.rawConfig.maxTokens)) }
     const profile = await this.buildProfile(options.extraContext)
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan
