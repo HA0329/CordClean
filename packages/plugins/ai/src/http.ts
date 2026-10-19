@@ -32,6 +32,8 @@ export class AiError extends Error {
 }
 
 export interface RequestOptions {
+  /** 外部取消信号（与超时合并） */
+  signal?: AbortSignal
   method?: 'GET' | 'POST'
   headers: Record<string, string>
   body?: unknown
@@ -86,7 +88,7 @@ export async function requestJson(url: string, options: RequestOptions): Promise
         method: options.method ?? 'POST',
         headers: options.headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: AbortSignal.timeout(options.timeoutMs),
+        signal: options.signal ? AbortSignal.any([AbortSignal.timeout(options.timeoutMs), options.signal]) : AbortSignal.timeout(options.timeoutMs),
       })
       const text = await response.text()
       // 注意：要在读完响应体之后再计时。非流式补全的响应头可能先到，
@@ -145,4 +147,47 @@ export async function requestJson(url: string, options: RequestOptions): Promise
   }
 
   throw lastError ?? new AiError('请求失败', 'NETWORK')
+}
+
+/** SSE 流式读取（chat/messages/responses 共用）：逐条回调 data JSON */
+export async function requestSse(
+  url: string,
+  options: { headers: Record<string, string>; body: string; timeoutMs?: number },
+  onData: (payload: any) => void,
+): Promise<void> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 120_000)
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { ...options.headers, Accept: 'text/event-stream' },
+      body: options.body,
+      signal: controller.signal,
+    })
+    if (!response.ok || !response.body) {
+      const text = await response.text().catch(() => '')
+      throw new Error(`SSE 请求失败：HTTP ${response.status} ${text.slice(0, 200)}`)
+    }
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const events = buffer.split('\n\n')
+      buffer = events.pop() ?? ''
+      for (const event of events) {
+        for (const line of event.split('\n')) {
+          const trimmed = line.trim()
+          if (!trimmed.startsWith('data:')) continue
+          const data = trimmed.slice(5).trim()
+          if (!data || data === '[DONE]') continue
+          try { onData(JSON.parse(data)) } catch { /* 忽略非 JSON 心跳 */ }
+        }
+      }
+    }
+  } finally {
+    clearTimeout(timer)
+  }
 }

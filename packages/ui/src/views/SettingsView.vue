@@ -54,6 +54,14 @@ const saving = ref(false)
 const importText = ref('')
 const importOpen = ref(false)
 const schedulerPlugin = computed(() => state.plugins.find((plugin) => plugin.id === 'scheduler'))
+const plans = computed<any[]>(() => {
+  const config = (schedulerPlugin.value?.config ?? {}) as any
+  if (Array.isArray(config.plans) && config.plans.length) return config.plans
+  return [{ id: 'default', name: '默认计划', enabled: config.enabled === true, daily: config.daily === true, everyMinutes: config.everyMinutes ?? 120, atHour: config.atHour ?? 3, atMinute: config.atMinute ?? 0, taskIds: config.taskIds ?? [], mode: config.mode === 'clean' ? 'clean' : 'scan', authorizedHash: config.authorizedHash ?? '' }]
+})
+const selectedPlanId = ref('default')
+const selectedPlan = computed(() => plans.value.find((plan) => plan.id === selectedPlanId.value) ?? plans.value[0])
+
 const schedule = reactive({
   enabled: false,
   daily: false,
@@ -66,7 +74,7 @@ const schedule = reactive({
 })
 
 watch(
-  () => schedulerPlugin.value?.config,
+  () => [schedulerPlugin.value?.config, selectedPlanId.value],
   (config) => {
     if (!config) return
     Object.assign(schedule, {
@@ -90,7 +98,10 @@ async function saveSchedule() {
   }
   try {
     if (!schedulerPlugin.value.enabled) await setPluginEnabled('scheduler', true)
-    await savePluginConfig('scheduler', { ...(schedulerPlugin.value.config ?? {}), ...schedule })
+    const current = (schedulerPlugin.value.config ?? {}) as any
+    const firstPlan = Array.isArray(current.plans) && current.plans.length ? current.plans[0] : { id: 'default', name: '默认计划', authorizedHash: '' }
+    const nextPlans = plans.value.map((plan: any) => (plan.id === selectedPlanId.value ? { ...plan, enabled: schedule.enabled, daily: schedule.daily, everyMinutes: schedule.everyMinutes, atHour: schedule.atHour, atMinute: schedule.atMinute, taskIds: schedule.taskIds, mode: schedule.mode } : plan))
+    await savePluginConfig('scheduler', { ...current, plans: nextPlans })
     await refreshPlugins()
     ElMessage.success('定时任务已保存')
   } catch (error) {
@@ -98,9 +109,30 @@ async function saveSchedule() {
   }
 }
 
+async function createPlan() {
+  const config = (schedulerPlugin.value?.config ?? {}) as any
+  const id = 'plan-' + Date.now().toString(36)
+  const plan = { id, name: '新计划', enabled: false, daily: false, everyMinutes: 120, atHour: 3, atMinute: 0, taskIds: [], mode: 'scan', authorizedHash: '' }
+  await savePluginConfig('scheduler', { ...config, plans: [...plans.value, plan] })
+  await refreshPlugins()
+  selectedPlanId.value = id
+  ElMessage.success('已新建计划，修改后点保存')
+}
+
+async function removePlan() {
+  if (plans.value.length <= 1) return
+  try {
+    await ElMessageBox.confirm('删除计划「' + (selectedPlan.value?.name ?? '') + '」？', '删除计划', { type: 'warning' })
+    const remaining = plans.value.filter((plan: any) => plan.id !== selectedPlanId.value)
+    await savePluginConfig('scheduler', { ...(schedulerPlugin.value?.config ?? {}), plans: remaining })
+    await refreshPlugins()
+    selectedPlanId.value = remaining[0]?.id ?? 'default'
+  } catch {}
+}
+
 async function authorizeSchedule() {
   try {
-    await authorizeScheduler({ ...schedule })
+    await authorizeScheduler({ ...schedule, planId: selectedPlanId.value })
     await refreshPlugins()
     ElMessage.success('已授权自动清理（规则变化后需重新授权）')
   } catch (error) {
@@ -110,7 +142,7 @@ async function authorizeSchedule() {
 
 async function revokeSchedule() {
   try {
-    await revokeScheduler()
+    await revokeScheduler(selectedPlanId.value)
     await refreshPlugins()
     ElMessage.success('已清除授权，改为仅通知')
   } catch (error) {
@@ -120,7 +152,7 @@ async function revokeSchedule() {
 
 async function runScheduleNow() {
   try {
-    await runSchedulerNow()
+    await runSchedulerNow(selectedPlanId.value)
     ElMessage.success('已触发一次，完成后会弹通知')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -399,6 +431,14 @@ async function doClearEgress() {
         </div>
         <p v-if="!schedulerPlugin" class="cc-hint">没有找到「定时扫描」插件：请到插件页启用它。</p>
         <template v-else>
+          <div class="plan-row">
+            <el-select v-model="selectedPlanId" size="small" style="width: 220px">
+              <el-option v-for="plan in plans" :key="plan.id" :label="plan.name" :value="plan.id" />
+            </el-select>
+            <el-button size="small" @click="createPlan">新建计划</el-button>
+            <el-button size="small" type="danger" plain :disabled="plans.length <= 1" @click="removePlan">删除计划</el-button>
+            <span class="cc-faint">{{ plans.length }} 个计划</span>
+          </div>
           <el-form label-position="left" label-width="120px" size="small" class="schedule-form">
             <el-form-item label="启用"><el-switch v-model="schedule.enabled" /></el-form-item>
             <el-form-item label="执行方式">
@@ -686,3 +726,8 @@ async function doClearEgress() {
 .schedule-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .time-sep { margin: 0 6px; }
 </style>
+
+<style scoped>
+.plan-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+</style>
+

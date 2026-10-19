@@ -26,8 +26,9 @@ import type {
   RiskLevel,
   TaskDescriptor,
 } from '@cordclean/shared'
-import { buildRequest, parseResponse } from './adapters.ts'
+import { buildRequest, parseResponse, parseSseDelta } from './adapters.ts'
 import { normalizeConfig, wantsJson, type AiConfig } from './config.ts'
+import { requestSse } from './http.ts'
 import { AiError, requestJson } from './http.ts'
 import { fetchModelList, FALLBACK_MODELS } from './models.ts'
 import { buildSystemPrompt, buildUserPrompt, type SystemProfile } from './profile.ts'
@@ -120,6 +121,10 @@ export interface RuleEvalResult {
   reason: string
 }
 
+export function estimateTokens(text: string): number {
+  return Math.ceil(String(text).length / 3.5)
+}
+
 export class AiService extends Service implements AiLike {
   private cache?: AiAnalysis
   private modelCache?: { at: number; models: AiModelInfo[]; source: 'remote' | 'fallback' }
@@ -156,6 +161,12 @@ export class AiService extends Service implements AiLike {
 
   /** 本次分析实际用到的上下文采集器 */
   private lastContextUsed: string[] = []
+  private analyzeController?: AbortController
+
+  /** 取消当前分析（界面「取消生成」） */
+  cancelAnalyze(): void {
+    this.analyzeController?.abort()
+  }
 
   constructor(ctx: Context, private readonly rawConfig: AiConfig) {
     super(ctx, 'ai')
@@ -224,7 +235,7 @@ export class AiService extends Service implements AiLike {
       const maxTokens = Math.min(131_072, Math.max(32_768, base.maxTokens) * (attempt ? 2 : 1))
       const config = { ...base, maxTokens }
       const suffix = attempt ? '\n\n上一次输出为空或被截断。请直接输出完整、可运行的 ```js 代码块，不要省略、不要 JSON 包装。' : ''
-      const request = buildRequest(config, key, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX + requirement + suffix)
+      const request = buildRequest(config, key, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX + requirement + suffix, [PLUGIN_TOOL])
       this.gate('plugin-draft', request.url, request.body)
       const result = await requestJson(request.url, {
         headers: request.headers,
@@ -238,7 +249,8 @@ export class AiService extends Service implements AiLike {
         this.ctx.logger.info('插件草稿被截断，自动扩容重试')
         continue
       }
-      const code = extractPluginCode(parsed.text)
+      const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments
+      const code = toolArgs && typeof toolArgs.code === 'string' ? toolArgs.code.trim() : extractPluginCode(parsed.text)
       if (code && /defineCleanerPlugin/.test(code)) {
         const matched = code.match(/name:\s*['"]([a-zA-Z0-9_-]+)['"]/)
         return { name: matched?.[1] ?? 'ai-plugin', code, notes: parsed.text.slice(0, 200) }
@@ -247,6 +259,15 @@ export class AiService extends Service implements AiLike {
     }
     throw new AiError(lastError, 'INVALID_RESPONSE')
   }
+  /** 当前模型的能力上限（来自 /models 缓存或内置目录） */
+  private modelLimits(): { contextWindow: number; maxOutputTokens: number } {
+    const model = this.modelCache?.models?.find((item) => item.id === this.rawConfig.model)
+    return {
+      contextWindow: model?.contextWindow ?? 128_000,
+      maxOutputTokens: model?.maxOutputTokens ?? 393_216,
+    }
+  }
+
   status(): AiRuntimeStatus {
     return {
       available: true,
@@ -260,6 +281,8 @@ export class AiService extends Service implements AiLike {
       lastProbe: this.lastProbe,
       contextAvailable: this.ctx.aiContext.list(),
       contextUsed: this.lastContextUsed,
+      contextWindow: this.modelLimits().contextWindow,
+      maxOutputTokens: this.modelLimits().maxOutputTokens,
     }
   }
 
@@ -382,7 +405,8 @@ export class AiService extends Service implements AiLike {
    */
   async evaluateRules(inputs: RuleEvalInput[]): Promise<Map<string, RuleEvalResult>> {
     const key = this.requireKey()
-    const config = { ...this.rawConfig, maxTokens: Math.max(16_384, this.rawConfig.maxTokens) }
+    const limits = this.modelLimits()
+    const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(32_768, this.rawConfig.maxTokens)) }
     const signature = JSON.stringify(inputs.map((item) => [item.ruleId, item.count, Math.round(item.bytes / 1024), item.risk]))
     const cached = this.evalCache.get(signature)
     if (cached && Date.now() - cached.at < 5 * 60_000) return cached.result
@@ -448,9 +472,18 @@ export class AiService extends Service implements AiLike {
     if (!gate.allowed) throw new AiError(gate.reason ?? '在线 AI 已被关闭', 'NETWORK')
   }
 
-  async analyze(options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] } = {}): Promise<AiAnalysis> {
+  async analyze(options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[]; image?: { mime: string; data: string } } = {}): Promise<AiAnalysis> {
+    this.analyzeController = new AbortController()
+    const signal = this.analyzeController.signal
     const key = this.requireKey()
-    const config = { ...this.rawConfig, maxTokens: Math.max(16_384, this.rawConfig.maxTokens) }
+    if (options.image) {
+      const model = this.modelCache?.models?.find((item) => item.id === this.rawConfig.model)
+      const supports = model ? (model.inputModalities ?? []).includes('image') : this.rawConfig.model.startsWith('deepseek-flash')
+      if (!supports) throw new Error('当前模型不支持图片输入（deepseek-flash 支持，v4-pro 不支持）')
+      if (options.image.data.length > 4_000_000) throw new Error('图片过大（base64 超过 4MB），请压缩后再试')
+    }
+    const limits = this.modelLimits()
+    const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(32_768, this.rawConfig.maxTokens)) }
     const profile = await this.buildProfile(options.extraContext)
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan
@@ -577,6 +610,20 @@ export function extractPluginCode(text: string): string {
   }
   return raw
 }
+const PLUGIN_TOOL = {
+  name: 'emit_plugin',
+  description: '输出一个完整可运行的单文件 Cordis 插件源码',
+  parameters: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'kebab-case 插件名' },
+      code: { type: 'string', description: '完整 ESM 源码，必须包含 defineCleanerPlugin 与 export default' },
+      notes: { type: 'string', description: '简要说明' },
+    },
+    required: ['name', 'code'],
+  },
+}
+
 const PLUGIN_SYSTEM_PROMPT = [
   '你是 Cordis 插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "code": "完整 ESM 源码", "notes": "简要说明" }。',
   'code 必须是单文件 .mjs，默认导出 defineCleanerPlugin({ name, version, description, inject: ["cleaner"], setup(ctx, config) {...} })。',

@@ -1,151 +1,194 @@
 /**
- * 定时扫描/清理插件（scheduler）。
+ * 定时任务插件（scheduler）——多计划 + 持久化。
  *
- * 两条运行模式：
- * - `scan`：只扫描并通过 `scheduler/scan` 事件通知（默认）；
- * - `clean`：扫描后自动清理 **risk=safe** 的项，但必须先「授权」。
- *
- * 计划级授权：
- * - 授权时把**当前规则指纹**（分类开关 + 规则统计）写入 `authorizedHash`；
- * - 每次自动清理前重新计算指纹，不一致就跳过清理并通知「规则已变，请重新授权」；
- * - 因此改规则 / 采纳 AI 规则之后，旧的无人值守授权自动失效。
- *
- * 定时器用 `ctx.effect` 管理，插件禁用或配置热重载时自动销毁。
+ * 计划保存在插件配置 `plans[]`；上次运行时间持久化在 `settings.scheduler.lastRuns`，
+ * 因此重启后间隔不会重置。自动清理仍需按计划授权，授权绑定规则指纹。
  */
 import { createHash } from 'node:crypto'
 import Schema from 'schemastery'
-import { defineCleanerPlugin, formatBytes } from '@cordclean/shared'
+import { defineCleanerPlugin } from '@cordclean/shared'
 import { errorMessage } from '@cordclean/utils'
 
+export interface SchedulePlan {
+  id: string
+  name: string
+  enabled: boolean
+  daily: boolean
+  everyMinutes: number
+  atHour: number
+  atMinute: number
+  taskIds: string[]
+  mode: 'scan' | 'clean'
+  authorizedHash: string
+}
+
 export interface SchedulerConfig {
+  plans: SchedulePlan[]
   enabled: boolean
   everyMinutes: number
   taskIds: string[]
-  /** scan = 只通知；clean = 授权后自动清理安全项 */
   mode: 'scan' | 'clean'
-  /** 授权时的规则指纹；为空表示未授权 */
   authorizedHash: string
-  /** true=每天固定时间；false=按间隔 */
   daily: boolean
   atHour: number
   atMinute: number
 }
 
-export const Config: Schema<SchedulerConfig> = Schema.object({
-  enabled: Schema.boolean().default(false).description('启用定时任务'),
-  everyMinutes: Schema.number().min(15).max(24 * 60).default(120).description('执行间隔（分钟）'),
-  taskIds: Schema.array(Schema.string()).default([]).description('只处理这些任务 id（留空 = 全部）'),
-  mode: Schema.union(['scan', 'clean']).default('scan').description('scan=只扫描通知；clean=授权后自动清理安全项'),
-  authorizedHash: Schema.string().default('').description('规则指纹（由「授权自动清理」写入，不要手改）'),
-  daily: Schema.boolean().default(false).description('true=每天固定时间执行；false=按间隔'),
-  atHour: Schema.number().min(0).max(23).default(3).description('每天执行的小时（0-23）'),
-  atMinute: Schema.number().min(0).max(59).default(0).description('每天执行的分钟（0-59）'),
+const PlanSchema = Schema.object({
+  id: Schema.string().required(),
+  name: Schema.string().default('定时任务'),
+  enabled: Schema.boolean().default(true),
+  daily: Schema.boolean().default(false),
+  everyMinutes: Schema.number().min(15).max(24 * 60).default(120),
+  atHour: Schema.number().min(0).max(23).default(3),
+  atMinute: Schema.number().min(0).max(59).default(0),
+  taskIds: Schema.array(Schema.string()).default([]),
+  mode: Schema.union(['scan', 'clean']).default('scan'),
+  authorizedHash: Schema.string().default(''),
 })
 
-const CHECK_INTERVAL_MS = 30_000
+export const Config: Schema<SchedulerConfig> = Schema.object({
+  plans: Schema.array(PlanSchema).default([]),
+  enabled: Schema.boolean().default(false),
+  everyMinutes: Schema.number().min(15).max(24 * 60).default(120),
+  taskIds: Schema.array(Schema.string()).default([]),
+  mode: Schema.union(['scan', 'clean']).default('scan'),
+  authorizedHash: Schema.string().default(''),
+  daily: Schema.boolean().default(false),
+  atHour: Schema.number().min(0).max(23).default(3),
+  atMinute: Schema.number().min(0).max(59).default(0),
+})
 
-/** 规则指纹：任何影响规则集合的开关或统计变化都会导致指纹变化 */
+/** 规则指纹：规则开关或统计变化都会导致授权失效 */
 export function rulesHash(ctx: any): string {
   const settings = ctx.settings.get()
   const stats = ctx.rules?.stats?.() ?? {}
   return createHash('sha1')
-    .update(
-      JSON.stringify({
-        includeRisky: settings.rules.includeRisky,
-        includeDeep: settings.rules.includeDeep,
-        includeCustom: settings.rules.includeCustom,
-        stats,
-      }),
-    )
+    .update(JSON.stringify({
+      includeRisky: settings.rules.includeRisky,
+      includeDeep: settings.rules.includeDeep,
+      includeCustom: settings.rules.includeCustom,
+      stats,
+    }))
     .digest('hex')
     .slice(0, 16)
 }
 
+/** 旧版单计划配置迁移成 plans[0] */
+export function normalizePlans(config: SchedulerConfig): SchedulePlan[] {
+  if (Array.isArray(config.plans) && config.plans.length) return config.plans
+  return [{
+    id: 'default',
+    name: '默认计划',
+    enabled: config.enabled === true,
+    daily: config.daily === true,
+    everyMinutes: config.everyMinutes || 120,
+    atHour: config.atHour ?? 3,
+    atMinute: config.atMinute ?? 0,
+    taskIds: config.taskIds ?? [],
+    mode: config.mode === 'clean' ? 'clean' : 'scan',
+    authorizedHash: config.authorizedHash ?? '',
+  }]
+}
+
+const CHECK_INTERVAL_MS = 30_000
+
 export default defineCleanerPlugin<SchedulerConfig>({
   name: 'scheduler',
-  version: '1.1.0',
-  description: '定时扫描并通知；授权后可自动清理安全项，规则一变授权失效',
+  version: '2.0.0',
+  description: '多计划定时扫描；授权后可自动清理安全项，规则一变授权失效',
   inject: ['cleaner', 'settings', 'rules'],
   Config,
   setup(ctx, config) {
-    let lastRun = 0
-    let lastDay = ''
-    const due = () => {
-      if (config.daily) {
-        const now = new Date()
-        const today = now.toISOString().slice(0, 10)
-        const passed = now.getHours() * 60 + now.getMinutes() >= config.atHour * 60 + config.atMinute
-        return passed && lastDay !== today
-      }
-      return Date.now() - lastRun >= Math.max(15, config.everyMinutes) * 60_000
-    }
-
     const notify = (payload: Record<string, unknown>) => {
       ;(ctx.emit as any)('scheduler/scan', { at: Date.now(), ...payload })
     }
+    const plans = (): SchedulePlan[] => normalizePlans(config)
+    const lastRuns = (): Record<string, number> => ({ ...(ctx.settings.get().scheduler?.lastRuns ?? {}) })
 
-    const runOnce = async () => {
+    const due = (plan: SchedulePlan): boolean => {
+      if (!plan.enabled) return false
+      const last = lastRuns()[plan.id] ?? 0
+      if (plan.daily) {
+        const now = new Date()
+        const key = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`
+        const prev = last ? new Date(last) : undefined
+        const prevKey = prev ? `${prev.getFullYear()}-${prev.getMonth() + 1}-${prev.getDate()}` : ''
+        return prevKey !== key && now.getHours() * 60 + now.getMinutes() >= plan.atHour * 60 + plan.atMinute
+      }
+      return Date.now() - last >= Math.max(15, plan.everyMinutes) * 60_000
+    }
+
+    const runPlan = async (plan: SchedulePlan) => {
       try {
-        const report: any = await (ctx.cleaner as any).scan(config.taskIds.length ? { taskIds: config.taskIds } : {})
+        const report: any = await (ctx.cleaner as any).scan(plan.taskIds.length ? { taskIds: plan.taskIds } : {})
         let totalBytes = 0
         for (const item of report.items as any[]) totalBytes += item.size
-        notify({ items: report.items.length, bytes: totalBytes, elapsedMs: report.elapsedMs, errors: report.errors.length })
+        notify({ planId: plan.id, planName: plan.name, items: report.items.length, bytes: totalBytes, elapsedMs: report.elapsedMs, errors: report.errors.length })
 
-        if (config.mode !== 'clean') return
-        const hash = rulesHash(ctx)
-        if (!config.authorizedHash || config.authorizedHash !== hash) {
-          notify({ blocked: true, reason: '规则已变化，自动清理授权失效，请重新授权' })
-          return
+        if (plan.mode === 'clean') {
+          const hash = rulesHash(ctx)
+          if (!plan.authorizedHash || plan.authorizedHash !== hash) {
+            notify({ planId: plan.id, planName: plan.name, blocked: true, reason: '规则已变化，自动清理授权失效，请重新授权' })
+          } else {
+            const safeItems = (report.items as any[]).filter((item) => !item.protected && item.risk === 'safe')
+            if (safeItems.length) {
+              const cleaned: any = await (ctx.cleaner as any).clean({ items: safeItems })
+              notify({
+                planId: plan.id,
+                planName: plan.name,
+                autoCleaned: true,
+                cleaned: cleaned.cleaned,
+                freedBytes: cleaned.freedBytes,
+                recycledBytes: cleaned.recycledBytes,
+                mode: cleaned.mode,
+              })
+            }
+          }
         }
-        const safeItems = (report.items as any[]).filter((item) => !item.protected && item.risk === 'safe')
-        if (!safeItems.length) return
-        const cleaned: any = await (ctx.cleaner as any).clean({ items: safeItems })
-        notify({
-          autoCleaned: true,
-          cleaned: cleaned.cleaned,
-          freedBytes: cleaned.freedBytes,
-          recycledBytes: cleaned.recycledBytes,
-          mode: cleaned.mode,
-        })
-        ;(ctx.logger as any).info(
-          '定时自动清理：%d 项，释放 %s（回收站 %s）',
-          cleaned.cleaned,
-          formatBytes(cleaned.freedBytes),
-          formatBytes(cleaned.recycledBytes),
-        )
+
+        const next = lastRuns()
+        next[plan.id] = Date.now()
+        ctx.settings.patch({ scheduler: { lastRuns: next } } as any)
       } catch (error) {
-        notify({ error: errorMessage(error) })
+        notify({ planId: plan.id, planName: plan.name, error: errorMessage(error) })
       }
     }
 
-    // 手动触发（界面「立即运行」），不受间隔限制
-    ;(ctx.on as any)('scheduler/run', () => {
-      lastRun = Date.now()
-      void runOnce()
+    ;(ctx.on as any)('scheduler/run', (planId?: string) => {
+      for (const plan of plans()) {
+        if (!planId || plan.id === planId) void runPlan(plan)
+      }
     })
 
-    // 授权：由宿主转发，计算当前指纹后回调新的插件配置
-    ;(ctx.on as any)('scheduler/authorize', (patch: Partial<SchedulerConfig>, done: (next: SchedulerConfig) => void) => {
+    ;(ctx.on as any)('scheduler/authorize', (patch: { planId?: string }, done: (next: SchedulerConfig) => void) => {
+      const hash = rulesHash(ctx)
+      const target = patch.planId ?? plans()[0]?.id
       done({
         ...config,
-        ...patch,
-        enabled: true,
-        mode: 'clean',
-        authorizedHash: rulesHash(ctx),
+        plans: plans().map((plan) => (plan.id === target ? { ...plan, enabled: true, mode: 'clean', authorizedHash: hash } : plan)),
+        enabled: false,
+        mode: 'scan',
+        authorizedHash: '',
+      })
+    })
+
+    ;(ctx.on as any)('scheduler/revoke', (planId: string | undefined, done: (next: SchedulerConfig) => void) => {
+      done({
+        ...config,
+        plans: plans().map((plan) => (plan.id === (planId ?? plan.id) ? { ...plan, mode: 'scan', authorizedHash: '' } : plan)),
       })
     })
 
     ctx.effect(() => {
-      if (!config.enabled) return () => {}
-      const everyMs = Math.max(15, config.everyMinutes) * 60_000
-      ;(ctx.logger as any).info('定时任务已启用：每 %d 分钟一次，模式 %s', Math.max(15, config.everyMinutes), config.mode)
       const timer = setInterval(() => {
-        if (!due()) return
-        lastRun = Date.now()
-        lastDay = new Date().toISOString().slice(0, 10)
-        void runOnce()
+        for (const plan of plans()) {
+          if (due(plan)) void runPlan(plan)
+        }
       }, CHECK_INTERVAL_MS)
       return () => clearInterval(timer)
     })
+
+    ;(ctx.logger as any).info('定时任务已加载：%d 个计划', plans().length)
   },
 })

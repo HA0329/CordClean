@@ -70,6 +70,7 @@ export type ServerEventMap = {
   'clean/done': CleanReport
   'plugins/changed': Record<string, never>
   'history/changed': Record<string, never>
+  'ai/stream': { kind: 'delta' | 'done'; text?: string; reasoning?: string }
   'scheduler/scan': { at: number; items?: number; bytes?: number; elapsedMs?: number; errors?: number; error?: string; blocked?: boolean; reason?: string; autoCleaned?: boolean; cleaned?: number; freedBytes?: number; recycledBytes?: number; mode?: string }
   log: { level: string; message: string; time: number; name?: string }
 }
@@ -93,6 +94,9 @@ export interface ApiMap {
   'scan/cancel': { params: { scanId?: string }; result: void }
   'scan/last': { params: void; result: ScanReport | null }
 
+  'files/move': { params: { paths: string[]; targetDir: string; link?: boolean }; result: { moved: Array<{ from: string; to: string; bytes: number }>; failed: Array<{ path: string; error: string }>; freedBytes: number } }
+  'clean/undo-state': { params: void; result: { available: boolean; at?: number; quarantine: number; recycle: number; permanent: number } }
+  'clean/undo': { params: void; result: { restored: number; recyclePending: number; permanent: number; failed: number } }
   'clean/start': {
     params: { itemIds?: string[]; items?: CleanItemRef[]; dryRun?: boolean; forceQuarantine?: boolean }
     result: CleanReport
@@ -101,10 +105,10 @@ export interface ApiMap {
 
   'plugins/source': { params: { id: string }; result: { path: string } }
   'app/open-editor': { params: { path: string }; result: void }
-  'scheduler/authorize': { params: { everyMinutes?: number; taskIds?: string[] }; result: { hash: string } }
-  'scheduler/run': { params: void; result: { ok: true } }
-  'scheduler/revoke': { params: void; result: { ok: true } }
-  'plugins/install': { params: { path: string }; result: void }
+  'scheduler/authorize': { params: { planId?: string; everyMinutes?: number; taskIds?: string[] }; result: { hash: string } }
+  'scheduler/run': { params: { planId?: string }; result: { ok: true } }
+  'scheduler/revoke': { params: { planId?: string }; result: { ok: true } }
+  'plugins/install': { params: { path: string; allowCustomClean?: boolean }; result: void }
   'plugins/uninstall': { params: { id: string }; result: void }
   'plugins/list': { params: void; result: PluginRuntime[] }
   'plugins/enable': { params: { id: string }; result: void }
@@ -117,6 +121,7 @@ export interface ApiMap {
   'settings/patch': { params: { patch: Record<string, unknown> }; result: Settings }
   'settings/set': { params: { path: string; value: unknown }; result: Settings }
 
+  'history/sessions': { params: void; result: Array<{ sessionId: string; startedAt: number; status: string; taskIds: string[] }> }
   'history/list': { params: { limit?: number }; result: HistoryEntry[] }
   'history/totals': { params: void; result: { sessions: number; freedBytes: number; cleaned: number } }
   'history/clear': { params: void; result: void }
@@ -126,7 +131,8 @@ export interface ApiMap {
   'quarantine/purge': { params: { ids?: string[] }; result: number }
   'quarantine/stats': { params: void; result: { count: number; bytes: number } }
 
-  'ai/analyze': { params: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] }; result: AiAnalysis }
+  'ai/cancel': { params: void; result: void }
+  'ai/analyze': { params: { taskIds?: string[]; extraContext?: string; contextProviders?: string[]; image?: { mime: string; data: string } }; result: AiAnalysis }
   'ai/last': { params: void; result: AiAnalysis | null }
   'ai/status': { params: void; result: AiRuntimeStatus }
   'ai/models': { params: { refresh?: boolean }; result: { source: 'remote' | 'fallback'; models: AiModelInfo[] } }
@@ -159,6 +165,8 @@ export interface CleanItemRef {
 
 export type CleanItemRefKind = 'file' | 'directory' | 'registry' | 'command' | 'entry'
 
+export const PROTOCOL_VERSION = 1
+
 export interface AppInfo {
   name: string
   version: string
@@ -171,6 +179,7 @@ export interface AppInfo {
   elevated: boolean
   /** 内核启动耗时（毫秒） */
   bootMs: number
+  protocolVersion: number
 }
 
 /** 插件运行时信息（提供给界面） */

@@ -1,0 +1,1509 @@
+{
+  "version": 1,
+  "generatedFrom": "手工补充（2026-10）",
+  "description": "在 271 条基础规则上补充的常见应用缓存规则",
+  "categories": [
+    {
+      "key": "extra_browsers",
+      "label": "更多浏览器缓存",
+      "risk": "safe",
+      "categoryId": "browser",
+      "rules": [
+        {
+          "id": "extra-browser-1",
+          "name": "Chrome 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-2",
+          "name": "Edge 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-3",
+          "name": "Brave 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\BraveSoftware\\Brave-Browser\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-4",
+          "name": "Vivaldi 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Vivaldi\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-5",
+          "name": "Opera 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Opera Software\\Opera Stable\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-6",
+          "name": "Opera GX 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Opera Software\\Opera GX Stable\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-7",
+          "name": "Chromium 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Chromium\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-8",
+          "name": "Yandex 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Yandex\\YandexBrowser\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-9",
+          "name": "Thorium 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Thorium\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-10",
+          "name": "Arc 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Packages\\TheBrowserCompany.Arc\\User Data\\Default\\Cache"
+          }
+        },
+        {
+          "id": "extra-browser-11",
+          "name": "Firefox 崩溃报告 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Mozilla\\Firefox\\Crash Reports"
+          }
+        },
+        {
+          "id": "extra-browser-12",
+          "name": "Firefox 更新缓存 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Mozilla\\Firefox\\updates"
+          }
+        }
+      ]
+    },
+    {
+      "key": "extra_dev",
+      "label": "更多开发工具缓存",
+      "risk": "safe",
+      "categoryId": "dev",
+      "rules": [
+        {
+          "id": "extra-dev-1",
+          "name": "Gradle 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%\\.gradle\\caches"
+          }
+        },
+        {
+          "id": "extra-dev-2",
+          "name": "Maven 仓库",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%\\.m2\\repository"
+          }
+        },
+        {
+          "id": "extra-dev-3",
+          "name": "Go 构建缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\go-build"
+          }
+        },
+        {
+          "id": "extra-dev-4",
+          "name": "Cargo 下载缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%\\.cargo\\registry\\cache"
+          }
+        },
+        {
+          "id": "extra-dev-5",
+          "name": "pip 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\pip\\Cache"
+          }
+        },
+        {
+          "id": "extra-dev-6",
+          "name": "uv 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\uv\\cache"
+          }
+        },
+        {
+          "id": "extra-dev-7",
+          "name": "Yarn 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Yarn\\Cache"
+          }
+        },
+        {
+          "id": "extra-dev-8",
+          "name": "Bun 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%\\.bun\\install\\cache"
+          }
+        },
+        {
+          "id": "extra-dev-9",
+          "name": "Deno 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\deno"
+          }
+        },
+        {
+          "id": "extra-dev-10",
+          "name": "NuGet 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%\\.nuget\\packages"
+          }
+        },
+        {
+          "id": "extra-dev-11",
+          "name": "Composer 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Composer"
+          }
+        },
+        {
+          "id": "extra-dev-12",
+          "name": "Ruby Gem 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%\\.gem"
+          }
+        },
+        {
+          "id": "extra-dev-13",
+          "name": "Flutter 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\flutter"
+          }
+        },
+        {
+          "id": "extra-dev-14",
+          "name": "Unity 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Unity\\cache"
+          }
+        },
+        {
+          "id": "extra-dev-15",
+          "name": "Unreal DDC",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\UnrealEngine\\Common\\DerivedDataCache"
+          }
+        },
+        {
+          "id": "extra-dev-16",
+          "name": "VS Code 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Code\\Cache"
+          }
+        },
+        {
+          "id": "extra-dev-17",
+          "name": "JetBrains 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\JetBrains"
+          }
+        },
+        {
+          "id": "extra-dev-18",
+          "name": "Eclipse 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%\\.eclipse"
+          }
+        },
+        {
+          "id": "extra-dev-19",
+          "name": "Android SDK 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%\\.android\\cache"
+          }
+        },
+        {
+          "id": "extra-dev-20",
+          "name": "CocoaPods 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%USERPROFILE%\\.cocoapods"
+          }
+        }
+      ]
+    },
+    {
+      "key": "extra_games",
+      "label": "更多游戏平台缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "rules": [
+        {
+          "id": "extra-game-1",
+          "name": "Steam 着色器缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMFILES(X86)%\\Steam\\steamapps\\shadercache"
+          }
+        },
+        {
+          "id": "extra-game-2",
+          "name": "Steam 临时下载",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMFILES(X86)%\\Steam\\steamapps\\temp"
+          }
+        },
+        {
+          "id": "extra-game-3",
+          "name": "Epic Web 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\EpicGamesLauncher\\Saved\\webcache"
+          }
+        },
+        {
+          "id": "extra-game-4",
+          "name": "Epic 日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\EpicGamesLauncher\\Saved\\Logs"
+          }
+        },
+        {
+          "id": "extra-game-5",
+          "name": "Riot 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Riot Games\\Riot Client\\Cache"
+          }
+        },
+        {
+          "id": "extra-game-6",
+          "name": "暴雪缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Blizzard Entertainment\\Battle.net\\Cache"
+          }
+        },
+        {
+          "id": "extra-game-7",
+          "name": "GOG 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\GOG.com\\Galaxy\\webcache"
+          }
+        },
+        {
+          "id": "extra-game-8",
+          "name": "Ubisoft 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Ubisoft Game Launcher\\cache"
+          }
+        },
+        {
+          "id": "extra-game-9",
+          "name": "EA 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Electronic Arts\\EA Desktop\\cache"
+          }
+        },
+        {
+          "id": "extra-game-10",
+          "name": "WeGame 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Tencent\\WeGame\\cache"
+          }
+        },
+        {
+          "id": "extra-game-11",
+          "name": "Minecraft 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\.minecraft\\assets\\indexes"
+          }
+        },
+        {
+          "id": "extra-game-12",
+          "name": "Roblox 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Roblox\\Downloads"
+          }
+        },
+        {
+          "id": "extra-game-13",
+          "name": "战网日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Blizzard Entertainment\\Battle.net\\Logs"
+          }
+        },
+        {
+          "id": "extra-game-14",
+          "name": "Steam 日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMFILES(X86)%\\Steam\\logs"
+          }
+        },
+        {
+          "id": "extra-game-15",
+          "name": "Epic 崩溃报告",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\EpicGamesLauncher\\Saved\\Crashes"
+          }
+        }
+      ]
+    },
+    {
+      "key": "extra_cloud",
+      "label": "云盘与同步工具缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "rules": [
+        {
+          "id": "extra-cloud-1",
+          "name": "OneDrive 日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Microsoft\\OneDrive\\logs"
+          }
+        },
+        {
+          "id": "extra-cloud-2",
+          "name": "Dropbox 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Dropbox\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-3",
+          "name": "Google Drive 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Google\\DriveFS"
+          }
+        },
+        {
+          "id": "extra-cloud-4",
+          "name": "百度网盘缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Baidu\\BaiduNetdisk\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-5",
+          "name": "阿里云盘缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Alibaba\\AliyunDrive\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-6",
+          "name": "坚果云缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Nutstore\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-7",
+          "name": "迅雷缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Thunder Network\\Thunder\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-8",
+          "name": "夸克网盘缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Quark\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-9",
+          "name": "天翼云盘缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\ChinaTelecom\\Cloud\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-10",
+          "name": "腾讯微云缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Tencent\\Weiyun\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-11",
+          "name": "Box 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Box\\Box\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-12",
+          "name": "MEGA 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Mega Limited\\MEGAsync\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-13",
+          "name": "pCloud 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\pCloud\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-14",
+          "name": "iCloud 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Apple Inc\\iCloud\\cache"
+          }
+        },
+        {
+          "id": "extra-cloud-15",
+          "name": "Syncthing 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Syncthing"
+          }
+        }
+      ]
+    },
+    {
+      "key": "extra_chat",
+      "label": "通讯与会议缓存",
+      "risk": "caution",
+      "categoryId": "apps",
+      "rules": [
+        {
+          "id": "extra-chat-1",
+          "name": "微信小程序缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Tencent\\WeChat\\XPlugin\\Plugins"
+          }
+        },
+        {
+          "id": "extra-chat-2",
+          "name": "QQ 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Tencent\\QQ\\cache"
+          }
+        },
+        {
+          "id": "extra-chat-3",
+          "name": "钉钉缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\DingTalk\\cache"
+          }
+        },
+        {
+          "id": "extra-chat-4",
+          "name": "飞书缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Feishu\\cache"
+          }
+        },
+        {
+          "id": "extra-chat-5",
+          "name": "Teams 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Microsoft\\Teams\\Cache"
+          }
+        },
+        {
+          "id": "extra-chat-6",
+          "name": "Slack 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Slack\\Cache"
+          }
+        },
+        {
+          "id": "extra-chat-7",
+          "name": "Discord 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\discord\\Cache"
+          }
+        },
+        {
+          "id": "extra-chat-8",
+          "name": "Telegram 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Telegram Desktop\\tdata\\user_data\\cache"
+          }
+        },
+        {
+          "id": "extra-chat-9",
+          "name": "WhatsApp 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\WhatsApp\\Cache"
+          }
+        },
+        {
+          "id": "extra-chat-10",
+          "name": "Signal 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Signal\\Cache"
+          }
+        },
+        {
+          "id": "extra-chat-11",
+          "name": "Zoom 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Zoom\\data"
+          }
+        },
+        {
+          "id": "extra-chat-12",
+          "name": "腾讯会议缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Tencent\\WeMeet\\cache"
+          }
+        },
+        {
+          "id": "extra-chat-13",
+          "name": "企业微信缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Tencent\\WXWork\\cache"
+          }
+        },
+        {
+          "id": "extra-chat-14",
+          "name": "LINE 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\LINE\\Cache"
+          }
+        },
+        {
+          "id": "extra-chat-15",
+          "name": "Viber 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Viber\\Cache"
+          }
+        }
+      ]
+    },
+    {
+      "key": "extra_media",
+      "label": "影音播放缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "rules": [
+        {
+          "id": "extra-media-1",
+          "name": "Spotify 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Spotify\\Storage"
+          }
+        },
+        {
+          "id": "extra-media-2",
+          "name": "网易云音乐缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Netease\\CloudMusic\\Cache"
+          }
+        },
+        {
+          "id": "extra-media-3",
+          "name": "QQ 音乐缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Tencent\\QQMusic\\cache"
+          }
+        },
+        {
+          "id": "extra-media-4",
+          "name": "酷狗缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Kugou\\cache"
+          }
+        },
+        {
+          "id": "extra-media-5",
+          "name": "爱奇艺缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\IQIYI\\cache"
+          }
+        },
+        {
+          "id": "extra-media-6",
+          "name": "腾讯视频缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Tencent\\QQLive\\cache"
+          }
+        },
+        {
+          "id": "extra-media-7",
+          "name": "优酷缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Youku\\cache"
+          }
+        },
+        {
+          "id": "extra-media-8",
+          "name": "哔哩哔哩缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\bilibili\\cache"
+          }
+        },
+        {
+          "id": "extra-media-9",
+          "name": "PotPlayer 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\PotPlayerMini64\\Cache"
+          }
+        },
+        {
+          "id": "extra-media-10",
+          "name": "VLC 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\vlc\\cache"
+          }
+        },
+        {
+          "id": "extra-media-11",
+          "name": "MPC-HC 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\MPC-HC\\Cache"
+          }
+        },
+        {
+          "id": "extra-media-12",
+          "name": "Foobar 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\foobar2000\\cache"
+          }
+        },
+        {
+          "id": "extra-media-13",
+          "name": "iTunes 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Apple Computer\\iTunes\\Cache"
+          }
+        },
+        {
+          "id": "extra-media-14",
+          "name": "Amazon Music 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Amazon Music\\Cache"
+          }
+        },
+        {
+          "id": "extra-media-15",
+          "name": "YouTube Music 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\YouTube Music\\Cache"
+          }
+        }
+      ]
+    },
+    {
+      "key": "extra_office",
+      "label": "办公与创意软件缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "rules": [
+        {
+          "id": "extra-office-1",
+          "name": "Office 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Microsoft\\Office\\16.0\\OfficeFileCache"
+          }
+        },
+        {
+          "id": "extra-office-2",
+          "name": "WPS 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Kingsoft\\office6\\cache"
+          }
+        },
+        {
+          "id": "extra-office-3",
+          "name": "Adobe 媒体缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Adobe\\Common\\Media Cache Files"
+          }
+        },
+        {
+          "id": "extra-office-4",
+          "name": "Premiere 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Adobe\\Common\\Media Cache"
+          }
+        },
+        {
+          "id": "extra-office-5",
+          "name": "After Effects 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Adobe\\After Effects"
+          }
+        },
+        {
+          "id": "extra-office-6",
+          "name": "Photoshop 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Adobe\\Photoshop"
+          }
+        },
+        {
+          "id": "extra-office-7",
+          "name": "Illustrator 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Adobe\\Illustrator"
+          }
+        },
+        {
+          "id": "extra-office-8",
+          "name": "Lightroom 预览",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Adobe\\Lightroom\\Caches"
+          }
+        },
+        {
+          "id": "extra-office-9",
+          "name": "Audition 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Adobe\\Audition"
+          }
+        },
+        {
+          "id": "extra-office-10",
+          "name": "DaVinci 缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Blackmagic Design\\DaVinci Resolve\\CacheClip"
+          }
+        },
+        {
+          "id": "extra-office-11",
+          "name": "OBS 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\obs-studio\\crashes"
+          }
+        },
+        {
+          "id": "extra-office-12",
+          "name": "Blender 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Blender Foundation\\Blender"
+          }
+        },
+        {
+          "id": "extra-office-13",
+          "name": "AutoCAD 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Autodesk\\AutoCAD"
+          }
+        },
+        {
+          "id": "extra-office-14",
+          "name": "MATLAB 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\MathWorks\\MATLAB"
+          }
+        },
+        {
+          "id": "extra-office-15",
+          "name": "LibreOffice 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\LibreOffice\\4\\cache"
+          }
+        }
+      ]
+    },
+    {
+      "key": "extra_tools",
+      "label": "常用工具与显卡缓存",
+      "risk": "safe",
+      "categoryId": "apps",
+      "rules": [
+        {
+          "id": "extra-tool-1",
+          "name": "7-Zip 临时",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%TEMP%\\7z"
+          }
+        },
+        {
+          "id": "extra-tool-2",
+          "name": "WinRAR 临时",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%TEMP%\\Rar$"
+          }
+        },
+        {
+          "id": "extra-tool-3",
+          "name": "Everything 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Everything"
+          }
+        },
+        {
+          "id": "extra-tool-4",
+          "name": "Notepad++ 备份",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Notepad++\\backup"
+          }
+        },
+        {
+          "id": "extra-tool-5",
+          "name": "Sublime 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%APPDATA%\\Sublime Text\\Cache"
+          }
+        },
+        {
+          "id": "extra-tool-6",
+          "name": "GitHub Desktop 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\GitHubDesktop\\cache"
+          }
+        },
+        {
+          "id": "extra-tool-7",
+          "name": "Node 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\node\\cache"
+          }
+        },
+        {
+          "id": "extra-tool-8",
+          "name": "Python 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Python\\cache"
+          }
+        },
+        {
+          "id": "extra-tool-9",
+          "name": "Java 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Sun\\Java\\Deployment\\cache"
+          }
+        },
+        {
+          "id": "extra-tool-10",
+          "name": "Windows Terminal 缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalCache"
+          }
+        },
+        {
+          "id": "extra-tool-11",
+          "name": "NVIDIA 着色器缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\NVIDIA\\DXCache"
+          }
+        },
+        {
+          "id": "extra-tool-12",
+          "name": "AMD 着色器缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\AMD\\DxCache"
+          }
+        },
+        {
+          "id": "extra-tool-13",
+          "name": "Intel 着色器缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Intel\\ShaderCache"
+          }
+        }
+      ]
+    },
+    {
+      "key": "extra_windows",
+      "label": "更多系统缓存",
+      "risk": "safe",
+      "categoryId": "system",
+      "rules": [
+        {
+          "id": "extra-win-1",
+          "name": "传递优化缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%\\SoftwareDistribution\\Download"
+          }
+        },
+        {
+          "id": "extra-win-2",
+          "name": "错误报告队列",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%\\Microsoft\\Windows\\WER\\ReportQueue"
+          }
+        },
+        {
+          "id": "extra-win-3",
+          "name": "错误报告归档",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%\\Microsoft\\Windows\\WER\\ReportArchive"
+          }
+        },
+        {
+          "id": "extra-win-4",
+          "name": "缩略图缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Microsoft\\Windows\\Explorer"
+          }
+        },
+        {
+          "id": "extra-win-5",
+          "name": "字体缓存",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%\\ServiceProfiles\\LocalService\\AppData\\Local\\FontCache"
+          }
+        },
+        {
+          "id": "extra-win-6",
+          "name": "预读取文件",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%\\Prefetch"
+          }
+        },
+        {
+          "id": "extra-win-7",
+          "name": "CBS 日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%\\Logs\\CBS"
+          }
+        },
+        {
+          "id": "extra-win-8",
+          "name": "Windows 更新日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%WINDIR%\\Logs\\WindowsUpdate"
+          }
+        },
+        {
+          "id": "extra-win-9",
+          "name": "诊断日志",
+          "risk": "safe",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%LOCALAPPDATA%\\Temp\\DiagLogs"
+          }
+        },
+        {
+          "id": "extra-win-10",
+          "name": "安装缓存",
+          "risk": "caution",
+          "source": "imported",
+          "version": 1,
+          "target": {
+            "type": "clear_dir",
+            "path": "%PROGRAMDATA%\\Package Cache"
+          }
+        }
+      ]
+    }
+  ]
+}

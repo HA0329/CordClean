@@ -4,7 +4,7 @@
  * 清单只保存「元数据 + 懒加载函数」，插件模块仅在被启用时才会被
  * `import()` 载入内存 —— 这既是启动性能优化，也是插件「按需装载」的体现。
  */
-import type { PluginManifestEntry } from './services/plugins.ts'
+import type { PluginManifestEntry } from './domains/kernel/plugins.ts'
 
 export const BUILTIN_MANIFEST: PluginManifestEntry[] = [
   {

@@ -40,6 +40,8 @@ export const DEFAULT_BASE_URLS: Record<ApiShape, string> = {
 export interface AiConfig {
   /** API Key；留空则读取环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY */
   apiKey: string
+  /** 是否使用 SSE 流式输出（默认 true，失败自动回退） */
+  stream: boolean
   baseUrl: string
   apiShape: ApiShape
   /** 聊天接口路径；留空按形态取默认值 */
@@ -77,6 +79,7 @@ export interface AiConfig {
 export const JSON_HINT_ZH = '\n\n只输出一个 JSON 对象，不要输出 Markdown 代码块、解释或前后缀文字。'
 
 const SchemaConfig = Schema.object({
+  stream: Schema.boolean().default(true).description('SSE 流式输出（失败自动回退非流式）'),
   apiKey: Schema.string().default('').description('API Key（留空则读取环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY）'),
   baseUrl: Schema.string().default('https://api.deepseek.com').description('接口根地址，例如 https://api.deepseek.com/anthropic'),
   apiShape: Schema.union(API_SHAPES).default('chat').description('接口形态：chat=OpenAI 兼容，messages=Anthropic 兼容，responses=OpenAI Responses'),
@@ -86,7 +89,7 @@ const SchemaConfig = Schema.object({
   model: Schema.string().default('deepseek-flash').description('模型名，可任意填写；界面可从 /models 拉取候选'),
   reasoningEffort: Schema.union(EFFORT_LEVELS).default('auto').description('推理等级：auto=不干预，off=关闭思考，low/medium/high/max=开启并指定强度'),
   jsonMode: Schema.union(['auto', 'on', 'off']).default('auto').description('JSON 输出：auto=接口支持时启用'),
-  maxTokens: Schema.number().default(0).min(0).max(131072).description('最大输出 token（含思维链）；0=使用默认值 65536'),
+  maxTokens: Schema.number().default(0).min(0).max(1000000).description('最大输出 token（含思维链）；0=使用默认值 393216（按模型上限收敛）'),
   temperature: Schema.number().default(-1).min(-1).max(2).description('温度，-1 表示不发送（思考模式下该参数不生效）'),
   timeoutMs: Schema.number().default(0).min(0).max(600_000).description('单次请求超时（毫秒）；0=使用默认值 90000'),
   /** 以下两个字段仅为兼容 v1 配置，新配置请使用 timeoutMs / maxTokens */
@@ -126,10 +129,11 @@ export function normalizeConfig(raw: Partial<AiConfig> | undefined): AiConfig {
   const chatPath = String(input.chatPath ?? '').trim() || DEFAULT_PATHS[shape]
   // timeoutMs/maxTokens 的 schema 默认值是 0（未设置），这里再回落到旧字段与内置默认值
   const timeoutMs = Number(input.timeoutMs ?? 0) || Number(input.timeout ?? 0) || 90_000
-  let maxTokens = Number(input.maxTokens ?? 0) || Number((input as any).max_tokens ?? 0) || 65536
+  let maxTokens = Number(input.maxTokens ?? 0) || Number((input as any).max_tokens ?? 0) || 393216
   if (maxTokens <= 2048) maxTokens = 65536
 
   return {
+    stream: input.stream !== false,
     apiKey: String(input.apiKey ?? '').trim(),
     baseUrl,
     apiShape: shape,
@@ -139,7 +143,7 @@ export function normalizeConfig(raw: Partial<AiConfig> | undefined): AiConfig {
     model: String(input.model ?? '').trim() || 'deepseek-flash',
     reasoningEffort: pickEffort(input.reasoningEffort),
     jsonMode: (['auto', 'on', 'off'] as const).includes(input.jsonMode as any) ? (input.jsonMode as JsonMode) : 'auto',
-  maxTokens: Number.isFinite(maxTokens) ? Math.min(131072, Math.max(128, Math.trunc(maxTokens))) : 65536,
+  maxTokens: Number.isFinite(maxTokens) ? Math.min(1000000, Math.max(128, Math.trunc(maxTokens))) : 393216,
     temperature: Number.isFinite(Number(input.temperature)) ? Number(input.temperature) : -1,
     timeoutMs: Number.isFinite(timeoutMs) ? Math.min(600_000, Math.max(3_000, Math.trunc(timeoutMs))) : 90_000,
     retries: Number.isFinite(Number(input.retries)) ? Math.min(5, Math.max(0, Math.trunc(Number(input.retries)))) : 1,
