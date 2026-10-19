@@ -380,6 +380,7 @@ export class CleanerService extends Service implements CleanerLike {
     let quarantinedBytes = 0
     let vanished = 0
     let skipped = 0
+    const undoAll: Array<{ path: string; mode: string }> = []
 
     for (const [taskId, groupItems] of groups) {
       if (controller.signal.aborted) break
@@ -505,10 +506,17 @@ export class CleanerService extends Service implements CleanerLike {
         if (result.quarantined) quarantined++
         cleaned++
       }
+      for (const result of results) {
+        if (result.ok && undoAll.length < 5000) {
+          undoAll.push({ path: result.path, mode: result.quarantined ? 'quarantine' : settings.clean.mode })
+        }
+      }
       perTask.push({ taskId, cleaned: taskCleaned, bytes: taskBytes, failed: taskFailed })
     }
 
     await quarantineSession?.close()
+
+    const undo = undoAll
 
     const report: CleanReport = {
       sessionId,
@@ -528,6 +536,7 @@ export class CleanerService extends Service implements CleanerLike {
       cancelled: controller.signal.aborted,
       perTask,
       failures: failures.slice(0, 200),
+      undo,
     }
 
     if (!dryRun && cleaned > 0) {

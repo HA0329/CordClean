@@ -168,6 +168,8 @@ export interface CleanReport {
   cancelled: boolean
   perTask: Array<{ taskId: string; cleaned: number; bytes: number; failed: number }>
   failures: Array<{ itemId: string; path: string; message: string }>
+  /** 可回滚清单（仅成功项；用于「撤销上次清理」） */
+  undo?: Array<{ path: string; mode: string; action?: string }>
 }
 
 /** 隔离区记录（可恢复） */

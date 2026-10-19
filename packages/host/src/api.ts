@@ -2,6 +2,7 @@ import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { folderSize } from '@cordclean/utils'
 import { spawn } from 'node:child_process'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 /**
  * RPC 方法实现。
  *
@@ -66,6 +67,20 @@ function toCleanItem(ref: CleanItemRef): CleanItem {
 /** 构造 RPC 处理方法表 */
 export function createHandlers(api: ApiContext): HandlerMap {
   initDiagnostics(api.dataDir)
+  const UNDO_FILE = path.join(api.dataDir, '.undo', 'last-clean.json')
+  const saveUndo = (report: any): void => {
+    if (report.dryRun || !Array.isArray(report.undo) || !report.undo.length) return
+    mkdirSync(path.dirname(UNDO_FILE), { recursive: true })
+    writeFileSync(UNDO_FILE, JSON.stringify({ at: Date.now(), sessionId: report.sessionId, items: report.undo }), 'utf8')
+  }
+  const readUndo = (): any | null => {
+    try {
+      return JSON.parse(readFileSync(UNDO_FILE, 'utf8'))
+    } catch {
+      return null
+    }
+  }
+
   const { ctx } = api
 
   const requireAi = (): AiLike => {
@@ -168,11 +183,36 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'scan/last': () => ctx.cleaner.lastScan() ?? null,
 
+    'clean/undo-state': () => {
+      const state = readUndo()
+      if (!state?.items?.length) return { available: false, quarantine: 0, recycle: 0, permanent: 0 }
+      return {
+        available: true,
+        at: state.at,
+        quarantine: state.items.filter((item: any) => item.mode === 'quarantine').length,
+        recycle: state.items.filter((item: any) => item.mode === 'recycle').length,
+        permanent: state.items.filter((item: any) => item.mode === 'delete').length,
+      }
+    },
+    'clean/undo': async () => {
+      const state = readUndo()
+      if (!state?.items?.length) return { restored: 0, recyclePending: 0, permanent: 0, failed: 0 }
+      const quarantinePaths = new Set(state.items.filter((item: any) => item.mode === 'quarantine').map((item: any) => item.path))
+      const entries = (await ctx.quarantine.list()).filter((entry) => quarantinePaths.has(entry.originalPath))
+      const result = await ctx.quarantine.restore(entries.map((entry) => entry.id))
+      const recyclePending = state.items.filter((item: any) => item.mode === 'recycle').length
+      const permanent = state.items.filter((item: any) => item.mode === 'delete').length
+      rmSync(UNDO_FILE, { force: true })
+      return { restored: result.restored, recyclePending, permanent, failed: result.failed.length }
+    },
     'clean/start': async ({ itemIds, items, dryRun, forceQuarantine }) => {
       if (items?.length) {
-        return ctx.cleaner.clean({ items: items.map(toCleanItem), dryRun, forceQuarantine })
+        const cleaned = await ctx.cleaner.clean({ items: items.map(toCleanItem), dryRun, forceQuarantine })
+        saveUndo(cleaned)
+        return cleaned
       }
       const result = await ctx.cleaner.clean({ itemIds, dryRun, forceQuarantine })
+      saveUndo(result)
       dlog('info', 'clean', '清理完成', { mode: result.mode, cleaned: result.cleaned, freed: result.freedBytes, recycled: result.recycledBytes, failed: result.failed })
       return result
     },

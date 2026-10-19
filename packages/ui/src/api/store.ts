@@ -310,6 +310,16 @@ export async function clearEgress(): Promise<void> {
   await requireTransport().request('ai/egress/clear', undefined)
 }
 
+export async function fetchUndoState(): Promise<{ available: boolean; at?: number; quarantine: number; recycle: number; permanent: number }> {
+  return requireTransport().request('clean/undo-state', undefined)
+}
+
+export async function undoLastClean(): Promise<{ restored: number; recyclePending: number; permanent: number; failed: number }> {
+  const result = await requireTransport().request('clean/undo', undefined)
+  await Promise.all([refreshHistory(), refreshQuarantine()])
+  return result
+}
+
 export async function clearHistory(): Promise<void> {
   await requireTransport().request('history/clear', undefined)
   await refreshHistory()

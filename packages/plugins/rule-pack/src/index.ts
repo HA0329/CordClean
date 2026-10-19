@@ -29,6 +29,7 @@ import type {
 import { SUPPORTED_RULE_TYPES } from '@cordclean/shared'
 import { exists, folderSize, mapLimit, normalizePath, walk } from '@cordclean/utils'
 import catalogJson from '../rules/catalog.json' with { type: 'json' }
+import extraJson from '../rules/extra.json' with { type: 'json' }
 
 export interface RulePackConfig {
   /** 只启用这些分类（空 = 全部） */
@@ -83,7 +84,10 @@ interface Catalog {
   categories: CatalogCategory[]
 }
 
-const CATALOG = catalogJson as unknown as Catalog
+const CATALOG: Catalog = {
+  ...(catalogJson as unknown as Catalog),
+  categories: [...(catalogJson as unknown as Catalog).categories, ...(extraJson as unknown as Catalog).categories],
+}
 
 /** 展开 %VAR% 与 ~/；无法展开时返回空串 */
 export function expandTemplate(template: string, env: TaskEnv): string {

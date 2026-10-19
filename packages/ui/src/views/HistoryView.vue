@@ -10,10 +10,31 @@ import {
   refreshQuarantine,
   restoreQuarantine,
   state,
+  fetchUndoState,
+  undoLastClean,
 } from '../api/store.ts'
 
 const tab = ref<'history' | 'quarantine'>('history')
 const selectedQuarantine = ref<string[]>([])
+
+async function undoLast() {
+  try {
+    const state = await fetchUndoState()
+    if (!state.available) {
+      ElMessage.info('没有可撤销的清理记录（只保留最近一次）')
+      return
+    }
+    await ElMessageBox.confirm(
+      '可恢复：隔离区 ' + state.quarantine + ' 项；回收站 ' + state.recycle + ' 项（需手动还原）；永久删除 ' + state.permanent + ' 项（不可恢复）。',
+      '撤销上次清理',
+      { type: 'warning', confirmButtonText: '恢复隔离区' },
+    )
+    const result = await undoLastClean()
+    ElMessage.success('已恢复 ' + result.restored + ' 项；回收站 ' + result.recyclePending + ' 项请手动还原；永久删除 ' + result.permanent + ' 项不可恢复')
+  } catch (error) {
+    if (error !== 'cancel') ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
 
 async function refreshAll() {
   try {
@@ -70,7 +91,7 @@ async function purge(ids?: string[]) {
         <p>修复误删的最后一道防线：高风险的清理项会先进入隔离区，可随时恢复。</p>
       </div>
       <div class="cc-actions">
-        <el-button @click="refreshAll">刷新</el-button>
+        <el-button @click="refreshAll">刷新</el-button>`n      <el-button type="warning" plain @click="undoLast">撤销上次清理</el-button>
       </div>
     </div>
 
