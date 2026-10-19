@@ -1,0 +1,7 @@
+feat(platform): 3A 后续②——外部插件自定义 clean（默认拒绝 + 安装授权）
+
+- worker 协议新增 clean：仅当插件声明 capabilities.customClean 且安装时勾选"允许自定义清理"才生效
+- 未声明/未授权的插件调用 clean 直接拒绝；结果数组回传主进程，仍记日志与历史
+- installExternal 增加 allowCustomClean 选项，RPC/UI 安装对话框同步（红色风险提示）
+- tests/external-proxy 覆盖：声明可清理、未声明拒绝
+- 全量 31 文件 / 215 用例通过，UI/桌面构建与 E2E 通过

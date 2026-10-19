@@ -229,7 +229,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
     'plugins/disable': async ({ id }) => {
       await ctx.plugins.disable(id)
     },
-    'plugins/install': ({ path }) => ctx.plugins.installExternal(path),
+    'plugins/install': ({ path, allowCustomClean }) => ctx.plugins.installExternal(path, { allowCustomClean: allowCustomClean === true }),
   'plugins/uninstall': ({ id }) => ctx.plugins.uninstallExternal(id),
   'plugins/reload': async ({ id }) => {
       await ctx.plugins.reload(id)

@@ -106,7 +106,7 @@ export interface ApiMap {
   'scheduler/authorize': { params: { planId?: string; everyMinutes?: number; taskIds?: string[] }; result: { hash: string } }
   'scheduler/run': { params: { planId?: string }; result: { ok: true } }
   'scheduler/revoke': { params: { planId?: string }; result: { ok: true } }
-  'plugins/install': { params: { path: string }; result: void }
+  'plugins/install': { params: { path: string; allowCustomClean?: boolean }; result: void }
   'plugins/uninstall': { params: { id: string }; result: void }
   'plugins/list': { params: void; result: PluginRuntime[] }
   'plugins/enable': { params: { id: string }; result: void }

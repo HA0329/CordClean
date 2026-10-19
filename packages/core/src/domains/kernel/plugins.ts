@@ -44,10 +44,12 @@ export interface PluginCapabilities {
   network?: boolean
   /** 是否允许起子进程（默认 false） */
   childProcess?: boolean
+  /** 是否允许插件自定义清理（默认 false，需安装时显式授权） */
+  customClean?: boolean
 }
 
 /** 安装前校验外部插件的能力声明与代码是否一致 */
-export function validateCapabilities(plugin: any, code: string): PluginCapabilities {
+export function validateCapabilities(plugin: any, code: string, allowCustomClean = false): PluginCapabilities {
   const caps = plugin?.capabilities
   if (!caps || typeof caps !== 'object') {
     throw new Error('外部插件必须在 defineCleanerPlugin({ capabilities: { fsRoots: [...] } }) 中声明能力')
@@ -69,7 +71,7 @@ export function validateCapabilities(plugin: any, code: string): PluginCapabilit
   if (!childProcess && /child_process|execSync|spawnSync/.test(code)) {
     throw new Error('代码包含子进程调用，但未声明 childProcess 能力')
   }
-  return { fsRoots: roots, network, childProcess }
+  return { fsRoots: roots, network, childProcess, customClean: caps.customClean === true && allowCustomClean === true }
 }
 
 interface RuntimeRecord {
@@ -226,14 +228,14 @@ export class PluginManagerService extends Service implements PluginManagerLike {
    * 安装本地插件：import 任意本地 .mjs/.js 模块，校验其导出后挂到运行时。
    * 说明：仅本次运行有效（不复制用户文件、不修改安装包）。
    */
-  async installExternal(filePath: string): Promise<void> {
+  async installExternal(filePath: string, options: { allowCustomClean?: boolean } = {}): Promise<void> {
     const abs = path.resolve(filePath)
     if (!existsSync(abs)) throw new Error('插件文件不存在：' + abs)
     const code = await readFile(abs, 'utf8')
     const { proxy, info } = await ExternalPluginProxy.create(abs)
     let capabilities: PluginCapabilities
     try {
-      capabilities = validateCapabilities({ capabilities: info.capabilities }, code)
+      capabilities = validateCapabilities({ capabilities: info.capabilities }, code, options.allowCustomClean === true)
     } catch (error) {
       await proxy.dispose()
       throw error
@@ -266,6 +268,12 @@ export class PluginManagerService extends Service implements PluginManagerLike {
               icon: task.icon ?? '🔌',
               defaultSelected: task.defaultSelected === true,
               targets: task.targets ?? [],
+              ...(capabilities.customClean && task.hasClean ? {
+                async clean(items: any[], cleanCtx: any) {
+                  const result = await proxyRef.clean(task.id, items, { mode: cleanCtx?.mode, dryRun: cleanCtx?.dryRun })
+                  return Array.isArray(result) ? result : []
+                },
+              } : {}),
               async scan(scanCtx: any) {
                 const items = await proxyRef.scan(task.id)
                 for (const item of items) {

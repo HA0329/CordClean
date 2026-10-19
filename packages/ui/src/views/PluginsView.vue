@@ -31,12 +31,13 @@ const expanded = ref<Record<string, boolean>>({})
 const installOpen = ref(false)
 const installPath = ref('')
 const installing = ref(false)
+const allowCustomClean = ref(false)
 
 async function doInstall() {
   if (!installPath.value.trim()) return
   installing.value = true
   try {
-    await installPlugin(installPath.value.trim())
+    await installPlugin(installPath.value.trim(), allowCustomClean.value)
     ElMessage.success('插件已加载（本次运行有效）')
     installOpen.value = false
     installPath.value = ''

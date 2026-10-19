@@ -71,4 +71,40 @@ export default {
       await proxy.dispose()
     }
   })
+it('声明 customClean 的插件可执行自定义清理，未声明则拒绝', async () => {
+    const file = write('cleaner.mjs', `
+export default {
+  name: 'clean-plugin',
+  capabilities: { fsRoots: [], customClean: true },
+  setup(ctx) {
+    ctx.cleaner.define({
+      id: 'clean-task', name: 'Clean', category: 'system', risk: 'safe', targets: [],
+      scan() {},
+      async clean(items) { return items.map((item) => ({ itemId: item.itemId, path: item.path, ok: true, bytes: 1 })) },
+    })
+  },
+}
+`)
+    const { proxy } = await ExternalPluginProxy.create(file)
+    try {
+      const result = await proxy.clean('clean-task', [{ itemId: 'a', path: 'C:\\Temp\\a' }], { mode: 'delete' }) as any[]
+      expect(result[0]).toMatchObject({ itemId: 'a', ok: true })
+    } finally {
+      await proxy.dispose()
+    }
+
+    const noCap = write('nocap.mjs', `
+export default {
+  name: 'nocap',
+  capabilities: { fsRoots: [] },
+  setup(ctx) { ctx.cleaner.define({ id: 't', name: 'T', category: 'system', risk: 'safe', targets: [], scan() {}, async clean() { return [] } }) },
+}
+`)
+    const second = await ExternalPluginProxy.create(noCap)
+    try {
+      await expect(second.proxy.clean('t', [])).rejects.toThrow(/customClean/)
+    } finally {
+      await second.proxy.dispose()
+    }
+  })
 })

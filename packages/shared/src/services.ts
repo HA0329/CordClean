@@ -244,7 +244,7 @@ export interface SystemLike {
 /** 插件运行时描述（内核记录） */
 export interface PluginRuntimeInfo extends PluginInfo {
   /** 外部插件声明的能力（内置插件为空） */
-  capabilities?: { fsRoots: string[]; network?: boolean; childProcess?: boolean }
+  capabilities?: { fsRoots: string[]; network?: boolean; childProcess?: boolean; customClean?: boolean }
   /** 插件的错误堆栈（若失败） */
   errorStack?: string
   /** 插件当前配置 */
@@ -262,7 +262,7 @@ export interface PluginManagerLike {
   /** 插件源码文件/目录路径（内置或外部） */
   sourcePath(id: string): string | undefined
   /** 安装本地插件文件（.mjs/.js），会话内有效 */
-  installExternal(filePath: string): Promise<void>
+  installExternal(filePath: string, options?: { allowCustomClean?: boolean }): Promise<void>
   /** 卸载外部插件（内置插件只能停用） */
   uninstallExternal(id: string): Promise<void>
   updateConfig(id: string, config: Record<string, any>): Promise<void>

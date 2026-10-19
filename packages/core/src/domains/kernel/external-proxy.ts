@@ -22,13 +22,14 @@ export interface ExternalTaskMeta {
   defaultSelected?: boolean
   description?: string
   targets?: string[]
+  hasClean?: boolean
 }
 
 export interface ExternalDescribe {
   name: string
   version?: string
   description?: string
-  capabilities?: { fsRoots: string[]; network?: boolean; childProcess?: boolean }
+  capabilities?: { fsRoots: string[]; network?: boolean; childProcess?: boolean; customClean?: boolean }
   tasks: ExternalTaskMeta[]
 }
 
@@ -102,6 +103,7 @@ function describe(state) {
       id: task.id, name: task.name, category: task.category, risk: task.risk,
       icon: task.icon, defaultSelected: task.defaultSelected, description: task.description,
       targets: task.targets,
+      hasClean: typeof task.clean === 'function',
     })),
   }
 }
@@ -116,6 +118,24 @@ parentPort.on('message', async (message) => {
     if (message.type === 'configure') {
       const s = await reapply(message.config)
       parentPort.postMessage({ id: message.id, ok: true, value: describe(s) })
+      return
+    }
+    if (message.type === 'clean') {
+      const s = await load()
+      if (!s.plugin.capabilities || s.plugin.capabilities.customClean !== true) throw new Error('插件未声明 customClean 能力')
+      const task = s.tasks.find((item) => item.id === message.taskId)
+      if (!task || typeof task.clean !== 'function') throw new Error('插件没有自定义清理 ' + message.taskId)
+      const ctx = {
+        mode: message.mode || 'delete',
+        dryRun: message.dryRun === true,
+        logger: { info: noop, warn: noop, debug: noop, error: noop },
+        env: { get: (name) => env[name] ?? undefined },
+        pathPolicy: { addRoot: noop, addClearRoot: noop, check: () => ({ allowed: true }), checkClear: () => ({ allowed: true }), containsProtected: () => false },
+        throwIfAborted: noop,
+        signal: undefined,
+      }
+      const result = await task.clean(message.items || [], ctx)
+      parentPort.postMessage({ id: message.id, ok: true, value: result })
       return
     }
     if (message.type === 'scan') {
@@ -191,6 +211,11 @@ export class ExternalPluginProxy {
 
   scan(taskId: string, timeoutMs = 60_000): Promise<Array<Record<string, unknown>>> {
     return this.call({ type: 'scan', taskId }, timeoutMs) as Promise<Array<Record<string, unknown>>>
+  }
+
+  /** 执行插件自定义清理（仅声明并获批 customClean 的插件可用） */
+  clean(taskId: string, items: Array<Record<string, unknown>>, options: { mode?: string; dryRun?: boolean } = {}, timeoutMs = 60_000): Promise<unknown> {
+    return this.call({ type: 'clean', taskId, items, mode: options.mode, dryRun: options.dryRun }, timeoutMs)
   }
 
   /** 热更新配置：worker 内重新校验并重跑 setup，不销毁 worker */
