@@ -1,5 +1,0 @@
-feat(ui): 单条规则命中统计（最近一次扫描）
-
-- 规则库卡片新增「规则命中」按钮，弹窗按 ruleId 聚合命中项数/体积 Top 50
-- 数据来自 scan/last 的 item.meta.ruleId/ruleName（rule-pack 已写入）
-- UI/桌面构建通过
