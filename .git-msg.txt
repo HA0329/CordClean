@@ -1,6 +1,0 @@
-feat(platform): 外部插件配置热更新接线 + worker 空闲回收
-
-- updateConfig 对 external:* 直接调 proxy.configure：worker 内重新校验/重跑 setup，任务不重建
-- 扫描结果立即使用新配置（测试：size 5 → updateConfig(size 9) → 扫描返回 9）
-- 禁用外部插件后 5 分钟回收 worker；重新启用会清除回收定时器
-- 全量测试与桌面构建通过
