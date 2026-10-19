@@ -6,6 +6,7 @@ import type { PluginRuntime } from '@cordclean/shared'
 import {
   loadPluginDefaults,
   refreshPlugins,
+  fetchLastScan,
   reloadPlugin,
   pluginSource,
   openEditor,
@@ -31,12 +32,13 @@ const expanded = ref<Record<string, boolean>>({})
 const installOpen = ref(false)
 const installPath = ref('')
 const installing = ref(false)
+const allowCustomClean = ref(false)
 
 async function doInstall() {
   if (!installPath.value.trim()) return
   installing.value = true
   try {
-    await installPlugin(installPath.value.trim())
+    await installPlugin(installPath.value.trim(), allowCustomClean.value)
     ElMessage.success('插件已加载（本次运行有效）')
     installOpen.value = false
     installPath.value = ''
@@ -49,6 +51,38 @@ async function doInstall() {
 
 function toggleExpanded(id: string) {
   expanded.value[id] = !expanded.value[id]
+}
+
+const lastScan = ref<any>(null)
+const ruleOpen = ref(false)
+const ruleHits = computed(() => {
+  const map = new Map<string, { ruleId: string; name: string; items: number; bytes: number }>()
+  for (const item of lastScan.value?.items ?? []) {
+    const ruleId = item?.meta?.ruleId
+    if (!ruleId) continue
+    const entry = map.get(ruleId) ?? { ruleId, name: item.meta.ruleName ?? ruleId, items: 0, bytes: 0 }
+    entry.items += 1
+    entry.bytes += Number(item.size) || 0
+    map.set(ruleId, entry)
+  }
+  return [...map.values()].sort((a, b) => b.items - a.items)
+})
+const scanStats = computed(() => {
+  const map = new Map<string, { items: number; bytes: number }>()
+  for (const task of lastScan.value?.tasks ?? []) {
+    map.set(task.taskId, { items: task.items?.length ?? task.items ?? 0, bytes: task.bytes ?? 0 })
+  }
+  return map
+})
+
+function pluginStats(plugin: PluginRuntime) {
+  let items = 0
+  let bytes = 0
+  for (const task of plugin.tasks ?? []) {
+    const stat = scanStats.value.get(task.id)
+    if (stat) { items += Number(stat.items) || 0; bytes += Number(stat.bytes) || 0 }
+  }
+  return { items, bytes }
 }
 
 const plugins = computed(() => state.plugins)
@@ -206,10 +240,17 @@ function categoryName(id: string) {
           {{ expanded[plugin.id] ? '收起' : '展开' }}
         </button>
 
+        <div v-if="plugin.capabilities" class="cc-pill" :title="'允许目录：' + plugin.capabilities.fsRoots.join('；')">
+          能力：目录×{{ plugin.capabilities.fsRoots.length }}
+          <span v-if="plugin.capabilities.network"> · 网络</span>
+          <span v-if="plugin.capabilities.childProcess"> · 子进程</span>
+        </div>
         <div class="plugin-meta">
           <span class="cc-pill">{{ categoryName(plugin.category) }}</span>
           <span class="cc-pill" :class="`status-${plugin.status}`">{{ plugin.status === 'active' ? '运行中' : plugin.status === 'error' ? '异常' : plugin.status === 'loading' ? '加载中' : '已停止' }}</span>
           <span class="cc-pill">{{ plugin.taskCount }} 个任务</span>
+          <el-button v-if="plugin.id === 'rule-pack'" size="small" @click="ruleOpen = true">规则命中</el-button>
+          <span v-if="pluginStats(plugin).items" class="cc-pill">上次扫描 {{ pluginStats(plugin).items }} 项 · {{ (pluginStats(plugin).bytes / 1024 / 1024).toFixed(1) }} MB</span>
         </div>
 
         <div v-if="plugin.tasks.length" class="task-chips">
@@ -235,7 +276,17 @@ function categoryName(id: string) {
       </div>
     </div>
 
-        <el-dialog v-model="installOpen" title="添加本地插件" width="560px">
+        <el-dialog v-model="ruleOpen" title="规则命中统计（最近一次扫描）" width="720px">
+      <el-table :data="ruleHits.slice(0, 50)" size="small" max-height="420">
+        <el-table-column prop="name" label="规则" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="items" label="命中项" width="90" />
+        <el-table-column label="体积" width="110"><template #default="{ row }">{{ (row.bytes / 1024 / 1024).toFixed(1) }} MB</template></el-table-column>
+      </el-table>
+      <p v-if="!ruleHits.length" class="cc-faint">还没有扫描结果，先到清理页扫描一次。</p>
+      <template #footer><el-button @click="ruleOpen = false">关闭</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="installOpen" title="添加本地插件" width="560px">
       <p class="cc-hint">
         填写一个本地插件模块的绝对路径（<code>.mjs</code> / <code>.js</code>，需默认导出带 <code>apply()</code> 的 Cordis 插件，通常由 <code>defineCleanerPlugin</code> 生成）。
         插件只加载到本次运行，不会复制或修改你的文件；重启后需重新添加。

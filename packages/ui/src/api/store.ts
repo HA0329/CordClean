@@ -25,6 +25,8 @@ import type {
 import { createTransport, type ApiTransport } from './client.ts'
 
 export interface UiState {
+  aiStream: string
+  aiStreamReasoning: string
   ready: boolean
   busy: boolean
   error?: string
@@ -56,6 +58,8 @@ export interface UiState {
 }
 
 export const state = reactive<UiState>({
+  aiStream: '',
+  aiStreamReasoning: '',
   ready: false,
   busy: false,
   tasks: [],
@@ -80,7 +84,14 @@ function requireTransport(): ApiTransport {
 export async function init(): Promise<void> {
   try {
     state.transport = createTransport()
-    state.transport.on('scheduler/scan', (event) => {
+    state.transport.on('ai/stream', (event) => {
+    if (event.kind === 'delta') {
+      state.aiStream += event.text ?? ''
+      state.aiStreamReasoning += event.reasoning ?? ''
+    }
+  })
+
+  state.transport.on('scheduler/scan', (event) => {
       if (event.error) {
         ElNotification({ title: '定时扫描失败', message: event.error, type: 'error' })
         return
@@ -310,6 +321,24 @@ export async function clearEgress(): Promise<void> {
   await requireTransport().request('ai/egress/clear', undefined)
 }
 
+export async function fetchUndoState(): Promise<{ available: boolean; at?: number; quarantine: number; recycle: number; permanent: number }> {
+  return requireTransport().request('clean/undo-state', undefined)
+}
+
+export async function undoLastClean(): Promise<{ restored: number; recyclePending: number; permanent: number; failed: number }> {
+  const result = await requireTransport().request('clean/undo', undefined)
+  await Promise.all([refreshHistory(), refreshQuarantine()])
+  return result
+}
+
+export async function fetchLastScan(): Promise<any | null> {
+  return requireTransport().request('scan/last', undefined)
+}
+
+export async function fetchSessions(): Promise<Array<{ sessionId: string; startedAt: number; status: string; taskIds: string[] }>> {
+  return requireTransport().request('history/sessions', undefined)
+}
+
 export async function clearHistory(): Promise<void> {
   await requireTransport().request('history/clear', undefined)
   await refreshHistory()
@@ -317,10 +346,18 @@ export async function clearHistory(): Promise<void> {
 
 /* ---------------------------------- AI / 系统交互 ---------------------------------- */
 
-export async function analyzeAi(taskIds?: string[], contextProviders?: string[]): Promise<void> {
+export async function moveFiles(paths: string[], targetDir: string, link = false): Promise<{ moved: Array<{ from: string; to: string; bytes: number }>; failed: Array<{ path: string; error: string }>; freedBytes: number }> {
+  return requireTransport().request('files/move', { paths, targetDir, link })
+}
+
+export async function cancelAi(): Promise<void> {
+  await requireTransport().request('ai/cancel', undefined)
+}
+
+export async function analyzeAi(taskIds?: string[], contextProviders?: string[], image?: { mime: string; data: string }): Promise<void> {
   state.busy = true
   try {
-    state.ai = await requireTransport().request('ai/analyze', { taskIds, contextProviders })
+    state.ai = await requireTransport().request('ai/analyze', { taskIds, contextProviders, image })
     const status = await requireTransport().request('ai/status', undefined).catch(() => state.aiStatus)
     state.aiStatus = status
     state.aiModels = status.models?.length ? status.models : state.aiModels
@@ -417,13 +454,13 @@ export async function authorizeScheduler(patch: Record<string, unknown> = {}): P
   return result.hash
 }
 
-export async function revokeScheduler(): Promise<void> {
-  await requireTransport().request('scheduler/revoke', undefined)
+export async function revokeScheduler(planId?: string): Promise<void> {
+  await requireTransport().request('scheduler/revoke', { planId })
   await refreshPlugins()
 }
 
-export async function runSchedulerNow(): Promise<void> {
-  await requireTransport().request('scheduler/run', undefined)
+export async function runSchedulerNow(planId?: string): Promise<void> {
+  await requireTransport().request('scheduler/run', { planId })
 }
 
 export async function pluginSource(id: string): Promise<string> {

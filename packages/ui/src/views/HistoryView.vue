@@ -10,10 +10,41 @@ import {
   refreshQuarantine,
   restoreQuarantine,
   state,
+  fetchUndoState,
+  fetchSessions,
+  undoLastClean,
 } from '../api/store.ts'
 
 const tab = ref<'history' | 'quarantine'>('history')
+loadInterrupted()
 const selectedQuarantine = ref<string[]>([])
+const interrupted = ref<Array<{ sessionId: string; startedAt: number }>>([])
+
+async function loadInterrupted() {
+  try {
+    const list = await fetchSessions()
+    interrupted.value = list.filter((item) => item.status === 'interrupted')
+  } catch {}
+}
+
+async function undoLast() {
+  try {
+    const state = await fetchUndoState()
+    if (!state.available) {
+      ElMessage.info('没有可撤销的清理记录（只保留最近一次）')
+      return
+    }
+    await ElMessageBox.confirm(
+      '可恢复：隔离区 ' + state.quarantine + ' 项；回收站 ' + state.recycle + ' 项（需手动还原）；永久删除 ' + state.permanent + ' 项（不可恢复）。',
+      '撤销上次清理',
+      { type: 'warning', confirmButtonText: '恢复隔离区' },
+    )
+    const result = await undoLastClean()
+    ElMessage.success('已恢复 ' + result.restored + ' 项；回收站 ' + result.recyclePending + ' 项请手动还原；永久删除 ' + result.permanent + ' 项不可恢复')
+  } catch (error) {
+    if (error !== 'cancel') ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
 
 async function refreshAll() {
   try {
@@ -64,6 +95,7 @@ async function purge(ids?: string[]) {
 
 <template>
   <div class="cc-page">
+    <el-alert v-if="interrupted.length" type="warning" :closable="false" show-icon style="margin-bottom: 12px" :title="'检测到 ' + interrupted.length + ' 个上次未完成的清理会话（已标记中断，未自动继续）'" />
     <div class="cc-page-title">
       <div>
         <h1>历史与隔离区</h1>
@@ -71,6 +103,7 @@ async function purge(ids?: string[]) {
       </div>
       <div class="cc-actions">
         <el-button @click="refreshAll">刷新</el-button>
+      <el-button type="warning" plain @click="undoLast">撤销上次清理</el-button>
       </div>
     </div>
 

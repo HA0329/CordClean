@@ -168,6 +168,8 @@ export interface CleanReport {
   cancelled: boolean
   perTask: Array<{ taskId: string; cleaned: number; bytes: number; failed: number }>
   failures: Array<{ itemId: string; path: string; message: string }>
+  /** 可回滚清单（仅成功项；用于「撤销上次清理」） */
+  undo?: Array<{ path: string; mode: string; action?: string }>
 }
 
 /** 隔离区记录（可恢复） */
@@ -353,6 +355,8 @@ export interface AiRuntimeStatus {
   contextAvailable?: Array<{ id: string; name: string; description?: string; defaultEnabled: boolean }>
   /** 本次分析实际使用的采集器 */
   contextUsed?: string[]
+  contextWindow?: number
+  maxOutputTokens?: number
   available: boolean
   configured: boolean
   /** 接口形态：chat / messages / responses */

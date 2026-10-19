@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { RISK_META, formatBytes, formatTime } from '@cordclean/shared'
 import {
   analyzeAi,
+  cancelAi,
   startClean,
   refreshHistory,
   refreshQuarantine,
@@ -174,6 +175,7 @@ async function save() {
       baseUrl: form.baseUrl.trim(),
       model: form.model.trim(),
       reasoningEffort: form.effort,
+      stream: form.stream,
       jsonMode: form.jsonMode,
       maxTokens: Number(form.maxTokens),
       timeoutMs: Number(form.timeoutMs),
@@ -217,7 +219,7 @@ async function loadEgress() {
 async function run() {
   running.value = true
   try {
-    await analyzeAi(undefined, form.contextProviders)
+    await analyzeAi(undefined, form.contextProviders, visionImage.value ?? undefined)
     ElMessage.success('AI 分析完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -249,6 +251,22 @@ watch(
   },
   { deep: true },
 )
+
+const visionImage = ref<{ mime: string; data: string; name: string } | null>(null)
+
+function onVisionFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  if (file.size > 3 * 1024 * 1024) { ElMessage.warning('图片请小于 3MB'); return }
+  const reader = new FileReader()
+  reader.onload = () => {
+    const url = String(reader.result)
+    const mime = url.match(/data:([^;]+);base64/)?.[1] ?? 'image/png'
+    const data = url.split(',')[1] ?? ''
+    visionImage.value = { mime, data, name: file.name }
+  }
+  reader.readAsDataURL(file)
+}
 
 const rootSuggestions = computed(() => analysis.value?.rootSuggestions ?? [])
 
@@ -370,6 +388,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       <div class="cc-actions">
         <el-button :loading="loadingModels" :disabled="!available" @click="loadModels">获取模型</el-button>
         <el-button :disabled="!available" @click="loadEgress">外发记录</el-button>
+        <el-button v-if="running" type="danger" plain @click="cancelAi(); running = false">取消生成</el-button>
         <el-button :loading="probing" :disabled="!available || !configured" @click="doProbe">测试连接</el-button>
         <el-button type="primary" :loading="running" :disabled="!available || !configured" @click="run">
           {{ analysis ? '重新分析' : '开始分析' }}
@@ -542,12 +561,29 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
         <p v-if="!(state.aiStatus.contextAvailable ?? []).length" class="cc-faint">暂无采集器（需要 AI 插件处于启用状态）</p>
       </div>
 
+      <div class="cc-card">
+        <div class="cc-card-title">
+          <h3>🖼️ 截图诊断（可选）</h3>
+          <span class="cc-faint">仅 deepseek-flash 支持；截图会发送给模型，请勿包含隐私</span>
+        </div>
+        <input type="file" accept="image/png,image/jpeg" @change="onVisionFile" />
+        <div v-if="visionImage" style="margin-top: 8px">
+          <el-tag closable @close="visionImage = null">{{ visionImage.name }}</el-tag>
+          <img :src="'data:' + visionImage.mime + ';base64,' + visionImage.data" style="max-height: 160px; margin-top: 8px; border-radius: 8px" />
+        </div>
+      </div>
+
     <div class="cc-card">
         <div class="cc-card-title">
           <h3>🧠 补充说明（可选）</h3>
           <span class="cc-faint">例如：这台机器主要用于视频剪辑，希望保留素材缓存</span>
         </div>
         <el-input v-model="extra" type="textarea" :rows="2" placeholder="告诉 AI 你的使用习惯，建议会更准确…" />
+      </div>
+
+      <div v-if="state.busy && state.aiStream" class="cc-card">
+        <div class="cc-card-title"><h3>⏳ 正在生成…</h3><span class="cc-faint">流式输出，完成后自动解析</span></div>
+        <pre class="stream-box">{{ state.aiStream }}</pre>
       </div>
 
       <!-- 分析结果 -->
