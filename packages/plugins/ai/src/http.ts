@@ -152,10 +152,12 @@ export async function requestJson(url: string, options: RequestOptions): Promise
 /** SSE 流式读取（chat/messages/responses 共用）：逐条回调 data JSON */
 export async function requestSse(
   url: string,
-  options: { headers: Record<string, string>; body: string; timeoutMs?: number },
+  options: { headers: Record<string, string>; body: string; timeoutMs?: number; signal?: AbortSignal },
   onData: (payload: any) => void,
 ): Promise<void> {
   const controller = new AbortController()
+  const onAbort = () => controller.abort()
+  options.signal?.addEventListener('abort', onAbort, { once: true })
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 120_000)
   try {
     const response = await fetch(url, {
@@ -189,5 +191,6 @@ export async function requestSse(
     }
   } finally {
     clearTimeout(timer)
+    options.signal?.removeEventListener('abort', onAbort)
   }
 }
