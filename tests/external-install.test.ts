@@ -37,6 +37,10 @@ export default {
       const report = await app.ctx.cleaner.scan({ taskIds: ['ext-task'] })
       expect(report.items.length).toBe(1)
       expect(report.items[0].path).toContain('x.tmp')
+      await app.ctx.plugins.disable('external:ext-demo')
+      await app.ctx.plugins.enable('external:ext-demo')
+      const again = await app.ctx.cleaner.scan({ taskIds: ['ext-task'] })
+      expect(again.items.length).toBe(1)
       await app.ctx.plugins.uninstallExternal('external:ext-demo')
     } finally {
       await app.dispose()

@@ -1,0 +1,7 @@
+feat(platform): 外部插件 worker 复用（禁用不销毁）
+
+- 合成插件不再在 fiber 销毁时终止 worker；worker 存于 record.externalProxy
+- 禁用后重新启用复用同一个 worker（省冷启动），卸载时才 dispose
+- 测试：安装 → 禁用 → 启用 → 再次扫描仍返回候选
+- 待接线：updateConfig 对 external:* 调 configure（下一步）
+- 全量测试通过

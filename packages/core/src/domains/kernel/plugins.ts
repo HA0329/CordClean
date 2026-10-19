@@ -274,9 +274,6 @@ export class PluginManagerService extends Service implements PluginManagerLike {
             }),
           )
         }
-        ctx.effect(() => () => {
-          void proxyRef.dispose()
-        })
       },
     }
     const entry: PluginManifestEntry = {
@@ -288,7 +285,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       defaultEnabled: true,
       load: async () => ({ default: synthetic }),
     }
-    this.records.set(id, { entry, module: synthetic, status: 'stopped', config: {}, taskIds: [], externalPath: abs, capabilities } as any)
+    this.records.set(id, { entry, module: synthetic, status: 'stopped', config: {}, taskIds: [], externalPath: abs, capabilities, externalProxy: proxyRef } as any)
     await this.enable(id)
     this.emitChanged()
   }
@@ -297,7 +294,9 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     if (!id.startsWith('external:')) throw new Error('内置插件只能停用，不能卸载')
     const record = this.records.get(id)
     if (!record) return
+    const proxy = (record as any).externalProxy
     await this.disable(id)
+    if (proxy) await proxy.dispose()
     this.records.delete(id)
     this.emitChanged()
   }
