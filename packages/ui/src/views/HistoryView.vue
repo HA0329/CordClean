@@ -95,13 +95,15 @@ async function purge(ids?: string[]) {
 
 <template>
   <div class="cc-page">
-    <el-alert v-if="interrupted.length" type="warning" :closable="false" show-icon style="margin-bottom: 12px" :title="'检测到 ' + interrupted.length + ' 个上次未完成的清理会话（已标记中断，未自动继续）'" />`n    <div class="cc-page-title">
+    <el-alert v-if="interrupted.length" type="warning" :closable="false" show-icon style="margin-bottom: 12px" :title="'检测到 ' + interrupted.length + ' 个上次未完成的清理会话（已标记中断，未自动继续）'" />
+    <div class="cc-page-title">
       <div>
         <h1>历史与隔离区</h1>
         <p>修复误删的最后一道防线：高风险的清理项会先进入隔离区，可随时恢复。</p>
       </div>
       <div class="cc-actions">
-        <el-button @click="refreshAll">刷新</el-button>`n      <el-button type="warning" plain @click="undoLast">撤销上次清理</el-button>
+        <el-button @click="refreshAll">刷新</el-button>
+      <el-button type="warning" plain @click="undoLast">撤销上次清理</el-button>
       </div>
     </div>
 
