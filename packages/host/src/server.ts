@@ -13,6 +13,7 @@ import type { Context } from 'cordis'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { RpcRequest, RpcResponse, ServerEvent } from '@cordclean/shared'
 import { dlog } from './diagnostics.ts'
+import { validateParams } from './validation.ts'
 import { RPC_ERRORS } from '@cordclean/shared'
 import type { HandlerMap } from './api.ts'
 
@@ -130,6 +131,11 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     const handler = (options.handlers as Record<string, (params: any) => any>)[request.method]
     if (!handler) {
       return { jsonrpc: '2.0', id: request.id, error: { code: RPC_ERRORS.METHOD_NOT_FOUND, message: `未知方法：${request.method}` } }
+    }
+    const validation = validateParams(request.method, request.params)
+    if (!validation.ok) {
+      dlog('warn', 'rpc', request.method + ' 参数校验失败', { message: validation.message })
+      return { jsonrpc: '2.0', id: request.id, error: { code: RPC_ERRORS.INVALID_PARAMS ?? -32602, message: '参数校验失败：' + validation.message } }
     }
     try {
       const result = await handler(request.params ?? {})

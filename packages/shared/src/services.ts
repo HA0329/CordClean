@@ -227,6 +227,8 @@ export interface SystemLike {
 
 /** 插件运行时描述（内核记录） */
 export interface PluginRuntimeInfo extends PluginInfo {
+  /** 外部插件声明的能力（内置插件为空） */
+  capabilities?: { fsRoots: string[]; network?: boolean; childProcess?: boolean }
   /** 插件的错误堆栈（若失败） */
   errorStack?: string
   /** 插件当前配置 */

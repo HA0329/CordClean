@@ -206,6 +206,11 @@ function categoryName(id: string) {
           {{ expanded[plugin.id] ? '收起' : '展开' }}
         </button>
 
+        <div v-if="plugin.capabilities" class="cc-pill" :title="'允许目录：' + plugin.capabilities.fsRoots.join('；')">
+          能力：目录×{{ plugin.capabilities.fsRoots.length }}
+          <span v-if="plugin.capabilities.network"> · 网络</span>
+          <span v-if="plugin.capabilities.childProcess"> · 子进程</span>
+        </div>
         <div class="plugin-meta">
           <span class="cc-pill">{{ categoryName(plugin.category) }}</span>
           <span class="cc-pill" :class="`status-${plugin.status}`">{{ plugin.status === 'active' ? '运行中' : plugin.status === 'error' ? '异常' : plugin.status === 'loading' ? '加载中' : '已停止' }}</span>

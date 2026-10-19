@@ -161,6 +161,8 @@ export interface CleanItemRef {
 
 export type CleanItemRefKind = 'file' | 'directory' | 'registry' | 'command' | 'entry'
 
+export const PROTOCOL_VERSION = 1
+
 export interface AppInfo {
   name: string
   version: string
@@ -173,6 +175,7 @@ export interface AppInfo {
   elevated: boolean
   /** 内核启动耗时（毫秒） */
   bootMs: number
+  protocolVersion: number
 }
 
 /** 插件运行时信息（提供给界面） */

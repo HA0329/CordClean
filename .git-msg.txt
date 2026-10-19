@@ -1,0 +1,8 @@
+feat(platform): 插件能力声明与安装校验 + RPC 入参校验与协议版本
+
+- 外部插件必须声明 capabilities.fsRoots（绝对路径、非盘符根、非系统目录），可声明 network/childProcess
+- 安装时静态校验代码与声明一致：未声明的网络/子进程调用直接拒绝；能力随插件信息返回并在卡片展示徽章
+- 新增 host/validation.ts：zod 校验 18 个关键 RPC（clean/start、settings/patch、plugins/*、ai/* 等），非法参数返回 INVALID_PARAMS 并写入日志
+- PROTOCOL_VERSION=1，app/info 暴露 protocolVersion
+- 新增 capabilities/validation 用例 5 个，E2E 通过
+- 调度持久化 + 多计划待下一步

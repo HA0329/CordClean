@@ -11,6 +11,7 @@
  *   插件因此不需要知道自己的 id，也不需要修改内核代码。
  */
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Service, type Context, type Fiber } from 'cordis'
@@ -33,6 +34,41 @@ export interface PluginManifestEntry {
   defaultEnabled?: boolean
   /** 懒加载插件模块 */
   load(): Promise<{ default?: CleanerPluginModule } & Record<string, unknown>>
+}
+
+export interface PluginCapabilities {
+  /** 允许清理/读取的根目录（绝对路径，最多 20 个） */
+  fsRoots: string[]
+  /** 是否允许发起网络请求（默认 false） */
+  network?: boolean
+  /** 是否允许起子进程（默认 false） */
+  childProcess?: boolean
+}
+
+/** 安装前校验外部插件的能力声明与代码是否一致 */
+export function validateCapabilities(plugin: any, code: string): PluginCapabilities {
+  const caps = plugin?.capabilities
+  if (!caps || typeof caps !== 'object') {
+    throw new Error('外部插件必须在 defineCleanerPlugin({ capabilities: { fsRoots: [...] } }) 中声明能力')
+  }
+  const roots = Array.isArray(caps.fsRoots) ? caps.fsRoots.map(String) : []
+  if (roots.length > 20) throw new Error('fsRoots 最多 20 个')
+  for (const root of roots) {
+    if (!/^[a-zA-Z]:[\\/]/.test(root) && !root.startsWith('\\\\')) throw new Error('fsRoots 必须是绝对路径：' + root)
+    if (/^[a-zA-Z]:[\\/]?$/.test(root)) throw new Error('fsRoots 不能是盘符根：' + root)
+    if (/^[a-zA-Z]:[\\/](Windows|Program Files|Program Files \(x86\))([\\/]|$)/i.test(root)) {
+      throw new Error('fsRoots 不能包含系统目录：' + root)
+    }
+  }
+  const network = caps.network === true
+  const childProcess = caps.childProcess === true
+  if (!network && /\b(fetch|axios|node:https?|XMLHttpRequest)\b/.test(code)) {
+    throw new Error('代码包含网络请求，但未声明 network 能力')
+  }
+  if (!childProcess && /child_process|execSync|spawnSync/.test(code)) {
+    throw new Error('代码包含子进程调用，但未声明 childProcess 能力')
+  }
+  return { fsRoots: roots, network, childProcess }
 }
 
 interface RuntimeRecord {
@@ -125,6 +161,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
         tasks,
         config: record.config,
         configurable: !!descriptor?.Config,
+        capabilities: (record as any).capabilities,
       }
     })
   }
@@ -205,7 +242,8 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       defaultEnabled: true,
       load: async () => ({ default: plugin }),
     }
-    this.records.set(id, { entry, module: plugin, status: 'stopped', config: {}, taskIds: [], externalPath: abs } as any)
+    const capabilities = validateCapabilities(plugin, await readFile(abs, 'utf8'))
+    this.records.set(id, { entry, module: plugin, status: 'stopped', config: {}, taskIds: [], externalPath: abs, capabilities } as any)
     await this.enable(id)
     this.emitChanged()
   }

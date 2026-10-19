@@ -14,6 +14,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
  * 因此同一个 API 层可以在浏览器与 Electron 中复用。
  */
 import type { Context } from 'cordis'
+import { PROTOCOL_VERSION } from '@cordclean/shared'
 import type {
   AiLike,
   ApiMap,
@@ -99,6 +100,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
       dataDir: api.dataDir,
       elevated: ctx.system.env.elevated,
       bootMs: api.bootMs,
+      protocolVersion: PROTOCOL_VERSION,
     }),
 
     'app/open-path': async ({ path }) => {
