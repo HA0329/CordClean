@@ -261,3 +261,27 @@ export function parseResponse(config: AiConfig, payload: any): ParsedResponse {
     payload,
   )
 }
+
+/** 解析一条 SSE 增量（三种形态），返回文本与思维链增量 */
+export function parseSseDelta(shape: string, payload: any): { text?: string; reasoning?: string } {
+  if (!payload || typeof payload !== 'object') return {}
+  if (shape === 'messages') {
+    if (payload.type === 'content_block_delta') {
+      const delta = payload.delta ?? {}
+      if (typeof delta.text === 'string') return { text: delta.text }
+      if (typeof delta.thinking === 'string') return { reasoning: delta.thinking }
+    }
+    return {}
+  }
+  if (shape === 'responses') {
+    if (payload.type === 'response.output_text.delta' && typeof payload.delta === 'string') return { text: payload.delta }
+    if (payload.type === 'response.reasoning_summary_text.delta' && typeof payload.delta === 'string') return { reasoning: payload.delta }
+    return {}
+  }
+  const delta = payload.choices?.[0]?.delta
+  if (!delta) return {}
+  return {
+    text: typeof delta.content === 'string' ? delta.content : undefined,
+    reasoning: typeof delta.reasoning_content === 'string' ? delta.reasoning_content : undefined,
+  }
+}
