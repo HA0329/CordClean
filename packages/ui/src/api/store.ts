@@ -346,6 +346,10 @@ export async function clearHistory(): Promise<void> {
 
 /* ---------------------------------- AI / 系统交互 ---------------------------------- */
 
+export async function cancelAi(): Promise<void> {
+  await requireTransport().request('ai/cancel', undefined)
+}
+
 export async function analyzeAi(taskIds?: string[], contextProviders?: string[], image?: { mime: string; data: string }): Promise<void> {
   state.busy = true
   try {

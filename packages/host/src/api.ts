@@ -261,6 +261,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
     'quarantine/purge': ({ ids }) => ctx.quarantine.purge(ids),
     'quarantine/stats': () => ctx.quarantine.stats(),
 
+    'ai/cancel': () => { ctx.ai?.cancelAnalyze?.() },
     'ai/analyze': async (params) => requireAi().analyze(params),
     'ai/last': () => {
       const ai = (ctx as any).ai

@@ -130,6 +130,7 @@ export interface ApiMap {
   'quarantine/purge': { params: { ids?: string[] }; result: number }
   'quarantine/stats': { params: void; result: { count: number; bytes: number } }
 
+  'ai/cancel': { params: void; result: void }
   'ai/analyze': { params: { taskIds?: string[]; extraContext?: string; contextProviders?: string[]; image?: { mime: string; data: string } }; result: AiAnalysis }
   'ai/last': { params: void; result: AiAnalysis | null }
   'ai/status': { params: void; result: AiRuntimeStatus }

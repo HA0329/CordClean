@@ -32,6 +32,8 @@ export class AiError extends Error {
 }
 
 export interface RequestOptions {
+  /** 外部取消信号（与超时合并） */
+  signal?: AbortSignal
   method?: 'GET' | 'POST'
   headers: Record<string, string>
   body?: unknown
@@ -86,7 +88,7 @@ export async function requestJson(url: string, options: RequestOptions): Promise
         method: options.method ?? 'POST',
         headers: options.headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: AbortSignal.timeout(options.timeoutMs),
+        signal: options.signal ? AbortSignal.any([AbortSignal.timeout(options.timeoutMs), options.signal]) : AbortSignal.timeout(options.timeoutMs),
       })
       const text = await response.text()
       // 注意：要在读完响应体之后再计时。非流式补全的响应头可能先到，

@@ -161,6 +161,12 @@ export class AiService extends Service implements AiLike {
 
   /** 本次分析实际用到的上下文采集器 */
   private lastContextUsed: string[] = []
+  private analyzeController?: AbortController
+
+  /** 取消当前分析（界面「取消生成」） */
+  cancelAnalyze(): void {
+    this.analyzeController?.abort()
+  }
 
   constructor(ctx: Context, private readonly rawConfig: AiConfig) {
     super(ctx, 'ai')
@@ -467,13 +473,9 @@ export class AiService extends Service implements AiLike {
   }
 
   async analyze(options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[]; image?: { mime: string; data: string } } = {}): Promise<AiAnalysis> {
+    this.analyzeController = new AbortController()
+    const signal = this.analyzeController.signal
     const key = this.requireKey()
-    if (options.image) {
-      const model = this.modelCache?.models?.find((item) => item.id === this.rawConfig.model)
-      const supports = model ? (model.inputModalities ?? []).includes('image') : this.rawConfig.model.startsWith('deepseek-flash')
-      if (!supports) throw new Error('当前模型不支持图片输入（deepseek-flash 支持，v4-pro 不支持）')
-      if (options.image.data.length > 4_000_000) throw new Error('图片过大（base64 超过 4MB），请压缩后再试')
-    }
     if (options.image) {
       const model = this.modelCache?.models?.find((item) => item.id === this.rawConfig.model)
       const supports = model ? (model.inputModalities ?? []).includes('image') : this.rawConfig.model.startsWith('deepseek-flash')
