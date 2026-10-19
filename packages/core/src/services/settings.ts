@@ -52,6 +52,9 @@ export const DEFAULT_SETTINGS: Settings = {
     excludes: ['\\node_modules\\', '\\.git\\', '\\$Recycle.Bin\\', '\\System Volume Information\\'],
   },
   plugins: {},
+  scheduler: {
+    lastRuns: {},
+  },
   ui: {
     theme: 'dark',
     lastPage: 'overview',
@@ -163,6 +166,8 @@ export class SettingsService extends Service implements SettingsLike {
     settings.privacy.onlineAi = settings.privacy.onlineAi !== false
     if (!settings.ui || typeof settings.ui !== 'object') settings.ui = { theme: 'dark', lastPage: 'overview', editorCommand: '' }
     settings.ui.editorCommand = String(settings.ui.editorCommand ?? '')
+    if (!settings.scheduler || typeof settings.scheduler !== 'object') settings.scheduler = { lastRuns: {} }
+    if (!settings.scheduler.lastRuns || typeof settings.scheduler.lastRuns !== 'object') settings.scheduler.lastRuns = {}
     if (!Array.isArray(settings.analysis.roots)) settings.analysis.roots = []
     if (!Array.isArray(settings.analysis.excludes)) settings.analysis.excludes = []
     if (!isPlainObject(settings.plugins)) settings.plugins = {}

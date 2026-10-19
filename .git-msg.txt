@@ -1,0 +1,7 @@
+feat(scheduler): 多计划 + 运行时间持久化
+
+- 插件配置改为 plans[]（旧单计划字段自动迁移为 plans[0]）
+- 上次运行时间写入 settings.scheduler.lastRuns，重启后间隔/每日计划不重置
+- 按计划授权：authorizedHash 存在每个 plan 上；scheduler/authorize、revoke、run 支持 planId
+- 设置页仍编辑第一个计划（写回 plans[0]），多计划可通过插件配置 JSON 管理，UI 管理待补
+- scheduler 测试 2 个通过，UI/桌面构建通过

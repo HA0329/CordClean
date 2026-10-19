@@ -113,6 +113,10 @@ export interface Settings {
   /** 插件配置（enabled + 插件自有配置） */
   plugins: Record<string, { enabled?: boolean; config?: Record<string, any> }>
   /** 界面设置 */
+  /** 定时任务运行状态（lastRuns 按计划持久化） */
+  scheduler: {
+    lastRuns: Record<string, number>
+  }
   ui: {
     theme: 'dark' | 'light'
     lastPage: string

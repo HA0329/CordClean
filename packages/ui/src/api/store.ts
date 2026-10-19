@@ -428,12 +428,12 @@ export async function authorizeScheduler(patch: Record<string, unknown> = {}): P
 }
 
 export async function revokeScheduler(): Promise<void> {
-  await requireTransport().request('scheduler/revoke', undefined)
+  await requireTransport().request('scheduler/revoke', {})
   await refreshPlugins()
 }
 
 export async function runSchedulerNow(): Promise<void> {
-  await requireTransport().request('scheduler/run', undefined)
+  await requireTransport().request('scheduler/run', {})
 }
 
 export async function pluginSource(id: string): Promise<string> {

@@ -90,7 +90,10 @@ async function saveSchedule() {
   }
   try {
     if (!schedulerPlugin.value.enabled) await setPluginEnabled('scheduler', true)
-    await savePluginConfig('scheduler', { ...(schedulerPlugin.value.config ?? {}), ...schedule })
+    const current = (schedulerPlugin.value.config ?? {}) as any
+    const firstPlan = Array.isArray(current.plans) && current.plans.length ? current.plans[0] : { id: 'default', name: '默认计划', authorizedHash: '' }
+    const plans = [{ ...firstPlan, enabled: schedule.enabled, daily: schedule.daily, everyMinutes: schedule.everyMinutes, atHour: schedule.atHour, atMinute: schedule.atMinute, taskIds: schedule.taskIds, mode: schedule.mode }]
+    await savePluginConfig('scheduler', { ...current, plans })
     await refreshPlugins()
     ElMessage.success('定时任务已保存')
   } catch (error) {

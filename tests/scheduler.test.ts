@@ -38,8 +38,8 @@ describe('定时任务：授权与自动清理', () => {
 
       let next: any
       ;(app.ctx as any).emit('scheduler/authorize', { taskIds: ['scheduler-task'] }, (config: any) => { next = config })
-      expect(next?.authorizedHash).toMatch(/^[0-9a-f]{16}$/)
-      expect(next?.mode).toBe('clean')
+      expect(next?.plans?.[0]?.authorizedHash).toMatch(/^[0-9a-f]{16}$/)
+      expect(next?.plans?.[0]?.mode).toBe('clean')
       await app.ctx.plugins.updateConfig('scheduler', next)
 
       const events: any[] = []

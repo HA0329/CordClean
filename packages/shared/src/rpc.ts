@@ -103,9 +103,9 @@ export interface ApiMap {
 
   'plugins/source': { params: { id: string }; result: { path: string } }
   'app/open-editor': { params: { path: string }; result: void }
-  'scheduler/authorize': { params: { everyMinutes?: number; taskIds?: string[] }; result: { hash: string } }
-  'scheduler/run': { params: void; result: { ok: true } }
-  'scheduler/revoke': { params: void; result: { ok: true } }
+  'scheduler/authorize': { params: { planId?: string; everyMinutes?: number; taskIds?: string[] }; result: { hash: string } }
+  'scheduler/run': { params: { planId?: string }; result: { ok: true } }
+  'scheduler/revoke': { params: { planId?: string }; result: { ok: true } }
   'plugins/install': { params: { path: string }; result: void }
   'plugins/uninstall': { params: { id: string }; result: void }
   'plugins/list': { params: void; result: PluginRuntime[] }

@@ -145,7 +145,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'scheduler/authorize': async (patch) => {
       let next: Record<string, any> | undefined
-      ;(ctx as any).emit('scheduler/authorize', patch, (config: Record<string, any>) => { next = config })
+      ;(ctx as any).emit('scheduler/authorize', patch ?? {}, (config: Record<string, any>) => { next = config })
       if (!next) throw new Error('请先在插件页启用「定时扫描」')
       await ctx.plugins.updateConfig('scheduler', next)
       return { hash: String(next.authorizedHash ?? '') }
