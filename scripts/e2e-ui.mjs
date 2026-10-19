@@ -207,6 +207,7 @@ try {
   if (enabledAi) {
     await waitFor('AI 配置界面', async () => evaluate(`!!document.querySelector('.setting-form')`), 20_000)
     console.log('✓ AI 插件已启用，接口设置表单渲染成功')
+      await capture('ai-enabled')
     await capture('ai-config')
   } else {
     console.log('· AI 插件已是启用状态，跳过启用步骤')

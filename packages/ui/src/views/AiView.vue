@@ -581,7 +581,12 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
         <el-input v-model="extra" type="textarea" :rows="2" placeholder="告诉 AI 你的使用习惯，建议会更准确…" />
       </div>
 
-      <div v-if="state.busy && state.aiStream" class="cc-card">`n        <div class="cc-card-title"><h3>⏳ 正在生成…</h3><span class="cc-faint">流式输出，完成后自动解析</span></div>`n        <pre class="stream-box">{{ state.aiStream }}</pre>`n      </div>`n`n      <!-- 分析结果 -->
+      <div v-if="state.busy && state.aiStream" class="cc-card">
+        <div class="cc-card-title"><h3>⏳ 正在生成…</h3><span class="cc-faint">流式输出，完成后自动解析</span></div>
+        <pre class="stream-box">{{ state.aiStream }}</pre>
+      </div>
+
+      <!-- 分析结果 -->
       <template v-if="analysis">
     <div class="cc-card">
           <div class="cc-card-title">
