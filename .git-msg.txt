@@ -1,7 +1,0 @@
-feat(ai): 流式输出基础设施（SSE 传输 + 三形态增量解析）
-
-- http.ts 新增 requestSse：逐条解析 data: JSON，支持超时/Abort
-- adapters 新增 parseSseDelta：chat(delta.content/reasoning_content)、messages(content_block_delta)、responses(output_text.delta)
-- 新增 tests/ai-sse.test.ts：真实 SSE mock 服务拼接、三形态增量解析
-- 尚未接入 analyze/UI（下一步：RPC 事件 + 界面增量显示）
-- 全量测试通过
