@@ -51,7 +51,7 @@ const JSON_MODES = [
 ]
 
 const extra = ref('')
-const running = ref(false)
+const running = computed(() => state.busy)
 const saving = ref(false)
 const probing = ref(false)
 const loadingModels = ref(false)
@@ -219,7 +219,7 @@ async function loadEgress() {
 async function run() {
   running.value = true
   try {
-    await analyzeAi(undefined, form.contextProviders, visionImage.value ?? undefined)
+    await analyzeAi(undefined, [...form.contextProviders], visionImage.value ? { ...visionImage.value } : undefined)
     ElMessage.success('AI 分析完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -388,7 +388,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       <div class="cc-actions">
         <el-button :loading="loadingModels" :disabled="!available" @click="loadModels">获取模型</el-button>
         <el-button :disabled="!available" @click="loadEgress">外发记录</el-button>
-        <el-button v-if="running" type="danger" plain @click="cancelAi(); running = false">取消生成</el-button>
+        <el-button v-if="running" type="danger" plain @click="cancelAi()">取消生成</el-button>
         <el-button :loading="probing" :disabled="!available || !configured" @click="doProbe">测试连接</el-button>
         <el-button type="primary" :loading="running" :disabled="!available || !configured" @click="run">
           {{ analysis ? '重新分析' : '开始分析' }}

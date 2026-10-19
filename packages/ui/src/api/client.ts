@@ -34,6 +34,20 @@ declare global {
   }
 }
 
+
+/** 把 Vue 响应式代理/类实例转成可结构化克隆的纯数据（Electron IPC 必需） */
+export function toCloneable(value: any): any {
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(toCloneable)
+  if (value instanceof Date) return value.toISOString()
+  const out: Record<string, any> = {}
+  for (const key of Object.keys(value)) {
+    const item = (value as any)[key]
+    if (item === undefined || typeof item === 'function' || typeof item === 'symbol') continue
+    out[key] = toCloneable(item)
+  }
+  return out
+}
 /* ---------------------------------- WebSocket ---------------------------------- */
 
 export function createWebSocketTransport(info: BootInfo): ApiTransport {
@@ -129,7 +143,7 @@ export function createElectronTransport(bridge: NonNullable<Window['cordclean']>
     kind: 'electron',
     async request<M extends ApiMethod>(method: M, params: ApiParams<M>) {
       try {
-        return (await bridge.invoke(method, params)) as ApiResult<M>
+        return (await bridge.invoke(method, toCloneable(params))) as ApiResult<M>
       } catch (error: any) {
         throw new RpcError(error?.code ?? -32000, error?.message ?? String(error))
       }

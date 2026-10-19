@@ -177,7 +177,7 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
       </div>
       <div class="cc-actions">
         <el-switch v-model="dryRun" active-text="仅预演" />
-        <el-button :disabled="scanning" @click="cancelScan">取消</el-button>
+        <el-button :disabled="!scanning" @click="cancelScan">取消</el-button>
         <el-button type="primary" :loading="scanning" @click="runScan">
           {{ scanning ? '扫描中…' : '开始扫描' }}
         </el-button>
@@ -199,7 +199,7 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
           <div class="task-grid">
             <div v-for="task in group.tasks" :key="task.id" class="task-card">
               <div class="task-head">
-                <el-checkbox :value="task.id" />
+                <el-checkbox :value="task.id" :disabled="scanning" />
                 <span class="task-icon">{{ task.icon ?? '🧹' }}</span>
                 <div class="task-title">
                   <div class="task-name">{{ task.name }}</div>
@@ -380,7 +380,7 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
       <div class="cc-actions">
         <el-button v-if="cleaning" @click="cancelClean">取消清理</el-button>
         <el-button size="large" :disabled="!selected.size || cleaning || scanning" @click="askMove">移动到…</el-button>
-        <el-button type="primary" size="large" :loading="cleaning" :disabled="!selected.size" @click="askClean">
+        <el-button type="primary" size="large" :loading="cleaning" :disabled="!selected.size || scanning || cleaning" @click="askClean">
           {{ dryRun ? '预演清理' : '开始清理' }}
         </el-button>
       </div>
