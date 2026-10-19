@@ -76,7 +76,7 @@ export function mergeHeaders(base: Record<string, string>, extra: Record<string,
  * @param systemPrompt system 提示词
  * @param userPrompt 用户消息（含本机画像）
  */
-export function buildRequest(config: AiConfig, apiKey: string, systemPrompt: string, userPrompt: string, tools?: any[]): BuiltRequest {
+export function buildRequest(config: AiConfig, apiKey: string, systemPrompt: string, userPrompt: string, tools?: any[], image?: { mime: string; data: string }): BuiltRequest {
   const url = resolveChatUrl(config)
   const headers = mergeHeaders(authHeaders(config, apiKey), config.extraHeaders)
   const jsonHint = wantsJson(config) && config.apiShape === 'messages' ? JSON_HINT_ZH : ''
@@ -115,6 +115,23 @@ export function buildRequest(config: AiConfig, apiKey: string, systemPrompt: str
     if (config.temperature >= 0) body.temperature = config.temperature
     applyEffort(body, 'chat', config.reasoningEffort)
     if (wantsJson(config)) body.response_format = { type: 'json_object' }
+  }
+
+  if (image) {
+    if (config.apiShape === 'responses') throw new Error('当前接口形态暂不支持图片输入，请切换到 chat 或 messages')
+    const messages = (body as any).messages
+    const last = messages?.[messages.length - 1]
+    if (!last) throw new Error('请求体缺少 messages')
+    if (config.apiShape === 'chat') {
+      last.content = [
+        { type: 'text', text: String(last.content ?? '') },
+        { type: 'image_url', image_url: { url: 'data:' + image.mime + ';base64,' + image.data } },
+      ]
+    } else {
+      const blocks = Array.isArray(last.content) ? last.content : [{ type: 'text', text: String(last.content ?? '') }]
+      blocks.push({ type: 'image', source: { type: 'base64', media_type: image.mime, data: image.data } })
+      last.content = blocks
+    }
   }
 
   // 逃生舱：用户可以通过 extraBody 覆盖/新增任意字段（含上面所有字段）

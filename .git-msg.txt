@@ -1,0 +1,7 @@
+feat(ai): Vision 图片输入（截图诊断）
+
+- buildRequest 支持 image：chat 用 image_url、messages 用 image block、responses 明确拒绝
+- analyze 校验模型是否支持图片（deepseek-flash 支持，v4-pro 不支持）并限制 base64 ≤4MB
+- RPC/store/UI 打通：AI 页新增“截图诊断”上传（png/jpg、3MB 限制、预览、可移除、隐私提示）
+- 新增 tests/ai-vision.test.ts：两种形态内容块 + responses 拒绝
+- 全量 36 文件 / 226 用例通过，UI/桌面构建通过

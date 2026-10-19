@@ -466,8 +466,20 @@ export class AiService extends Service implements AiLike {
     if (!gate.allowed) throw new AiError(gate.reason ?? '在线 AI 已被关闭', 'NETWORK')
   }
 
-  async analyze(options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] } = {}): Promise<AiAnalysis> {
+  async analyze(options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[]; image?: { mime: string; data: string } } = {}): Promise<AiAnalysis> {
     const key = this.requireKey()
+    if (options.image) {
+      const model = this.modelCache?.models?.find((item) => item.id === this.rawConfig.model)
+      const supports = model ? (model.inputModalities ?? []).includes('image') : this.rawConfig.model.startsWith('deepseek-flash')
+      if (!supports) throw new Error('当前模型不支持图片输入（deepseek-flash 支持，v4-pro 不支持）')
+      if (options.image.data.length > 4_000_000) throw new Error('图片过大（base64 超过 4MB），请压缩后再试')
+    }
+    if (options.image) {
+      const model = this.modelCache?.models?.find((item) => item.id === this.rawConfig.model)
+      const supports = model ? (model.inputModalities ?? []).includes('image') : this.rawConfig.model.startsWith('deepseek-flash')
+      if (!supports) throw new Error('当前模型不支持图片输入（deepseek-flash 支持，v4-pro 不支持）')
+      if (options.image.data.length > 4_000_000) throw new Error('图片过大（base64 超过 4MB），请压缩后再试')
+    }
     const limits = this.modelLimits()
     const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(16_384, this.rawConfig.maxTokens)) }
     const profile = await this.buildProfile(options.extraContext)

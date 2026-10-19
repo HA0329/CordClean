@@ -218,7 +218,7 @@ async function loadEgress() {
 async function run() {
   running.value = true
   try {
-    await analyzeAi(undefined, form.contextProviders)
+    await analyzeAi(undefined, form.contextProviders, visionImage.value ?? undefined)
     ElMessage.success('AI 分析完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -250,6 +250,22 @@ watch(
   },
   { deep: true },
 )
+
+const visionImage = ref<{ mime: string; data: string; name: string } | null>(null)
+
+function onVisionFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  if (file.size > 3 * 1024 * 1024) { ElMessage.warning('图片请小于 3MB'); return }
+  const reader = new FileReader()
+  reader.onload = () => {
+    const url = String(reader.result)
+    const mime = url.match(/data:([^;]+);base64/)?.[1] ?? 'image/png'
+    const data = url.split(',')[1] ?? ''
+    visionImage.value = { mime, data, name: file.name }
+  }
+  reader.readAsDataURL(file)
+}
 
 const rootSuggestions = computed(() => analysis.value?.rootSuggestions ?? [])
 
@@ -541,6 +557,18 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
           </el-checkbox>
         </el-checkbox-group>
         <p v-if="!(state.aiStatus.contextAvailable ?? []).length" class="cc-faint">暂无采集器（需要 AI 插件处于启用状态）</p>
+      </div>
+
+      <div class="cc-card">
+        <div class="cc-card-title">
+          <h3>🖼️ 截图诊断（可选）</h3>
+          <span class="cc-faint">仅 deepseek-flash 支持；截图会发送给模型，请勿包含隐私</span>
+        </div>
+        <input type="file" accept="image/png,image/jpeg" @change="onVisionFile" />
+        <div v-if="visionImage" style="margin-top: 8px">
+          <el-tag closable @close="visionImage = null">{{ visionImage.name }}</el-tag>
+          <img :src="'data:' + visionImage.mime + ';base64,' + visionImage.data" style="max-height: 160px; margin-top: 8px; border-radius: 8px" />
+        </div>
       </div>
 
     <div class="cc-card">
