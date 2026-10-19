@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { RISK_META, formatBytes, formatTime } from '@cordclean/shared'
 import {
   analyzeAi,
+  cancelAi,
   startClean,
   refreshHistory,
   refreshQuarantine,
@@ -387,6 +388,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       <div class="cc-actions">
         <el-button :loading="loadingModels" :disabled="!available" @click="loadModels">获取模型</el-button>
         <el-button :disabled="!available" @click="loadEgress">外发记录</el-button>
+        <el-button v-if="running" type="danger" plain @click="cancelAi(); running = false">取消生成</el-button>
         <el-button :loading="probing" :disabled="!available || !configured" @click="doProbe">测试连接</el-button>
         <el-button type="primary" :loading="running" :disabled="!available || !configured" @click="run">
           {{ analysis ? '重新分析' : '开始分析' }}
