@@ -249,7 +249,8 @@ function categoryName(id: string) {
           <span class="cc-pill">{{ categoryName(plugin.category) }}</span>
           <span class="cc-pill" :class="`status-${plugin.status}`">{{ plugin.status === 'active' ? '运行中' : plugin.status === 'error' ? '异常' : plugin.status === 'loading' ? '加载中' : '已停止' }}</span>
           <span class="cc-pill">{{ plugin.taskCount }} 个任务</span>
-          <el-button v-if="plugin.id === 'rule-pack'" size="small" @click="ruleOpen = true">规则命中</el-button>`n          <span v-if="pluginStats(plugin).items" class="cc-pill">上次扫描 {{ pluginStats(plugin).items }} 项 · {{ (pluginStats(plugin).bytes / 1024 / 1024).toFixed(1) }} MB</span>
+          <el-button v-if="plugin.id === 'rule-pack'" size="small" @click="ruleOpen = true">规则命中</el-button>
+          <span v-if="pluginStats(plugin).items" class="cc-pill">上次扫描 {{ pluginStats(plugin).items }} 项 · {{ (pluginStats(plugin).bytes / 1024 / 1024).toFixed(1) }} MB</span>
         </div>
 
         <div v-if="plugin.tasks.length" class="task-chips">
@@ -275,7 +276,17 @@ function categoryName(id: string) {
       </div>
     </div>
 
-        <el-dialog v-model="ruleOpen" title="规则命中统计（最近一次扫描）" width="720px">`n      <el-table :data="ruleHits.slice(0, 50)" size="small" max-height="420">`n        <el-table-column prop="name" label="规则" min-width="220" show-overflow-tooltip />`n        <el-table-column prop="items" label="命中项" width="90" />`n        <el-table-column label="体积" width="110"><template #default="{ row }">{{ (row.bytes / 1024 / 1024).toFixed(1) }} MB</template></el-table-column>`n      </el-table>`n      <p v-if="!ruleHits.length" class="cc-faint">还没有扫描结果，先到清理页扫描一次。</p>`n      <template #footer><el-button @click="ruleOpen = false">关闭</el-button></template>`n    </el-dialog>`n`n    <el-dialog v-model="installOpen" title="添加本地插件" width="560px">
+        <el-dialog v-model="ruleOpen" title="规则命中统计（最近一次扫描）" width="720px">
+      <el-table :data="ruleHits.slice(0, 50)" size="small" max-height="420">
+        <el-table-column prop="name" label="规则" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="items" label="命中项" width="90" />
+        <el-table-column label="体积" width="110"><template #default="{ row }">{{ (row.bytes / 1024 / 1024).toFixed(1) }} MB</template></el-table-column>
+      </el-table>
+      <p v-if="!ruleHits.length" class="cc-faint">还没有扫描结果，先到清理页扫描一次。</p>
+      <template #footer><el-button @click="ruleOpen = false">关闭</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="installOpen" title="添加本地插件" width="560px">
       <p class="cc-hint">
         填写一个本地插件模块的绝对路径（<code>.mjs</code> / <code>.js</code>，需默认导出带 <code>apply()</code> 的 Cordis 插件，通常由 <code>defineCleanerPlugin</code> 生成）。
         插件只加载到本次运行，不会复制或修改你的文件；重启后需重新添加。
