@@ -5,7 +5,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { Service, type Context } from 'cordis'
-import type { HistoryEntry, HistoryLike } from '@cordclean/shared'
+import type { CleanSessionRecord, HistoryEntry, HistoryLike } from '@cordclean/shared'
 
 export interface HistoryConfig {
   dataDir: string
@@ -15,6 +15,8 @@ export interface HistoryConfig {
 
 export class HistoryService extends Service implements HistoryLike {
   readonly file: string
+  readonly sessionsFile: string
+  private sessionList: CleanSessionRecord[] = []
   private entries: HistoryEntry[] = []
   private capacity: number
 
@@ -23,7 +25,56 @@ export class HistoryService extends Service implements HistoryLike {
     mkdirSync(config.dataDir, { recursive: true })
     this.file = path.join(config.dataDir, 'history.jsonl')
     this.capacity = config.capacity ?? 1000
+    this.sessionsFile = path.join(config.dataDir, 'sessions.json')
     this.load()
+    this.loadSessions()
+  }
+
+  /** 读取会话状态；进程重启后把残留的 running 标记为 interrupted */
+  private loadSessions(): void {
+    if (existsSync(this.sessionsFile)) {
+      try {
+        const parsed = JSON.parse(readFileSync(this.sessionsFile, 'utf8'))
+        if (Array.isArray(parsed)) this.sessionList = parsed
+      } catch {
+        this.sessionList = []
+      }
+    }
+    let changed = false
+    for (const session of this.sessionList) {
+      if (session.status === 'running') {
+        session.status = 'interrupted'
+        session.finishedAt = Date.now()
+        changed = true
+      }
+    }
+    if (changed) this.saveSessions()
+  }
+
+  private saveSessions(): void {
+    try {
+      writeFileSync(this.sessionsFile, JSON.stringify(this.sessionList.slice(-200)), 'utf8')
+    } catch (error) {
+      this.ctx.logger?.warn?.('写入会话状态失败：%s', String(error))
+    }
+  }
+
+  beginSession(sessionId: string, taskIds: string[]): void {
+    this.sessionList.push({ sessionId, startedAt: Date.now(), status: 'running', taskIds })
+    this.saveSessions()
+  }
+
+  finishSession(sessionId: string, cleaned: number): void {
+    const session = this.sessionList.find((item) => item.sessionId === sessionId)
+    if (!session) return
+    session.status = 'done'
+    session.finishedAt = Date.now()
+    session.cleaned = cleaned
+    this.saveSessions()
+  }
+
+  sessions(): CleanSessionRecord[] {
+    return [...this.sessionList].reverse()
   }
 
   private load(): void {

@@ -1,0 +1,8 @@
+feat(engine): 路线 3C——清理会话持久化与中断标记
+
+- HistoryService 新增 sessions.json：beginSession/finishSession/sessions
+- 进程重启时把残留 running 会话标记为 interrupted（不自动续跑）
+- cleaner.clean 开始时写 running、结束时写 done + 清理数
+- 新增 RPC history/sessions；历史页顶部提示"上次未完成的清理会话"
+- 新增 tests/sessions.test.ts：重启后 running → interrupted
+- 全量测试与 E2E 通过

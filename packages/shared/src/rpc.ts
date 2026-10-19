@@ -119,6 +119,7 @@ export interface ApiMap {
   'settings/patch': { params: { patch: Record<string, unknown> }; result: Settings }
   'settings/set': { params: { path: string; value: unknown }; result: Settings }
 
+  'history/sessions': { params: void; result: Array<{ sessionId: string; startedAt: number; status: string; taskIds: string[] }> }
   'history/list': { params: { limit?: number }; result: HistoryEntry[] }
   'history/totals': { params: void; result: { sessions: number; freedBytes: number; cleaned: number } }
   'history/clear': { params: void; result: void }

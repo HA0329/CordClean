@@ -249,6 +249,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
       return ctx.settings.get()
     },
 
+    'history/sessions': () => ctx.history.sessions(),
     'history/list': ({ limit }) => ctx.history.list(limit ?? 50),
     'history/totals': () => ctx.history.totals(),
     'history/clear': () => {

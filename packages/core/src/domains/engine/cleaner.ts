@@ -450,6 +450,8 @@ export class CleanerService extends Service implements CleanerLike {
         // 文件/目录：走补偿链 + 唯一删除入口（高风险项强制隔离区）
         const riskyItems = settings.clean.highRiskQuarantine ? groupItems.filter((item) => item.risk === 'risky') : []
         const normalItems = groupItems.filter((item) => !riskyItems.includes(item))
+    this.ctx.history.beginSession(sessionId, [...groups.keys()])
+
         const batches: Array<{ items: CleanItem[]; mode: CleanMode }> = []
         if (normalItems.length) batches.push({ items: normalItems, mode: forceQuarantine ? 'quarantine' : settings.clean.mode })
         if (riskyItems.length) batches.push({ items: riskyItems, mode: 'quarantine' })
@@ -565,6 +567,7 @@ export class CleanerService extends Service implements CleanerLike {
       `清理完成：释放 %s，清理 ${cleaned} 项，失败 ${failures.length} 项`,
       formatBytes(freedBytes),
     )
+    this.ctx.history.finishSession(sessionId, cleaned)
     return report
   }
 

@@ -213,7 +213,19 @@ export interface QuarantineLike {
 }
 
 /** 历史记录能力（`ctx.history`） */
+export interface CleanSessionRecord {
+  sessionId: string
+  startedAt: number
+  finishedAt?: number
+  status: 'running' | 'done' | 'interrupted'
+  taskIds: string[]
+  cleaned?: number
+}
+
 export interface HistoryLike {
+  beginSession(sessionId: string, taskIds: string[]): void
+  finishSession(sessionId: string, cleaned: number): void
+  sessions(): CleanSessionRecord[]
   append(entry: HistoryEntry): void
   list(limit?: number): HistoryEntry[]
   totals(): { sessions: number; freedBytes: number; cleaned: number }

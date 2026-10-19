@@ -11,11 +11,21 @@ import {
   restoreQuarantine,
   state,
   fetchUndoState,
+  fetchSessions,
   undoLastClean,
 } from '../api/store.ts'
 
 const tab = ref<'history' | 'quarantine'>('history')
+loadInterrupted()
 const selectedQuarantine = ref<string[]>([])
+const interrupted = ref<Array<{ sessionId: string; startedAt: number }>>([])
+
+async function loadInterrupted() {
+  try {
+    const list = await fetchSessions()
+    interrupted.value = list.filter((item) => item.status === 'interrupted')
+  } catch {}
+}
 
 async function undoLast() {
   try {
@@ -85,7 +95,7 @@ async function purge(ids?: string[]) {
 
 <template>
   <div class="cc-page">
-    <div class="cc-page-title">
+    <el-alert v-if="interrupted.length" type="warning" :closable="false" show-icon style="margin-bottom: 12px" :title="'检测到 ' + interrupted.length + ' 个上次未完成的清理会话（已标记中断，未自动继续）'" />`n    <div class="cc-page-title">
       <div>
         <h1>历史与隔离区</h1>
         <p>修复误删的最后一道防线：高风险的清理项会先进入隔离区，可随时恢复。</p>
