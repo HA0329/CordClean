@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CATEGORIES, RISK_META, formatBytes, formatDuration, formatTime } from '@cordclean/shared'
 import type { CleanItem } from '@cordclean/shared'
-import { cancelClean, cancelScan, state, startClean, startScan, openPath } from '../api/store.ts'
+import { cancelClean, cancelScan, moveFiles, state, startClean, startScan, openPath } from '../api/store.ts'
 
 const selectedTaskIds = ref<string[]>([])
 const selectionReady = ref(false)
@@ -379,6 +379,7 @@ const riskTag = (risk: keyof typeof RISK_META) => RISK_META[risk]
       </div>
       <div class="cc-actions">
         <el-button v-if="cleaning" @click="cancelClean">取消清理</el-button>
+        <el-button size="large" :disabled="!selected.size || cleaning || scanning" @click="askMove">移动到…</el-button>
         <el-button type="primary" size="large" :loading="cleaning" :disabled="!selected.size" @click="askClean">
           {{ dryRun ? '预演清理' : '开始清理' }}
         </el-button>
