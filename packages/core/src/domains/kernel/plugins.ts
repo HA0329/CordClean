@@ -181,6 +181,8 @@ export class PluginManagerService extends Service implements PluginManagerLike {
 
   async enable(id: string): Promise<void> {
     const record = this.records.get(id)
+    const idle = (record as any)?.idleTimer
+    if (idle) { clearTimeout(idle); (record as any).idleTimer = undefined }
     if (!record) throw new Error(`插件不存在：${id}`)
     if (record.status === 'active' || record.status === 'loading') return
 
@@ -329,6 +331,15 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       }
     }
     this.persist(record, false)
+    const proxy = (record as any).externalProxy
+    if (proxy) {
+      const timer = setTimeout(() => {
+        void proxy.dispose()
+        ;(record as any).externalProxy = undefined
+      }, 5 * 60_000)
+      ;(record as any).idleTimer = timer
+      timer.unref?.()
+    }
     this.emitChanged()
   }
 
@@ -343,6 +354,15 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   async updateConfig(id: string, config: Record<string, any>): Promise<void> {
     const record = this.records.get(id)
     if (!record) throw new Error(`插件不存在：${id}`)
+    // 外部插件：把配置发给 worker 重新校验并重跑 setup，主进程任务保持不变
+    const externalProxy = (record as any).externalProxy
+    if (externalProxy) {
+      await externalProxy.configure(config ?? {})
+      record.config = config ?? {}
+      this.ctx.settings.patch({ plugins: { [id]: { config: record.config } } })
+      this.emitChanged()
+      return
+    }
     // 先校验再落地：非法配置直接抛给调用方，运行中的插件保持原状
     const plugin = await this.loadModule(record)
     const validated = this.validateConfig(plugin, config ?? {})

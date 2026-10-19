@@ -16,13 +16,14 @@ describe('外部插件 worker 安装', () => {
     writeFileSync(pluginFile, `
 export default {
   name: 'ext-demo',
+  Config(raw) { return { size: Number(raw.size ?? 5) } },
   version: '1.0.0',
   capabilities: { fsRoots: [${JSON.stringify(dir).replace(/\\/g, '\\\\')}] },
-  setup(ctx) {
+  setup(ctx, config) {
     ctx.cleaner.define({
       id: 'ext-task', name: '外部任务', category: 'system', risk: 'safe',
       targets: [${JSON.stringify(dir).replace(/\\/g, '\\\\')}],
-      scan(scan) { scan.emit({ path: ${JSON.stringify(path.join(dir, 'x.tmp')).replace(/\\/g, '\\\\')}, kind: 'file', size: 5 }) },
+      scan(scan) { scan.emit({ path: ${JSON.stringify(path.join(dir, 'x.tmp')).replace(/\\/g, '\\\\')}, kind: 'file', size: config.size }) },
     })
   },
 }
@@ -37,6 +38,10 @@ export default {
       const report = await app.ctx.cleaner.scan({ taskIds: ['ext-task'] })
       expect(report.items.length).toBe(1)
       expect(report.items[0].path).toContain('x.tmp')
+      expect(report.items[0].size).toBe(5)
+      await app.ctx.plugins.updateConfig('external:ext-demo', { size: 9 })
+      const updated = await app.ctx.cleaner.scan({ taskIds: ['ext-task'] })
+      expect(updated.items[0].size).toBe(9)
       await app.ctx.plugins.disable('external:ext-demo')
       await app.ctx.plugins.enable('external:ext-demo')
       const again = await app.ctx.cleaner.scan({ taskIds: ['ext-task'] })
