@@ -1,3 +1,4 @@
+import { moveFiles } from '@cordclean/core'
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { folderSize } from '@cordclean/utils'
