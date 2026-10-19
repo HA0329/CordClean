@@ -22,3 +22,5 @@ export * from './domains/safety/executor.ts'
 export * from './domains/safety/recycle-bin.ts'
 export * from './env.ts'
 export * from './logger.ts'
+
+export * from './domains/kernel/worker-host.ts'
