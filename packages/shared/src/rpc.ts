@@ -94,7 +94,7 @@ export interface ApiMap {
   'scan/cancel': { params: { scanId?: string }; result: void }
   'scan/last': { params: void; result: ScanReport | null }
 
-  'files/move': { params: { paths: string[]; targetDir: string }; result: { moved: Array<{ from: string; to: string; bytes: number }>; failed: Array<{ path: string; error: string }>; freedBytes: number } }
+  'files/move': { params: { paths: string[]; targetDir: string; link?: boolean }; result: { moved: Array<{ from: string; to: string; bytes: number }>; failed: Array<{ path: string; error: string }>; freedBytes: number } }
   'clean/undo-state': { params: void; result: { available: boolean; at?: number; quarantine: number; recycle: number; permanent: number } }
   'clean/undo': { params: void; result: { restored: number; recyclePending: number; permanent: number; failed: number } }
   'clean/start': {

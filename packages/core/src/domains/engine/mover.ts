@@ -11,7 +11,7 @@
  * 注意：这是「移动」，不是删除。它不签发 CleanTicket，也不走执行器；
  * 因此不会计入清理历史，空间变化靠前后磁盘可用量观察。
  */
-import { copyFile, mkdir, stat, unlink } from 'node:fs/promises'
+import { copyFile, mkdir, stat, symlink, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
 export interface MoveFileRequest {
@@ -32,6 +32,8 @@ export interface MoveFileOptions {
   check: (target: string) => { allowed: boolean; reason?: string }
   /** 最大并发（默认 4） */
   concurrency?: number
+  /** 移动后是否在原位置创建符号链接（失败会自动还原） */
+  link?: boolean
 }
 
 function absolute(value: string): boolean {
@@ -78,6 +80,16 @@ export async function moveFiles(request: MoveFileRequest, options: MoveFileOptio
         const copied = await stat(target)
         if (copied.size !== info.size) throw new Error('复制后大小不一致')
         await unlink(source)
+        if (options.link) {
+          try {
+            await symlink(target, source, 'file')
+          } catch (error) {
+            // 链接创建失败（常见于未开启开发者模式）：还原源文件并删除目标，整体判失败
+            await copyFile(target, source)
+            await unlink(target).catch(() => undefined)
+            throw new Error('符号链接创建失败，已还原原文件：' + (error instanceof Error ? error.message : String(error)))
+          }
+        }
       } catch (error) {
         await unlink(target).catch(() => undefined)
         throw error

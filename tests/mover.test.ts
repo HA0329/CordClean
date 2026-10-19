@@ -32,6 +32,23 @@ describe('大文件搬家', () => {
     expect(readFileSync(path.join(dst, 'same.txt'), 'utf8')).toBe('old')
   })
 
+  it('link 选项：成功建链或失败还原，不丢数据', async () => {
+    const src = path.join(sandbox.root, 'link-src')
+    const dst = path.join(sandbox.root, 'link-dst')
+    mkdirSync(src, { recursive: true })
+    writeFileSync(path.join(src, 'l.bin'), 'link')
+    const result = await moveFiles({ paths: [path.join(src, 'l.bin')], targetDir: dst }, { check: () => ({ allowed: true }), link: true })
+    const sourceExists = await statSafe(path.join(src, 'l.bin'))
+    const targetExists = await statSafe(path.join(dst, 'l.bin'))
+    if (result.moved.length) {
+      expect(sourceExists).toBe(true)
+      expect(targetExists).toBe(true)
+    } else {
+      expect(sourceExists).toBe(true)
+      expect(result.failed[0].error).toContain('符号链接')
+    }
+  })
+
   it('路径策略拒绝时不移动', async () => {
     const src = path.join(sandbox.root, 'deny-src')
     mkdirSync(src, { recursive: true })

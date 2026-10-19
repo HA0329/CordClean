@@ -346,8 +346,8 @@ export async function clearHistory(): Promise<void> {
 
 /* ---------------------------------- AI / 系统交互 ---------------------------------- */
 
-export async function moveFiles(paths: string[], targetDir: string): Promise<{ moved: Array<{ from: string; to: string; bytes: number }>; failed: Array<{ path: string; error: string }>; freedBytes: number }> {
-  return requireTransport().request('files/move', { paths, targetDir })
+export async function moveFiles(paths: string[], targetDir: string, link = false): Promise<{ moved: Array<{ from: string; to: string; bytes: number }>; failed: Array<{ path: string; error: string }>; freedBytes: number }> {
+  return requireTransport().request('files/move', { paths, targetDir, link })
 }
 
 export async function cancelAi(): Promise<void> {
