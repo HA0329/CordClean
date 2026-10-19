@@ -70,6 +70,7 @@ export type ServerEventMap = {
   'clean/done': CleanReport
   'plugins/changed': Record<string, never>
   'history/changed': Record<string, never>
+  'ai/stream': { kind: 'delta' | 'done'; text?: string; reasoning?: string }
   'scheduler/scan': { at: number; items?: number; bytes?: number; elapsedMs?: number; errors?: number; error?: string; blocked?: boolean; reason?: string; autoCleaned?: boolean; cleaned?: number; freedBytes?: number; recycledBytes?: number; mode?: string }
   log: { level: string; message: string; time: number; name?: string }
 }

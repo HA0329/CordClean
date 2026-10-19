@@ -26,8 +26,9 @@ import type {
   RiskLevel,
   TaskDescriptor,
 } from '@cordclean/shared'
-import { buildRequest, parseResponse } from './adapters.ts'
+import { buildRequest, parseResponse, parseSseDelta } from './adapters.ts'
 import { normalizeConfig, wantsJson, type AiConfig } from './config.ts'
+import { requestSse } from './http.ts'
 import { AiError, requestJson } from './http.ts'
 import { fetchModelList, FALLBACK_MODELS } from './models.ts'
 import { buildSystemPrompt, buildUserPrompt, type SystemProfile } from './profile.ts'

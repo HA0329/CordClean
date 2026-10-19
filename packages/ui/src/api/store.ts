@@ -25,6 +25,8 @@ import type {
 import { createTransport, type ApiTransport } from './client.ts'
 
 export interface UiState {
+  aiStream: string
+  aiStreamReasoning: string
   ready: boolean
   busy: boolean
   error?: string
@@ -56,6 +58,8 @@ export interface UiState {
 }
 
 export const state = reactive<UiState>({
+  aiStream: '',
+  aiStreamReasoning: '',
   ready: false,
   busy: false,
   tasks: [],
@@ -80,7 +84,14 @@ function requireTransport(): ApiTransport {
 export async function init(): Promise<void> {
   try {
     state.transport = createTransport()
-    state.transport.on('scheduler/scan', (event) => {
+    state.transport.on('ai/stream', (event) => {
+    if (event.kind === 'delta') {
+      state.aiStream += event.text ?? ''
+      state.aiStreamReasoning += event.reasoning ?? ''
+    }
+  })
+
+  state.transport.on('scheduler/scan', (event) => {
       if (event.error) {
         ElNotification({ title: '定时扫描失败', message: event.error, type: 'error' })
         return

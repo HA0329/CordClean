@@ -40,6 +40,8 @@ export const DEFAULT_BASE_URLS: Record<ApiShape, string> = {
 export interface AiConfig {
   /** API Key；留空则读取环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY */
   apiKey: string
+  /** 是否使用 SSE 流式输出（默认 true，失败自动回退） */
+  stream: boolean
   baseUrl: string
   apiShape: ApiShape
   /** 聊天接口路径；留空按形态取默认值 */
@@ -77,6 +79,7 @@ export interface AiConfig {
 export const JSON_HINT_ZH = '\n\n只输出一个 JSON 对象，不要输出 Markdown 代码块、解释或前后缀文字。'
 
 const SchemaConfig = Schema.object({
+  stream: Schema.boolean().default(true).description('SSE 流式输出（失败自动回退非流式）'),
   apiKey: Schema.string().default('').description('API Key（留空则读取环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY）'),
   baseUrl: Schema.string().default('https://api.deepseek.com').description('接口根地址，例如 https://api.deepseek.com/anthropic'),
   apiShape: Schema.union(API_SHAPES).default('chat').description('接口形态：chat=OpenAI 兼容，messages=Anthropic 兼容，responses=OpenAI Responses'),
@@ -130,6 +133,7 @@ export function normalizeConfig(raw: Partial<AiConfig> | undefined): AiConfig {
   if (maxTokens <= 2048) maxTokens = 65536
 
   return {
+    stream: input.stream !== false,
     apiKey: String(input.apiKey ?? '').trim(),
     baseUrl,
     apiShape: shape,

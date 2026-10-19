@@ -61,6 +61,7 @@ const EVENT_BRIDGE: Array<[any, ServerEvent]> = [
   ['plugins/changed', 'plugins/changed'],
   ['history/changed', 'history/changed'],
   ['scheduler/scan', 'scheduler/scan'],
+  ['ai/stream', 'ai/stream'],
   ['system/log', 'log'],
 ]
 

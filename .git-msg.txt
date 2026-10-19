@@ -1,0 +1,7 @@
+feat(ai): 流式输出接入 analyze + 事件 + 界面实时面板
+
+- config 新增 stream（默认 true，可关）；buildRequest 请求体在流式时置 stream:true
+- analyze 优先 requestSse 累积文本/思维链并发送 ai/stream 事件，失败或空结果自动回退非流式
+- ServerEvent 新增 ai/stream，host 桥接；store 累积增量；AI 页显示“正在生成…”实时面板
+- 界面接口设置新增 stream 字段（表单持久化）
+- 全量测试、桌面构建、E2E 通过
