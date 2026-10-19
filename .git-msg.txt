@@ -1,8 +1,0 @@
-feat(platform): 路线 3A.2——外部插件跨线程协议与安装接入
-
-- 新增 external-proxy.ts：worker 内执行 setup/scan，主进程通过 describe/scan 消息通信
-- 崩溃隔离、调用超时、128MB 堆上限；worker 内无删除能力，只回传候选
-- installExternal 改为 worker 加载：能力校验、任务注册（pathPolicy 辖区）、扫描结果主进程二次路径校验
-- 外部插件卸载时终止 worker；内置插件保持进程内不变
-- 新增 tests/external-proxy（协议/崩溃）与 tests/external-install（安装→扫描）用例
-- 全量测试、桌面构建通过
