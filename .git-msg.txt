@@ -1,7 +1,0 @@
-feat(platform): 路线 3A 第一步——外部插件隔离运行时（worker + 崩溃/超时）
-
-- 新增 domains/kernel/worker-host.ts：在独立 worker 中加载模块并调用导出函数
-- 崩溃只影响 worker 线程；超时强制 terminate；128MB 堆上限
-- 新增 tests/worker-host.test.ts：正常调用、抛错隔离、超时终止 3 个用例
-- 尚未接入 PluginManager（下一步实现 describe/scan/clean 序列化协议与代理）
-- 全量测试通过
