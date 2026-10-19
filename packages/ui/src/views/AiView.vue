@@ -51,7 +51,7 @@ const JSON_MODES = [
 ]
 
 const extra = ref('')
-const running = ref(false)
+const running = computed(() => state.busy)
 const saving = ref(false)
 const probing = ref(false)
 const loadingModels = ref(false)
@@ -219,7 +219,7 @@ async function loadEgress() {
 async function run() {
   running.value = true
   try {
-    await analyzeAi(undefined, form.contextProviders, visionImage.value ?? undefined)
+    await analyzeAi(undefined, [...form.contextProviders], visionImage.value ? { ...visionImage.value } : undefined)
     ElMessage.success('AI 分析完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -388,7 +388,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
       <div class="cc-actions">
         <el-button :loading="loadingModels" :disabled="!available" @click="loadModels">获取模型</el-button>
         <el-button :disabled="!available" @click="loadEgress">外发记录</el-button>
-        <el-button v-if="running" type="danger" plain @click="cancelAi(); running = false">取消生成</el-button>
+        <el-button v-if="running" type="danger" plain @click="cancelAi()">取消生成</el-button>
         <el-button :loading="probing" :disabled="!available || !configured" @click="doProbe">测试连接</el-button>
         <el-button type="primary" :loading="running" :disabled="!available || !configured" @click="run">
           {{ analysis ? '重新分析' : '开始分析' }}
@@ -581,7 +581,12 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
         <el-input v-model="extra" type="textarea" :rows="2" placeholder="告诉 AI 你的使用习惯，建议会更准确…" />
       </div>
 
-      <div v-if="state.busy && state.aiStream" class="cc-card">`n        <div class="cc-card-title"><h3>⏳ 正在生成…</h3><span class="cc-faint">流式输出，完成后自动解析</span></div>`n        <pre class="stream-box">{{ state.aiStream }}</pre>`n      </div>`n`n      <!-- 分析结果 -->
+      <div v-if="state.busy && state.aiStream" class="cc-card">
+        <div class="cc-card-title"><h3>⏳ 正在生成…</h3><span class="cc-faint">流式输出，完成后自动解析</span></div>
+        <pre class="stream-box">{{ state.aiStream }}</pre>
+      </div>
+
+      <!-- 分析结果 -->
       <template v-if="analysis">
     <div class="cc-card">
           <div class="cc-card-title">

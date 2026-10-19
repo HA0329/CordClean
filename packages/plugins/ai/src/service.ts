@@ -509,14 +509,48 @@ export class AiService extends Service implements AiLike {
     const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext) + contextText + candidateHint + rootHint + SELECTION_HINT + ROOT_HINT + RULE_HINT)
     this.gate('analyze', request.url, request.body)
 
-    const result = await requestJson(request.url, {
-      headers: request.headers,
-      body: request.body,
-      timeoutMs: config.timeoutMs,
-      retries: config.retries,
-    })
 
-    const parsed = parseResponse(config, result.payload)
+    let result: any
+    let parsed: any
+    if (config.stream !== false) {
+      try {
+        let text = ''
+        let reasoning = ''
+        await requestSse(request.url, {
+          headers: request.headers,
+          body: JSON.stringify({ ...request.body, stream: true }),
+          timeoutMs: config.timeoutMs,
+          signal,
+        }, (payload) => {
+          const delta = parseSseDelta(config.apiShape, payload)
+          if (delta.text) {
+            text += delta.text
+            ;(this.ctx.emit as any)('ai/stream', { kind: 'delta', text: delta.text })
+          }
+          if (delta.reasoning) {
+            reasoning += delta.reasoning
+            ;(this.ctx.emit as any)('ai/stream', { kind: 'delta', reasoning: delta.reasoning })
+          }
+        })
+        if (text.trim()) {
+          ;(this.ctx.emit as any)('ai/stream', { kind: 'done', text })
+          result = { status: 200, latencyMs: 0, payload: {} }
+          parsed = { text, reasoning: reasoning || undefined, finish: 'stop', truncated: false, usage: undefined, raw: {} }
+        }
+      } catch (error) {
+        this.ctx.logger.info('流式请求失败，回退非流式：%s', errorMessage(error))
+      }
+    }
+    if (!parsed) {
+      result = await requestJson(request.url, {
+        headers: request.headers,
+        body: request.body,
+        timeoutMs: config.timeoutMs,
+        retries: config.retries,
+        signal,
+      })
+      parsed = parseResponse(config, result.payload)
+    }
     if (!parsed.text.trim()) {
       throw new AiError('模型没有返回最终答案（可能只输出了思维链）', 'INVALID_RESPONSE', result.status, parsed.raw)
     }
