@@ -30,4 +30,23 @@ describe('AI 流式输出（SSE）', () => {
     expect(parseSseDelta('messages', { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'R' } })).toEqual({ reasoning: 'R' })
     expect(parseSseDelta('responses', { type: 'response.output_text.delta', delta: 'B' })).toEqual({ text: 'B' })
   })
-})
+it('外部 AbortSignal 可中止流式请求', async () => {
+    const server = createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write('data: {"choices":[{"delta":{"content":"x"}}]}\n\n')
+      // 故意不结束响应
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+    const port = (server.address() as any).port
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 100)
+    try {
+      await expect(requestSse(`http://127.0.0.1:${port}/chat`, {
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: controller.signal,
+      }, () => {})).rejects.toThrow()
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  })})
