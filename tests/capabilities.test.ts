@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateCapabilities } from '../packages/core/src/services/plugins.ts'
+import { validateCapabilities } from '../packages/core/src/domains/kernel/plugins.ts'
 
 describe('外部插件能力声明校验', () => {
   it('接受带合法 fsRoots 且无越权代码的插件', () => {

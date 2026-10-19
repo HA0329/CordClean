@@ -1,0 +1,6 @@
+refactor(core): 路线 3B 完成——服务按领域目录拆分（导出保持稳定）
+
+- services/* 迁入 domains/kernel|safety|engine|rules，git mv 保留历史
+- 全部 import 重写为领域相对路径；packages/core/src/index.ts 导出不变，插件零改动
+- 修正两个直接引用旧路径的测试
+- 全量 27 文件 / 206 用例通过；类型检查、桌面构建、E2E 通过

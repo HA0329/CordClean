@@ -32,7 +32,7 @@ import type {
   TaskScanResult,
 } from '@cordclean/shared'
 import { clearDirectory, deletePath, describeDeleteError, errorMessage, findLinkAncestor, isAbortError, mapLimit, normalizePath, pathKey, Pool } from '@cordclean/utils'
-import type { QuarantineSession } from './quarantine.ts'
+import type { QuarantineSession } from '../safety/quarantine.ts'
 import type { PathPolicyLike } from '@cordclean/shared'
 
 interface RegisteredTask {

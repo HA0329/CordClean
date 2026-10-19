@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createApp } from '@cordclean/core'
-import { preflightDirectory } from '../packages/core/src/services/executor.ts'
+import { preflightDirectory } from '../packages/core/src/domains/safety/executor.ts'
 import { createSandbox, manifestOf } from './helpers.ts'
 
 const sandbox = createSandbox()

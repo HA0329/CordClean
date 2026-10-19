@@ -20,7 +20,7 @@ import { Service, type Context } from 'cordis'
 import type { PathPolicyCheck, PathPolicyLike } from '@cordclean/shared'
 import { basename } from '@cordclean/shared'
 import { canonicalizePath, isAbsolutePath, normalizePath, pathKey } from '@cordclean/utils'
-import { expandShortNames } from '../short-names.ts'
+import { expandShortNames } from '../../short-names.ts'
 
 export interface PathPolicyConfig {
   /** 额外的保护目录（测试用） */
