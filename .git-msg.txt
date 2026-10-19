@@ -1,7 +1,0 @@
-feat(platform): 3A 后续①——worker 内配置热更新协议
-
-- external-proxy 新增 configure：worker 内用插件 Config 重新校验、重置任务并重跑 setup，不销毁 worker
-- 配置非法时 configure 直接失败并保留旧任务（worker 内异常隔离）
-- 新增测试：默认配置 → configure({size:7}) 生效 → 非法配置报错
-- 待接入：PluginManager.updateConfig 对 external:* 走 configure 分支、worker 复用（后续步骤）
-- 全量测试通过
