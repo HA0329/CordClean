@@ -1,6 +1,0 @@
-feat(ai): 取消生成（abort 信号 + RPC + 界面按钮）
-
-- http.requestJson 支持外部 AbortSignal（与超时合并）
-- AiService 持有 analyzeController，cancelAnalyze() 中止当前请求
-- 新增 RPC ai/cancel、store cancelAi；AI 页生成中显示「取消生成」
-- AI 测试与构建通过
