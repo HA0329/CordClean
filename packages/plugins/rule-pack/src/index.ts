@@ -34,6 +34,8 @@ import extraJson from '../rules/extra.json' with { type: 'json' }
 export interface RulePackConfig {
   /** 只启用这些分类（空 = 全部） */
   only: string[]
+  /** 明确排除的分类 key */
+  exclude: string[]
   /** 单个分类最多上报的项数 */
   maxItemsPerCategory: number
   /** 计算目录体积时最多统计的条目数 */
@@ -42,6 +44,7 @@ export interface RulePackConfig {
 
 const Config = Schema.object({
   only: Schema.array(Schema.string()).default([]).description('只启用这些分类 key（空表示全部）'),
+  exclude: Schema.array(Schema.string()).default([]).description('排除这些分类 key（优先级高于 only）'),
   maxItemsPerCategory: Schema.number().default(400).min(10).max(5000).description('单个分类最多上报的清理项数量'),
   maxEntriesPerDir: Schema.number().default(200_000).min(1000).description('统计目录体积时的最大遍历条目数'),
 })
@@ -341,6 +344,7 @@ export default defineCleanerPlugin<RulePackConfig>({
       }
     }
     const categories = [...CATALOG.categories, ...customCategories].filter((category) => {
+      if (config.exclude.includes(category.key)) return false
       if (config.only.length && !config.only.includes(category.key)) return false
       if (category.risk === 'risky' && !settings.rules.includeRisky) return false
       return true

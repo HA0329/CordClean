@@ -331,6 +331,10 @@ export async function undoLastClean(): Promise<{ restored: number; recyclePendin
   return result
 }
 
+export async function fetchLastScan(): Promise<any | null> {
+  return requireTransport().request('scan/last', undefined)
+}
+
 export async function fetchSessions(): Promise<Array<{ sessionId: string; startedAt: number; status: string; taskIds: string[] }>> {
   return requireTransport().request('history/sessions', undefined)
 }

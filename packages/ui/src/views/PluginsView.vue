@@ -6,6 +6,7 @@ import type { PluginRuntime } from '@cordclean/shared'
 import {
   loadPluginDefaults,
   refreshPlugins,
+  fetchLastScan,
   reloadPlugin,
   pluginSource,
   openEditor,
@@ -50,6 +51,25 @@ async function doInstall() {
 
 function toggleExpanded(id: string) {
   expanded.value[id] = !expanded.value[id]
+}
+
+const lastScan = ref<any>(null)
+const scanStats = computed(() => {
+  const map = new Map<string, { items: number; bytes: number }>()
+  for (const task of lastScan.value?.tasks ?? []) {
+    map.set(task.taskId, { items: task.items?.length ?? task.items ?? 0, bytes: task.bytes ?? 0 })
+  }
+  return map
+})
+
+function pluginStats(plugin: PluginRuntime) {
+  let items = 0
+  let bytes = 0
+  for (const task of plugin.tasks ?? []) {
+    const stat = scanStats.value.get(task.id)
+    if (stat) { items += Number(stat.items) || 0; bytes += Number(stat.bytes) || 0 }
+  }
+  return { items, bytes }
 }
 
 const plugins = computed(() => state.plugins)
@@ -216,6 +236,7 @@ function categoryName(id: string) {
           <span class="cc-pill">{{ categoryName(plugin.category) }}</span>
           <span class="cc-pill" :class="`status-${plugin.status}`">{{ plugin.status === 'active' ? '运行中' : plugin.status === 'error' ? '异常' : plugin.status === 'loading' ? '加载中' : '已停止' }}</span>
           <span class="cc-pill">{{ plugin.taskCount }} 个任务</span>
+          <span v-if="pluginStats(plugin).items" class="cc-pill">上次扫描 {{ pluginStats(plugin).items }} 项 · {{ (pluginStats(plugin).bytes / 1024 / 1024).toFixed(1) }} MB</span>
         </div>
 
         <div v-if="plugin.tasks.length" class="task-chips">
