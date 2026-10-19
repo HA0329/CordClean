@@ -1,8 +1,7 @@
 {
   "name": "cordclean",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
-  "license": "MIT",
   "type": "module",
   "description": "CordClean - 基于 Cordis 插件框架的模块化电脑清理工具",
   "engines": {
@@ -19,6 +18,11 @@
     "start:desktop": "pnpm build:ui && node scripts/build-desktop.mjs && electron apps/desktop/dist/main.mjs",
     "pretest": "pnpm build:ui",
     "test": "vitest run",
+    "test:security": "vitest run tests/path-policy.test.ts tests/path-attack.test.ts tests/fs-safety.test.ts tests/compensate.test.ts tests/capabilities.test.ts",
+    "test:platform": "vitest run tests/plugins.test.ts tests/plugins-robust.test.ts tests/worker-host.test.ts tests/external-proxy.test.ts tests/external-install.test.ts tests/architecture.test.ts",
+    "test:ai": "vitest run tests/ai.test.ts tests/ai-shapes.test.ts tests/ai-robust.test.ts tests/ai-context.test.ts tests/ai-selection.test.ts",
+    "test:api": "vitest run tests/rpc.test.ts tests/validation.test.ts tests/api-flow.test.ts",
+    "test:engine": "vitest run tests/engine.test.ts tests/engine-robust.test.ts tests/rules.test.ts tests/plugin-rules.test.ts tests/quarantine.test.ts tests/sessions.test.ts tests/scheduler.test.ts tests/undo.test.ts tests/in-use.test.ts tests/state.test.ts tests/shortcuts.test.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "bench": "tsx bench/scan.bench.ts",
@@ -44,6 +48,7 @@
   "dependencies": {
     "cordis": "4.0.0-rc.11",
     "schemastery": "^3.18.0",
-    "ws": "^8.22.0"
+    "ws": "^8.22.0",
+    "zod": "^4.6.7"
   }
 }
