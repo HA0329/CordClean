@@ -1,6 +1,0 @@
-test: 重新设计全量测试分层 + API 全链路集成测试
-
-- 新增 tests/api-flow.test.ts：真实 host server + handlers，覆盖 app/info 协议版本、扫描→回收站清理→历史→撤销状态、非法参数 -32602
-- 新增分层测试脚本：test:security / test:platform / test:engine / test:ai / test:api
-- 新增 docs/test-plan.md：分层矩阵、命令、设计原则、已知缺口
-- 全量 32 文件 / 217 用例通过，E2E 通过
