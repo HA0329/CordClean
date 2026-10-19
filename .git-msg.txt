@@ -1,0 +1,6 @@
+chore(arch): 路线 3B 第一步——领域边界与依赖规则
+
+- core/src/domains 新增 kernel/safety/engine/rules 四个聚合出口（不改服务名，插件零改动）
+- 新增架构测试：core 不得依赖 host/ui/具体插件；plugins 不得依赖 @cordclean/core
+- 全量 27 文件 / 206 用例通过，桌面包重建通过
+- 下一步：服务文件迁入领域目录（保持导出稳定），随后 3C 会话持久化
