@@ -1,0 +1,7 @@
+feat(ai): 工具调用（tool calls）支持——工坊草稿改用 emit_plugin
+
+- adapters 支持 tools/tool_choice：chat（OpenAI 格式）、messages（Anthropic tool_use）、responses（function_call）
+- parseResponse 统一解析 toolCalls（三种形态），空文本但有工具调用时不再误报"内容为空"
+- 工坊草稿优先使用 emit_plugin 工具返回 name/code/notes，失败回退代码块解析
+- 新增 tests/ai-tools.test.ts：三种形态工具调用解析
+- 全量测试、UI/桌面构建通过

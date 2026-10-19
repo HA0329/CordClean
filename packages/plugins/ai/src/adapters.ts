@@ -28,6 +28,8 @@ export interface BuiltRequest {
 }
 
 export interface ParsedResponse {
+  /** 模型通过函数调用返回的结构化参数 */
+  toolCalls?: Array<{ name: string; arguments: any }>
   text: string
   reasoning?: string
   /** 结束原因（length / max_tokens / incomplete 视为截断） */
@@ -74,7 +76,7 @@ export function mergeHeaders(base: Record<string, string>, extra: Record<string,
  * @param systemPrompt system 提示词
  * @param userPrompt 用户消息（含本机画像）
  */
-export function buildRequest(config: AiConfig, apiKey: string, systemPrompt: string, userPrompt: string): BuiltRequest {
+export function buildRequest(config: AiConfig, apiKey: string, systemPrompt: string, userPrompt: string, tools?: any[]): BuiltRequest {
   const url = resolveChatUrl(config)
   const headers = mergeHeaders(authHeaders(config, apiKey), config.extraHeaders)
   const jsonHint = wantsJson(config) && config.apiShape === 'messages' ? JSON_HINT_ZH : ''
@@ -151,6 +153,24 @@ export function parseResponse(config: AiConfig, payload: any): ParsedResponse {
     throw new AiError('接口返回内容为空或不是对象', 'INVALID_RESPONSE')
   }
 
+  const toolCalls: Array<{ name: string; arguments: any }> = []
+  const pushArgs = (name: string, raw: any) => {
+    if (!name) return
+    let parsed = raw
+    if (typeof raw === 'string') {
+      try { parsed = JSON.parse(raw) } catch { return }
+    }
+    toolCalls.push({ name, arguments: parsed })
+  }
+  if (Array.isArray(payload.choices?.[0]?.message?.tool_calls)) {
+    for (const call of payload.choices[0].message.tool_calls) pushArgs(call?.function?.name, call?.function?.arguments)
+  }
+  if (Array.isArray(payload.content)) {
+    for (const block of payload.content) if (block?.type === 'tool_use') pushArgs(block.name, block.input)
+  }
+  if (Array.isArray(payload.output)) {
+    for (const item of payload.output) if (item?.type === 'function_call') pushArgs(item.name, item.arguments)
+  }
   if (config.apiShape === 'messages' && Array.isArray(payload.content)) {
     const text = payload.content
       .filter((block: any) => block?.type === 'text' && typeof block.text === 'string')
@@ -160,7 +180,7 @@ export function parseResponse(config: AiConfig, payload: any): ParsedResponse {
       .filter((block: any) => block?.type === 'thinking' && typeof block.thinking === 'string')
       .map((block: any) => block.thinking)
       .join('\n')
-    if (!text && !reasoning) {
+    if (!text && !reasoning && toolCalls.length === 0) {
       throw new AiError('Anthropic 响应里没有文本内容，请检查 apiShape 是否与接口匹配', 'INVALID_RESPONSE', 200, payload)
     }
     return {
@@ -169,6 +189,7 @@ export function parseResponse(config: AiConfig, payload: any): ParsedResponse {
       finish: payload.stop_reason,
       usage: normalizeUsage(payload.usage?.input_tokens, payload.usage?.output_tokens, 0),
       truncated: payload.stop_reason === 'max_tokens',
+      toolCalls: toolCalls.length ? toolCalls : undefined,
       raw: payload,
     }
   }
@@ -182,7 +203,7 @@ export function parseResponse(config: AiConfig, payload: any): ParsedResponse {
     const reasoning = reasoningItems
       .map((item: any) => textFromParts(item.content))
       .join('\n')
-    if (!text && !reasoning) {
+    if (!text && !reasoning && toolCalls.length === 0) {
       throw new AiError('Responses 响应里没有文本内容，请检查 apiShape 是否与接口匹配', 'INVALID_RESPONSE', 200, payload)
     }
     const usage = payload.usage ?? {}
@@ -197,6 +218,7 @@ export function parseResponse(config: AiConfig, payload: any): ParsedResponse {
         usage.total_tokens,
       ),
       truncated: payload.status === 'incomplete',
+      toolCalls: toolCalls.length ? toolCalls : undefined,
       raw: payload,
     }
   }
@@ -210,7 +232,7 @@ export function parseResponse(config: AiConfig, payload: any): ParsedResponse {
       : typeof message.reasoning === 'string'
         ? message.reasoning
         : ''
-    if (!text && !reasoning) {
+    if (!text && !reasoning && toolCalls.length === 0) {
       throw new AiError('对话响应里没有文本内容，请检查接口返回格式', 'INVALID_RESPONSE', 200, payload)
     }
     const usage = payload.usage ?? {}
@@ -225,6 +247,7 @@ export function parseResponse(config: AiConfig, payload: any): ParsedResponse {
         usage.total_tokens,
       ),
       truncated: choice.finish_reason === 'length' || choice.finish_reason === 'max_tokens',
+      toolCalls: toolCalls.length ? toolCalls : undefined,
       raw: payload,
     }
   }
