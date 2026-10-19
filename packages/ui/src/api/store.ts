@@ -427,13 +427,13 @@ export async function authorizeScheduler(patch: Record<string, unknown> = {}): P
   return result.hash
 }
 
-export async function revokeScheduler(): Promise<void> {
-  await requireTransport().request('scheduler/revoke', {})
+export async function revokeScheduler(planId?: string): Promise<void> {
+  await requireTransport().request('scheduler/revoke', { planId })
   await refreshPlugins()
 }
 
-export async function runSchedulerNow(): Promise<void> {
-  await requireTransport().request('scheduler/run', {})
+export async function runSchedulerNow(planId?: string): Promise<void> {
+  await requireTransport().request('scheduler/run', { planId })
 }
 
 export async function pluginSource(id: string): Promise<string> {

@@ -1,0 +1,6 @@
+feat(scheduler-ui): 多计划管理（选择/新建/删除）与按计划授权
+
+- 设置页定时任务卡片增加计划下拉、新建计划、删除计划
+- 保存写回 plans[]（保留其他计划），授权/撤销/立即运行均携带 planId
+- 后端 plans[] + settings.scheduler.lastRuns 持久化已在此前完成
+- E2E 与构建通过
