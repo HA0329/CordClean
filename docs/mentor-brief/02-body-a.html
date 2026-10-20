@@ -1,0 +1,440 @@
+
+<!-- ================= 01 选题与目标 ================= -->
+<section class="section reveal" id="problem">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">01</span><span>Background &amp; Goal</span></div>
+      <h2 class="sec-title">选题背景：清理工具的问题，不在「清得不干净」</h2>
+      <p class="sec-lede">
+        市面上的清理软件并不少，但它们普遍存在三个结构性问题：<b>规则写成代码</b>、<b>删除是黑盒</b>、<b>扩展依赖发版</b>。
+        本课题把「清理能力」从功能里拆出来，做成依赖 Cordis 插件框架的独立插件，并用一条显式的安全链约束所有删除行为。
+      </p>
+    </div>
+
+    <div class="grid g3">
+      <div class="card">
+        <div class="card-kicker">问题一</div>
+        <h3>规则硬编码，扩展成本高</h3>
+        <p>每增加一个清理域（新软件缓存、新游戏平台）都要改代码、重新发版；规则散落在各功能模块里，无法审计、无法裁剪。</p>
+        <div class="card-note">本课题：数据驱动规则库 + 插件化清理域</div>
+      </div>
+      <div class="card">
+        <div class="card-kicker">问题二</div>
+        <h3>删除是黑盒，误删不可逆</h3>
+        <p>用户只看到「已清理 3.2 GB」，却不知道删了什么、是否可恢复；一旦路径判断错误，删除无法回滚。</p>
+        <div class="card-note">本课题：补偿链 + 防伪票据 + 诚实计量</div>
+      </div>
+      <div class="card">
+        <div class="card-kicker">问题三</div>
+        <h3>AI 只会聊天，不能落地</h3>
+        <p>大模型接口变化极快，写死接口就要频繁发版；若让模型直接触发删除，又会被幻觉放大成数据事故。</p>
+        <div class="card-note">本课题：可替换适配层 + 只建议不执行</div>
+      </div>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:16px">
+      <span class="callout-title">三个研究问题（对应论文第 3、4 章）</span>
+      <b>RQ1</b>：插件化能否让清理能力的扩展做到「加插件/加数据，不改内核」？<br>
+      <b>RQ2</b>：删除不可回滚，如何用「辖区白名单 + 七步补偿链 + 唯一入口」把它变成可验证的工程约束？<br>
+      <b>RQ3</b>：在大模型接口快速演进的前提下，AI 如何既用得上、又不越权？
+    </div>
+
+    <div class="subhead">与传统清理工具的定位差异</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:15%">维度</th><th style="width:34%">传统清理工具</th><th>CordClean</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><b>扩展方式</b></td><td>规则写死在代码里，新增清理域要改代码、发版本</td><td>新增插件或一段 JSON 规则，热重载生效，内核零改动</td></tr>
+          <tr><td><b>删除入口</b></td><td>分散在各功能模块，谁都能调用删除</td><td>唯一入口：补偿链签发 <code>CleanTicket</code>，执行器逐项复核</td></tr>
+          <tr><td><b>安全边界</b></td><td>黑名单：不在名单里就允许删，信任插件</td><td>白名单辖区：插件先声明范围，未声明路径一律拒绝</td></tr>
+          <tr><td><b>AI 定位</b></td><td>聊天框或营销入口，输出与操作脱节</td><td>只给建议：脱敏画像、可试运行、用户勾选后才进入安全链</td></tr>
+          <tr><td><b>可裁剪性</b></td><td>整套安装，功能耦合</td><td>11 个插件独立启停、按需懒加载，模块可裁剪</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subhead">设计目标</div>
+    <div class="grid g4">
+      <div class="card">
+        <div class="card-icon">◈</div>
+        <h3>可插拔</h3>
+        <p>清理能力 = 插件；用 Cordis fiber 管理装载、配置、启停与回收。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">◉</div>
+        <h3>可审计</h3>
+        <p>规则、扫描、删除、拒绝原因、释放计量都可追溯，不静默失败。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⛨</div>
+        <h3>安全优先</h3>
+        <p>删除前七步检查；高风险进隔离区；宁可少删，不可误删。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">↻</div>
+        <h3>可演进</h3>
+        <p>AI 接口可配置、规则可扩展；厂商接口变化不需要推翻业务层。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 02 总体架构 ================= -->
+<section class="section reveal" id="architecture">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">02</span><span>Architecture</span></div>
+      <h2 class="sec-title">总体架构：四种外壳，一个内核</h2>
+      <p class="sec-lede">
+        系统分成 <b>外壳层 / 传输层 / 内核层 / 插件层 / 契约层</b> 五层。浏览器与 Electron 共用同一份内核与界面，
+        差异只在传输方式与一个很小的 <code>ShellAdapter</code>。插件只依赖契约层，不依赖内核实现 —— 这是「可插拔」成立的前提。
+      </p>
+    </div>
+
+    <div class="arch">
+      <div class="arch-stack" id="archStack">
+        <button class="layer active" data-layer="shell" type="button">
+          <span class="idx">5</span>
+          <span><span class="name">外壳层 · Shell</span><span class="sub">apps/web · apps/desktop</span></span>
+        </button>
+        <div class="arch-arrow">▼ 统一 RPC</div>
+        <button class="layer" data-layer="transport" type="button">
+          <span class="idx">4</span>
+          <span><span class="name">传输层 · Host</span><span class="sub">packages/host · 55 个方法</span></span>
+        </button>
+        <div class="arch-arrow">▼ 直接调用</div>
+        <button class="layer" data-layer="kernel" type="button">
+          <span class="idx">3</span>
+          <span><span class="name">内核层 · Core</span><span class="sub">服务 · 引擎 · 安全链 · 插件管理</span></span>
+        </button>
+        <div class="arch-arrow">▼ 能力契约</div>
+        <button class="layer" data-layer="plugins" type="button">
+          <span class="idx">2</span>
+          <span><span class="name">插件层 · Plugins</span><span class="sub">packages/plugins/* · 11 个</span></span>
+        </button>
+        <div class="arch-arrow">▼ 只依赖</div>
+        <button class="layer" data-layer="contract" type="button">
+          <span class="idx">1</span>
+          <span><span class="name">契约层 · Shared / Utils</span><span class="sub">纯类型 + 纯函数</span></span>
+        </button>
+      </div>
+
+      <div class="arch-detail" id="archDetail" aria-live="polite">
+        <div class="top">
+          <h3>外壳层 · Shell</h3>
+          <span class="tag tag-brand">可替换</span>
+        </div>
+        <p class="role">同一个内核，可以跑在浏览器里，也可以跑在 Electron 窗口里；界面代码只写一份，外壳差异被压到最小。</p>
+        <div class="files">
+          <code>apps/web</code><code>apps/desktop</code><code>packages/ui</code>
+        </div>
+        <div class="point">浏览器外壳：HTTP 静态资源 + WebSocket JSON-RPC；启动时注入随机 token，只监听 127.0.0.1，防止本机其它网页调用高权限接口。</div>
+        <div class="point">Electron 外壳：<code>contextIsolation</code> + <code>nodeIntegration: false</code>，preload 只暴露最小 invoke 接口。</div>
+        <div class="point">外壳差异（打开目录、退出应用等）通过 <code>ShellAdapter</code> 注入，UI 层不感知运行环境。</div>
+      </div>
+    </div>
+
+    <div class="subhead">一次清理的数据流</div>
+    <div class="flow">
+      <span class="flow-item"><b>扫描</b> 只产出候选</span>
+      <span class="flow-arrow">→</span>
+      <span class="flow-item"><b>用户勾选</b> 可先 dryRun</span>
+      <span class="flow-arrow">→</span>
+      <span class="flow-item hot"><b>compensate.issue</b> 七步检查</span>
+      <span class="flow-arrow">→</span>
+      <span class="flow-item hot"><b>CleanTicket</b> 防伪令牌</span>
+      <span class="flow-arrow">→</span>
+      <span class="flow-item"><b>Executor</b> 逐项复核</span>
+      <span class="flow-arrow">→</span>
+      <span class="flow-item ok"><b>回收站 / 隔离区</b></span>
+      <span class="flow-arrow">→</span>
+      <span class="flow-item"><b>诚实计量</b> + 历史</span>
+    </div>
+
+    <div class="callout callout-good" style="margin-top:18px">
+      <span class="callout-title">关键设计：依赖倒置</span>
+      插件看到的是 <code>ctx.cleaner</code> / <code>ctx.pathPolicy</code> / <code>ctx.evaluator</code> 这样的能力契约（由 <code>declare module 'cordis'</code> 做类型增强），
+      <b>不依赖内核实现</b>。因此内核可以替换实现而不影响插件，插件也可以被内核在运行时装卸 —— 这是插件化能够成立的结构性前提。
+    </div>
+  </div>
+</section>
+
+<!-- ================= 03 插件机制 ================= -->
+<section class="section reveal" id="plugins">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">03</span><span>Plugin System</span></div>
+      <h2 class="sec-title">插件机制：本文最核心的设计</h2>
+      <p class="sec-lede">
+        每个清理能力都是一个独立的 Cordis 插件：有自己的 <code>package.json</code>、配置 schema、生命周期与清理辖区。
+        内核负责装载与回收，插件只负责「申报候选」，<b>永远不直接删除文件</b>。
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:24%">Cordis 概念</th><th>在本系统中的用法</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>class X extends Service</code></td><td>内核服务：Settings / System / PathPolicy / Quarantine / History / Cleaner / Compensate / PluginManager</td></tr>
+          <tr><td><code>static inject</code></td><td>声明依赖顺序；未 inject 就访问会在启动期报错，避免空指针</td></tr>
+          <tr><td><code>ctx.plugin(plugin, config)</code></td><td>插件管理器装载清理插件；内核装配时装载服务</td></tr>
+          <tr><td><code>ctx.effect(() =&gt; dispose)</code></td><td>注册清理任务、声明清理辖区；插件卸载时框架自动回收，不会泄漏</td></tr>
+          <tr><td><code>Config</code>（Schemastery）</td><td>校验插件配置，同时用于「插件配置界面」的默认值推导</td></tr>
+          <tr><td><code>fiber.update(config)</code></td><td>改配置后热重载；校验失败不会破坏正在运行的实例</td></tr>
+          <tr><td><code>ctx.emit / ctx.on</code></td><td>进度与状态事件：<code>cleaner/scan-progress</code>、<code>cleaner/clean-done</code>、<code>plugins/changed</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subhead">插件的生命周期（点击查看每一阶段）</div>
+    <div class="lifecycle">
+      <div class="card">
+        <div class="life-tabs" id="lifeTabs">
+          <button class="life-tab active" data-life="load" type="button">装载</button>
+          <button class="life-tab" data-life="setup" type="button">setup</button>
+          <button class="life-tab" data-life="active" type="button">运行</button>
+          <button class="life-tab" data-life="update" type="button">热更新</button>
+          <button class="life-tab" data-life="dispose" type="button">停用 / 卸载</button>
+          <button class="life-tab" data-life="fault" type="button">故障隔离</button>
+        </div>
+        <div class="life-body" id="lifeBody" aria-live="polite">
+          <h3>装载：按需懒加载</h3>
+          <p>清单只保存元数据与 <code>load: () =&gt; import()</code>，插件模块只在被启用时才载入内存 —— 既是启动性能优化，也是「可裁剪」的体现。</p>
+          <div class="tags"><span class="tag tag-brand">懒加载</span><span class="tag tag-plain">manifest</span></div>
+        </div>
+      </div>
+      <div class="life-code">
+        <div class="k">相同的调用，不同的阶段</div>
+        <pre><code>const fiber = ctx.plugin(pluginModule, config)
+await fiber                      // setup 完成才视为 active
+
+fiber.update(nextConfig)         // 校验通过后热重载
+await fiber.dispose()            // 任务、辖区、监听一起回收</code></pre>
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card">
+        <div class="card-kicker">工程细节</div>
+        <h3>任务归属的「差分」技巧</h3>
+        <p>插件管理器需要知道「某个任务属于哪个插件」，但让插件自报 id 会引入耦合。做法是：装载前后各取一次任务 id 集合，差集即归属。</p>
+        <pre><code>const before = new Set(ctx.cleaner.list().map(t =&gt; t.id))
+const fiber  = ctx.plugin(mod, config)
+await fiber
+const after  = new Set(ctx.cleaner.list().map(t =&gt; t.id))
+record.taskIds = [...after].filter(id =&gt; !before.has(id))</code></pre>
+        <div class="card-note">代价：插件必须顺序加载（并发会污染差分结果）。实测 11 个插件约 18 ms，可接受。</div>
+      </div>
+      <div class="card">
+        <div class="card-kicker">扩展方式</div>
+        <h3>新增一个清理能力：4 步</h3>
+        <ol>
+          <li>复制 <code>packages/plugins/temp</code> 为新的插件包，改 <code>package.json</code>；</li>
+          <li>用 <code>defineCleanerPlugin</code> + <code>ctx.cleaner.define</code> 实现 <code>scan</code>；</li>
+          <li>在 <code>core/src/manifest.ts</code> 加一行清单，把包加入依赖；</li>
+          <li><code>pnpm install &amp;&amp; pnpm dev:web</code>，插件直接出现在「插件」页。</li>
+        </ol>
+        <div class="card-note">内核无需任何改动。另一种更轻的方式：在规则库 JSON 里加一段规则。</div>
+      </div>
+    </div>
+
+    <div class="subhead">11 个内置插件（可筛选，点击卡片看细节）</div>
+    <div class="plugins-filter" id="pluginFilters">
+      <button class="filter-btn active" data-filter="all" type="button">全部 11</button>
+      <button class="filter-btn" data-filter="enabled" type="button">默认启用 8</button>
+      <button class="filter-btn" data-filter="disabled" type="button">默认关闭 3</button>
+      <button class="filter-btn" data-filter="risky" type="button">含高风险 3</button>
+      <span class="plugins-count" id="pluginsCount">显示 11 / 11</span>
+    </div>
+
+    <div class="plugin-grid" id="pluginGrid">
+      <article class="plugin" data-enabled="true" data-risk="caution" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">规则库</div><div class="plugin-id">rule-pack · v2.0.0</div></div>
+          <span class="plugin-state">运行中</span>
+        </div>
+        <p class="plugin-desc">把 JSON 规则自动转换为清理能力：28 个分类、271 条规则；新增清理域只加数据。</p>
+        <div class="tags"><span class="tag tag-safe">安全 ~ 谨慎</span><span class="tag tag-brand">数据驱动</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">31 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail"><b>支持 6 种目标类型</b>：clear_dir / delete_dir / glob_files / glob_dirs / files_by_rule / find_dirs。高风险分类与 deep_only 规则默认不装载；审计脚本持续报告结构错误、死目标、重复目标与被策略拦截的目标。</div>
+      </article>
+
+      <article class="plugin" data-enabled="true" data-risk="safe" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">回收站</div><div class="plugin-id">recycle · v1.0.0</div></div>
+          <span class="plugin-state">运行中</span>
+        </div>
+        <p class="plugin-desc">统计并清空各磁盘回收站；解析 <code>$I/$R</code> 结构，按原始路径展示。</p>
+        <div class="tags"><span class="tag tag-safe">安全</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">清理前展示每一项的来源；回收站同时是通用删除的兜底路径，所有删除都优先走「可恢复」。</div>
+      </article>
+
+      <article class="plugin" data-enabled="true" data-risk="caution" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">大文件扫描</div><div class="plugin-id">large-files · v1.0.0</div></div>
+          <span class="plugin-state">运行中</span>
+        </div>
+        <p class="plugin-desc">在指定范围中找出占用空间最大的文件；只报告，需用户手动勾选后才进入清理。</p>
+        <div class="tags"><span class="tag tag-caution">谨慎</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">默认不勾选任何项；文件挪动/删除都经过路径策略与链接祖先检查。</div>
+      </article>
+
+      <article class="plugin" data-enabled="true" data-risk="caution" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">重复文件查找</div><div class="plugin-id">duplicates · v1.0.0</div></div>
+          <span class="plugin-state">运行中</span>
+        </div>
+        <p class="plugin-desc">按「体积 → 4 KB 短哈希 → 全量 SHA-256」三级策略找重复文件，避免无谓的全量哈希。</p>
+        <div class="tags"><span class="tag tag-caution">谨慎</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">全量哈希吞吐实测约 383 MB/s；候选过多时按预算截断并如实告知，不静默丢弃。</div>
+      </article>
+
+      <article class="plugin" data-enabled="true" data-risk="safe" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">空目录清理</div><div class="plugin-id">empty-dirs · v1.0.0</div></div>
+          <span class="plugin-state">运行中</span>
+        </div>
+        <p class="plugin-desc">找出并删除没有任何文件的空文件夹；跳过 junction 与 <code>node_modules</code>。</p>
+        <div class="tags"><span class="tag tag-safe">安全</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">只删除真正的空目录；目录内出现文件即不处理，避免和正在安装的软件抢目录。</div>
+      </article>
+
+      <article class="plugin" data-enabled="true" data-risk="risky" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">应用残留分析</div><div class="plugin-id">leftovers · v1.0.0</div></div>
+          <span class="plugin-state">运行中</span>
+        </div>
+        <p class="plugin-desc">比对注册表卸载项与实际安装目录，找出已卸载软件的残留；目录类只提示。</p>
+        <div class="tags"><span class="tag tag-risky">高风险</span><span class="tag tag-plain">默认不勾选</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">注册表项删除前先导出 <code>.reg</code> 备份；<code>Program Files</code> 下的残留目录只提示、不允许删除。</div>
+      </article>
+
+      <article class="plugin" data-enabled="true" data-risk="caution" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">启动项管理</div><div class="plugin-id">startup · v1.0.0</div></div>
+          <span class="plugin-state">运行中</span>
+        </div>
+        <p class="plugin-desc">查看注册表 Run/RunOnce、启动文件夹与计划任务；删除前自动导出 <code>.reg</code> 备份。</p>
+        <div class="tags"><span class="tag tag-caution">谨慎</span><span class="tag tag-plain">计划任务只报告</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">导出失败则放弃删除；计划任务类启动项暂不支持在本工具内禁用，只做展示。</div>
+      </article>
+
+      <article class="plugin" data-enabled="true" data-risk="risky" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">注册表问题</div><div class="plugin-id">registry · v1.0.0</div></div>
+          <span class="plugin-state">运行中</span>
+        </div>
+        <p class="plugin-desc">失效的卸载残留项与无效文件关联（App Paths）；清理前自动导出 <code>.reg</code> 备份。</p>
+        <div class="tags"><span class="tag tag-risky">高风险</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">误判过 <code>SystemComponent</code> 登记与 Edge Update，已修正并补了判定测试（缺陷 D-07）。</div>
+      </article>
+
+      <article class="plugin off" data-enabled="false" data-risk="safe" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">定时扫描</div><div class="plugin-id">scheduler · v1.0.0</div></div>
+          <span class="plugin-state">已停止</span>
+        </div>
+        <p class="plugin-desc">按间隔或每天固定时间扫描并通知；自动清理必须单独授权，规则一变授权即失效。</p>
+        <div class="tags"><span class="tag tag-plain">默认关闭</span><span class="tag tag-safe">不后台删除</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">0 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">默认模式「只扫描并通知」；开启自动清理需要用户在设置页显式授权，授权哈希绑定当前规则配置。</div>
+      </article>
+
+      <article class="plugin off" data-enabled="false" data-risk="risky" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">失效快捷方式</div><div class="plugin-id">shortcuts · v2.0.0</div></div>
+          <span class="plugin-state">已停止</span>
+        </div>
+        <p class="plugin-desc">纯二进制解析 <code>.lnk</code>，只清理目标确实不存在的死链；Startup 目录默认排除。</p>
+        <div class="tags"><span class="tag tag-risky">高风险</span><span class="tag tag-plain">默认关闭</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">不依赖 COM，直接解析 Shell Link 二进制结构；链接本身可删，但目标文件绝不被触碰。</div>
+      </article>
+
+      <article class="plugin off" data-enabled="false" data-risk="safe" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">AI 清理顾问</div><div class="plugin-id">ai · v1.0.0</div></div>
+          <span class="plugin-state">已停止</span>
+        </div>
+        <p class="plugin-desc">调用 DeepSeek 等 OpenAI 兼容接口，结合脱敏的本机画像给出清理建议；不直接执行删除。</p>
+        <div class="tags"><span class="tag tag-ai">AI · 只建议</span><span class="tag tag-plain">默认关闭</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">0 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">三种接口形态可切换；Key 只存本机 config.json；模型生成的插件代码需静态校验并由用户审阅后才能安装。</div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 清理引擎 ================= -->
+<section class="section reveal" id="engine">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">04</span><span>Cleaning Engine</span></div>
+      <h2 class="sec-title">清理引擎：扫描与清理彻底分离</h2>
+      <p class="sec-lede">
+        <b>扫描只产出候选，不删除任何东西</b>；用户勾选后才进入清理流程。清理时还会二次校验，
+        并且<b>不信任界面回传的路径</b> —— 即使前端被篡改，也无法清理辖区外的文件。
+      </p>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-kicker">Scan</div>
+        <h3>扫描流程</h3>
+        <ol>
+          <li>按 <code>taskIds</code> 组装任务列表；</li>
+          <li>任务级并发调度（默认 3），每任务构造独立上下文与 <code>AbortSignal</code>；</li>
+          <li>插件 <code>scan()</code> 产出候选，或通过 <code>emit()</code> 流式上报；</li>
+          <li>规范化 <code>id = sha1(taskId + path)</code> → 路径策略校验 → 按 <code>pathKey</code> 去重；</li>
+          <li>进度事件 120 ms 节流，最终汇总 <code>ScanReport</code>。</li>
+        </ol>
+        <div class="card-note">单任务默认上限 2 万项，超出标记 truncated；错误最多保留 200 条。</div>
+      </div>
+      <div class="card">
+        <div class="card-kicker">Clean</div>
+        <h3>清理流程</h3>
+        <ol>
+          <li>按 itemId 从最近一次扫描结果中重新解析，<b>不信任界面回传</b>；</li>
+          <li>按 taskId 分组：有自定义 <code>clean</code> 的走插件，其余走通用删除；</li>
+          <li>统一进入 <code>compensate.issue()</code>，通过后签发 <code>CleanTicket</code>；</li>
+          <li>执行器逐项复核后执行：回收站 / 隔离区 / 永久删除 / VACUUM；</li>
+          <li>汇总诚实计量，非 dryRun 才写历史。</li>
+        </ol>
+        <div class="card-note">删除并发池上限 6；取消信号贯穿遍历、哈希与删除。</div>
+      </div>
+    </div>
+
+    <div class="kpi-row" style="margin-top:16px">
+      <div class="kpi"><div class="k">任务并发</div><div class="v">3</div><div class="d">可配置；扫描吞吐与内存的折中</div></div>
+      <div class="kpi"><div class="k">单任务上限</div><div class="v">20,000</div><div class="d">超出截断，避免一次扫描拖垮界面</div></div>
+      <div class="kpi"><div class="k">删除并发池</div><div class="v">6</div><div class="d">IO 与错误率之间取得平衡</div></div>
+      <div class="kpi"><div class="k">进度节流</div><div class="v">120<small>ms</small></div><div class="d">避免 IPC / WebSocket 事件洪泛</div></div>
+    </div>
+
+    <div class="subhead">诚实计量：不把「进了回收站」说成「释放了」</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:20%">指标</th><th style="width:40%">含义</th><th>计量方式</th></tr></thead>
+        <tbody>
+          <tr><td><code>freedBytes</code></td><td>真正从磁盘消失的字节</td><td>永久删除 / 清空后按实际删除量；VACUUM 按前后文件大小差</td></tr>
+          <tr><td><code>recycledBytes</code></td><td>进入回收站的字节</td><td>回执成功的项按扫描体积累计，<b>不虚报为释放</b></td></tr>
+          <tr><td><code>quarantinedBytes</code></td><td>进入隔离区的字节</td><td>隔离区移动成功的项</td></tr>
+          <tr><td><code>vanished</code></td><td>扫描后已不存在的项</td><td><code>stat</code> 失败，单独计数，不计入释放</td></tr>
+          <tr><td><code>skipped</code></td><td>条件不满足 / 预览变化而跳过的项</td><td>结构化拒绝原因，界面逐项可查</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-note">这解决了旧实现「用扫描体积当释放量」的虚报问题，也让界面能说清楚：这 3 GB 是进了回收站，还是真的释放了。</p>
+  </div>
+</section>

@@ -1,0 +1,504 @@
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- 通用 ---------- */
+  var $ = function (sel, root) { return (root || document).querySelector(sel); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- 主题 ---------- */
+  var themeBtn = $('#themeBtn');
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (themeBtn) {
+      themeBtn.title = theme === 'dark' ? '切换为浅色主题' : '切换为深色主题';
+      themeBtn.setAttribute('aria-label', themeBtn.title);
+    }
+    try { localStorage.setItem('cordclean-theme', theme); } catch (e) {}
+  }
+  var savedTheme = null;
+  try { savedTheme = localStorage.getItem('cordclean-theme'); } catch (e) {}
+  applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
+  if (themeBtn) {
+    themeBtn.addEventListener('click', function () {
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+    });
+  }
+
+  /* ---------- 阅读进度 / 返回顶部 ---------- */
+  var progress = $('#progress');
+  var toTop = $('#toTop');
+  function onScroll() {
+    var doc = document.documentElement;
+    var max = doc.scrollHeight - window.innerHeight;
+    var y = window.scrollY || doc.scrollTop || 0;
+    if (progress) progress.style.width = (max > 0 ? Math.min(100, (y / max) * 100) : 0) + '%';
+    if (toTop) toTop.classList.toggle('show', y > 720);
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  if (toTop) toTop.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }); });
+  var brandBtn = $('#brandBtn');
+  if (brandBtn) brandBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }); });
+
+  /* ---------- 移动端目录 ---------- */
+  var sidebar = $('#sidebar');
+  var backdrop = $('#backdrop');
+  var menuBtn = $('#menuBtn');
+  function closeMenu() {
+    if (sidebar) sidebar.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('show');
+  }
+  if (menuBtn) {
+    menuBtn.addEventListener('click', function () {
+      if (!sidebar) return;
+      var open = sidebar.classList.toggle('open');
+      if (backdrop) backdrop.classList.toggle('show', open);
+    });
+  }
+  if (backdrop) backdrop.addEventListener('click', closeMenu);
+  $$('.side-link').forEach(function (link) { link.addEventListener('click', closeMenu); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+
+  /* ---------- 滚动高亮 ---------- */
+  var sideLinks = $$('.side-link');
+  var linkMap = {};
+  sideLinks.forEach(function (link) {
+    var href = link.getAttribute('href') || '';
+    if (href.charAt(0) === '#') linkMap[href.slice(1)] = link;
+  });
+  var sections = $$('section[id]');
+  function setActive(id) {
+    sideLinks.forEach(function (l) { l.classList.remove('active'); });
+    if (linkMap[id]) linkMap[id].classList.add('active');
+  }
+  var spyTicking = false;
+  function updateSpy() {
+    spyTicking = false;
+    var y = (window.scrollY || 0) + 130;
+    var current = sections[0];
+    sections.forEach(function (s) { if (s.offsetTop <= y) current = s; });
+    if (current) setActive(current.id);
+  }
+  window.addEventListener('scroll', function () {
+    if (!spyTicking) { spyTicking = true; requestAnimationFrame(updateSpy); }
+  }, { passive: true });
+  updateSpy();
+
+  /* ---------- 入场动画 ---------- */
+  var revealEls = $$('.reveal');
+  if ('IntersectionObserver' in window) {
+    var revealObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.06, rootMargin: '0px 0px -40px 0px' });
+    revealEls.forEach(function (el) { revealObserver.observe(el); });
+  } else {
+    revealEls.forEach(function (el) { el.classList.add('in'); });
+  }
+
+  /* ---------- 数字滚动 ---------- */
+  var statEls = $$('.stat-num[data-count]');
+  function animateCount(el) {
+    var target = parseInt(el.getAttribute('data-count'), 10) || 0;
+    if (reduceMotion) { el.textContent = String(target); return; }
+    var start = null;
+    var duration = 760;
+    function tick(ts) {
+      if (start === null) start = ts;
+      var p = Math.min(1, (ts - start) / duration);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = String(Math.round(target * eased));
+      if (p < 1) requestAnimationFrame(tick);
+      else el.textContent = String(target);
+    }
+    el.textContent = '0';
+    requestAnimationFrame(tick);
+  }
+  if ('IntersectionObserver' in window && statEls.length) {
+    var statObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          animateCount(entry.target);
+          statObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.4 });
+    statEls.forEach(function (el) { statObserver.observe(el); });
+  } else {
+    statEls.forEach(function (el) { el.textContent = el.getAttribute('data-count'); });
+  }
+
+  /* ---------- 架构分层浏览器 ---------- */
+  var ARCH = {
+    shell: {
+      tag: '可替换',
+      title: '外壳层 · Shell',
+      role: '同一个内核，可以跑在浏览器里，也可以跑在 Electron 窗口里；界面代码只写一份，外壳差异被压到最小。',
+      files: ['apps/web', 'apps/desktop', 'packages/ui'],
+      points: [
+        '浏览器外壳：HTTP 静态资源 + WebSocket JSON-RPC；启动时注入随机 token，只监听 127.0.0.1，防止本机其它网页调用高权限接口。',
+        'Electron 外壳：contextIsolation 开启、nodeIntegration 关闭，preload 只暴露最小的 invoke 接口。',
+        '外壳差异（打开目录、退出应用等）通过 ShellAdapter 注入，UI 层不感知运行环境。'
+      ]
+    },
+    transport: {
+      tag: '类型安全',
+      title: '传输层 · Host',
+      role: '把内核服务翻译成面向界面的 API，不包含任何传输代码；Web 与桌面两种外壳复用同一份 createHandlers()。',
+      files: ['packages/host/src/api.ts', 'packages/host/src/server.ts', 'packages/shared/src/rpc.ts'],
+      points: [
+        '55 个 RPC 方法，由 ApiMap 单一事实源约束参数与返回值，前端有类型提示。',
+        '事件通知：scan/progress、clean/done、plugins/changed，与内核事件一一映射。',
+        '安全：Web 外壳只监听本机回环地址，/api/rpc 与 WebSocket 升级都校验 token；请求体过大直接拒绝（D-05）。'
+      ]
+    },
+    kernel: {
+      tag: '核心',
+      title: '内核层 · Core',
+      role: '系统的稳定核心：服务、清理引擎、补偿链/执行器、插件管理器与规则注册中心。',
+      files: ['packages/core/src/kernel.ts', 'packages/core/src/domains/engine', 'packages/core/src/domains/safety'],
+      points: [
+        '服务：Settings / System / PathPolicy / Quarantine / History / Cleaner / Compensate / PluginManager。',
+        '插件管理器：顺序装载、差分归属、启停、热重载、外部插件安装、故障隔离。',
+        '规则与评估：ctx.rules 登记规则，ctx.evaluator 给出 risk / suggest / reason；AI 适配器可替换评估器。'
+      ]
+    },
+    plugins: {
+      tag: '可插拔',
+      title: '插件层 · Plugins',
+      role: '每个清理能力是一个独立包：有自己的 package.json、schema 配置、生命周期与清理辖区；只依赖契约层。',
+      files: ['packages/plugins/*（11 个）', 'packages/plugins/rule-pack'],
+      points: [
+        '用 ctx.cleaner.define({ id, scan, clean? }) 注册任务；默认只实现 scan，文件类清理交给引擎。',
+        '用 ctx.effect 登记辖区与任务，卸载时自动回收，不留下悬空监听。',
+        '清单只保存懒加载函数，启用时才 import()，未启用的插件不占启动时间。'
+      ]
+    },
+    contract: {
+      tag: '稳定契约',
+      title: '契约层 · Shared / Utils',
+      role: '所有层都能依赖、但自身不依赖任何实现：纯类型、纯函数、协议与工具。',
+      files: ['packages/shared', 'packages/utils'],
+      points: [
+        'shared：领域类型、ApiMap/RpcError、协议版本、Context 类型增强（declare module cordis）。',
+        'utils：walk、fs-ops、path、hash、命令执行等可复用纯逻辑；服务实现替换时这些契约不变。',
+        '关键约束：插件只 import shared 与 utils，不 import core/host 的内部模块。'
+      ]
+    }
+  };
+  var archStack = $('#archStack');
+  var archDetail = $('#archDetail');
+  function renderArch(key) {
+    var data = ARCH[key];
+    if (!data || !archDetail) return;
+    var tagsHtml = '<span class="tag tag-brand">' + data.tag + '</span>';
+    var filesHtml = data.files.map(function (f) { return '<code>' + f + '</code>'; }).join('');
+    var pointsHtml = data.points.map(function (p) { return '<div class="point">' + p + '</div>'; }).join('');
+    archDetail.innerHTML =
+      '<div class="top"><h3>' + data.title + '</h3>' + tagsHtml + '</div>' +
+      '<p class="role">' + data.role + '</p>' +
+      '<div class="files">' + filesHtml + '</div>' + pointsHtml;
+    archDetail.classList.remove('arch-fade');
+    void archDetail.offsetWidth;
+    archDetail.classList.add('arch-fade');
+  }
+  if (archStack) {
+    $$('.layer', archStack).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        $$('.layer', archStack).forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        renderArch(btn.getAttribute('data-layer'));
+      });
+    });
+  }
+
+  /* ---------- 插件生命周期 ---------- */
+  var LIFE = {
+    load: {
+      title: '装载：按需懒加载',
+      body: '清单只保存元数据与 load: () => import()，插件模块只在被启用时才载入内存 —— 既是启动性能优化，也是「可裁剪」的体现。',
+      tags: [['懒加载', 'tag-brand'], ['manifest', 'tag-plain']],
+      code: "// core/src/manifest.ts\n{ id: 'temp', load: () => import('@cordclean/plugin-temp') }"
+    },
+    setup: {
+      title: 'setup：注册任务与辖区',
+      body: '插件在 setup 里用 ctx.cleaner.define 注册清理任务，用 ctx.effect 声明清理辖区、登记监听。fiber 卸载时这些副作用会一起回收。',
+      tags: [['ctx.effect', 'tag-brand'], ['可回收', 'tag-safe']],
+      code: "ctx.effect(() => {\n  const off = ctx.pathPolicy.addRoot(root, 'temp')\n  return () => off()\n})"
+    },
+    active: {
+      title: '运行：只申报候选',
+      body: '扫描阶段插件只产出候选（路径、类型、体积、风险），不执行删除；清理统一进入内核的补偿链。',
+      tags: [['只申报', 'tag-safe'], ['不直接删文件', 'tag-safe']],
+      code: "ctx.cleaner.define({\n  id: 'temp', name: '临时文件', category: 'system', risk: 'safe',\n  async scan(scan) { scan.emit({ path, kind: 'file', size }) }\n})"
+    },
+    update: {
+      title: '热更新：配置即改即生效',
+      body: '修改插件配置后调用 fiber.update(config)：Schemastery 先校验，通过才热重载；校验失败不会破坏正在运行的实例。',
+      tags: [['fiber.update', 'tag-brand'], ['校验先行', 'tag-caution']],
+      code: "await fiber.update(nextConfig)   // 校验失败 → 保留旧实例"
+    },
+    dispose: {
+      title: '停用 / 卸载：自动回收',
+      body: '停用或卸载会 dispose fiber：任务从引擎注销、辖区撤销、监听清理，不会出现「插件停了但辖区还在」的悬空状态。',
+      tags: [['fiber.dispose', 'tag-brand'], ['无泄漏', 'tag-safe']],
+      code: "await fiber.dispose()   // 任务 / 辖区 / 监听一起回收"
+    },
+    fault: {
+      title: '故障隔离：坏一个不影响一片',
+      body: '单个插件 setup 抛错或异步拒绝时，管理器捕获并标记为 FAILED，其余插件继续运行；界面显示错误原因，可单独重载。',
+      tags: [['FAILED', 'tag-risky'], ['其余插件继续', 'tag-safe']],
+      code: "try { await fiber } catch (err) {\n  record.status = 'failed'; record.error = String(err)\n}"
+    }
+  };
+  var lifeTabs = $('#lifeTabs');
+  var lifeBody = $('#lifeBody');
+  var lifeCode = null;
+  function renderLife(key) {
+    var data = LIFE[key];
+    if (!data) return;
+    if (!lifeBody) return;
+    var tags = data.tags.map(function (t) { return '<span class="tag ' + t[1] + '">' + t[0] + '</span>'; }).join('');
+    lifeBody.innerHTML = '<h3>' + data.title + '</h3><p>' + data.body + '</p><div class="tags">' + tags + '</div>';
+    lifeCode = lifeCode || $('.life-code pre code');
+    if (lifeCode) lifeCode.textContent = data.code;
+  }
+  if (lifeTabs) {
+    $$('.life-tab', lifeTabs).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        $$('.life-tab', lifeTabs).forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        renderLife(btn.getAttribute('data-life'));
+      });
+    });
+  }
+
+  /* ---------- 安全链模拟 ---------- */
+  var STEP_NAMES = ['路径规范化', '黑名单 / 保护目录', '白名单 / 清理辖区', '条件与链接祖先', '预览一致性', '单次预算', '回收站可用性'];
+  var SCENES = {
+    normal: {
+      failAt: 0,
+      title: '全部通过 · 签发 CleanTicket',
+      text: '七步检查通过，补偿链签发防伪票据；执行器逐项复核后按配置进入回收站或隔离区，并按实际结果计量，不虚报释放。',
+      kind: 'good'
+    },
+    protected: {
+      failAt: 2,
+      reason: 'protected',
+      title: '第 2 步拒绝：protected',
+      text: '目标位于受保护目录（Windows / Program Files / 用户文档等）或其祖先。该提交被拒绝，不会被删除；其余项继续处理。',
+      kind: 'bad'
+    },
+    outside: {
+      failAt: 3,
+      reason: 'outside',
+      title: '第 3 步拒绝：outside',
+      text: '路径不在插件声明的清理辖区内。规则只是「申请」，不是「授权」—— 这是白名单辖区机制的核心。',
+      kind: 'bad'
+    },
+    junction: {
+      failAt: 4,
+      reason: 'protected（链接祖先）',
+      title: '第 4 步拒绝：链接祖先',
+      text: '路径字符串落在辖区内，但父目录中存在指向外部的 NTFS 联接点。D-01 修复后，链接祖先检查会在删除前拦截它。',
+      kind: 'bad'
+    },
+    changed: {
+      failAt: 5,
+      reason: 'changed',
+      title: '第 5 步拒绝：changed',
+      text: '文件大小或修改时间与扫描预览不一致，该项被跳过；若不一致比例超过 5%，整批中止，避免按过期预览删除。',
+      kind: 'bad'
+    },
+    budget: {
+      failAt: 6,
+      reason: 'budget',
+      title: '第 6 步拒绝：budget（整批中止）',
+      text: '超过单次预算（默认 5 万项 / 20 GB）。补偿链直接整批拒绝，不会先删一部分再报错。',
+      kind: 'bad'
+    }
+  };
+  var chainSteps = $$('.step');
+  var chainOutcome = $('#chainOutcome');
+  var replayBtn = $('#replayBtn');
+  var currentScene = 'normal';
+  var runToken = 0;
+
+  function resetSteps() {
+    chainSteps.forEach(function (el, i) {
+      el.className = 'step';
+      var state = el.querySelector('.sstate');
+      if (state) state.textContent = '等待';
+    });
+  }
+  function setStep(index, kind, label) {
+    var el = chainSteps[index - 1];
+    if (!el) return;
+    el.classList.remove('checking', 'pass', 'fail', 'skip');
+    if (kind) el.classList.add(kind);
+    var state = el.querySelector('.sstate');
+    if (state) state.textContent = label;
+  }
+  function showOutcome(scene) {
+    if (!chainOutcome) return;
+    var data = SCENES[scene];
+    chainOutcome.className = 'chain-outcome ' + data.kind;
+    chainOutcome.innerHTML =
+      '<div class="ico">' + (data.kind === 'good' ? '✓' : '!') + '</div>' +
+      '<div><h4>' + data.title + '</h4><p>' + data.text + '</p></div>';
+  }
+  async function runScene(scene) {
+    currentScene = scene;
+    var data = SCENES[scene];
+    var token = ++runToken;
+    resetSteps();
+    if (chainOutcome) {
+      chainOutcome.className = 'chain-outcome';
+      chainOutcome.innerHTML = '<div class="ico">›</div><div><h4>检查中…</h4><p>补偿链正在逐项检查，失败会返回结构化的拒绝原因。</p></div>';
+    }
+    for (var i = 1; i <= 7; i++) {
+      if (token !== runToken) return;
+      setStep(i, 'checking', '检查中');
+      await sleep(reduceMotion ? 30 : 340);
+      if (token !== runToken) return;
+      if (data.failAt && i === data.failAt) {
+        setStep(i, 'fail', data.reason);
+        for (var j = i + 1; j <= 7; j++) setStep(j, 'skip', '跳过');
+        showOutcome(scene);
+        return;
+      }
+      setStep(i, 'pass', '通过');
+    }
+    showOutcome(scene);
+  }
+  if (chainSteps.length) {
+    $$('.scenario-tab').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        $$('.scenario-tab').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        runScene(btn.getAttribute('data-scene'));
+      });
+    });
+    if (replayBtn) replayBtn.addEventListener('click', function () { runScene(currentScene); });
+    runScene('normal');
+  }
+
+  /* ---------- 插件筛选 ---------- */
+  var pluginGrid = $('#pluginGrid');
+  var pluginsCount = $('#pluginsCount');
+  var pluginCards = pluginGrid ? $$('.plugin', pluginGrid) : [];
+  function applyPluginFilter(filter) {
+    var shown = 0;
+    pluginCards.forEach(function (card) {
+      var enabled = card.getAttribute('data-enabled') === 'true';
+      var risky = card.getAttribute('data-risk') === 'risky';
+      var show = filter === 'all'
+        || (filter === 'enabled' && enabled)
+        || (filter === 'disabled' && !enabled)
+        || (filter === 'risky' && risky);
+      card.style.display = show ? '' : 'none';
+      if (show) shown++;
+    });
+    if (pluginsCount) pluginsCount.textContent = '显示 ' + shown + ' / ' + pluginCards.length;
+  }
+  $$('#pluginFilters .filter-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      $$('#pluginFilters .filter-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      applyPluginFilter(btn.getAttribute('data-filter'));
+    });
+  });
+  pluginCards.forEach(function (card) {
+    function toggle() {
+      card.classList.toggle('open');
+      var more = card.querySelector('.plugin-more');
+      if (more) more.textContent = card.classList.contains('open') ? '收起 ▴' : '查看细节 ▾';
+    }
+    card.addEventListener('click', toggle);
+    card.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+
+  /* ---------- 截图灯箱 ---------- */
+  var shots = $$('.shot');
+  var lightbox = $('#lightbox');
+  var lbImg = $('#lbImg');
+  var lbCap = $('#lbCap');
+  var lbCount = $('#lbCount');
+  var lbIndex = 0;
+  function openLightbox(index) {
+    if (!lightbox || !shots.length) return;
+    lbIndex = (index + shots.length) % shots.length;
+    var shot = shots[lbIndex];
+    var img = shot.querySelector('img');
+    if (lbImg && img) {
+      lbImg.src = img.src;
+      lbImg.alt = img.alt || '';
+    }
+    if (lbCap) lbCap.textContent = shot.getAttribute('data-caption') || '';
+    if (lbCount) lbCount.textContent = (lbIndex + 1) + ' / ' + shots.length;
+    lightbox.classList.add('open');
+    lightbox.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeLightbox() {
+    if (!lightbox) return;
+    lightbox.classList.remove('open');
+    lightbox.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+  function stepLightbox(delta) {
+    if (!lightbox || !lightbox.classList.contains('open')) return;
+    openLightbox(lbIndex + delta);
+  }
+  shots.forEach(function (shot, i) { shot.addEventListener('click', function () { openLightbox(i); }); });
+  if (lightbox) {
+    lightbox.addEventListener('click', function (e) { if (e.target === lightbox) closeLightbox(); });
+    var lbClose = $('#lbClose');
+    var lbPrev = $('#lbPrev');
+    var lbNext = $('#lbNext');
+    if (lbClose) lbClose.addEventListener('click', closeLightbox);
+    if (lbPrev) lbPrev.addEventListener('click', function (e) { e.stopPropagation(); stepLightbox(-1); });
+    if (lbNext) lbNext.addEventListener('click', function (e) { e.stopPropagation(); stepLightbox(1); });
+    document.addEventListener('keydown', function (e) {
+      if (!lightbox.classList.contains('open')) return;
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowLeft') stepLightbox(-1);
+      if (e.key === 'ArrowRight') stepLightbox(1);
+    });
+  }
+
+  /* ---------- 打印 ---------- */
+  function preparePrint() {
+    $$('details').forEach(function (d) { d.open = true; });
+    revealEls.forEach(function (el) { el.classList.add('in'); });
+  }
+  window.addEventListener('beforeprint', preparePrint);
+  function doPrint() {
+    preparePrint();
+    setTimeout(function () { window.print(); }, 120);
+  }
+  var printBtn = $('#printBtn');
+  var printBtn2 = $('#printBtn2');
+  if (printBtn) printBtn.addEventListener('click', doPrint);
+  if (printBtn2) printBtn2.addEventListener('click', doPrint);
+
+  /* ---------- 问答展开 / 收起 ---------- */
+  var expandAll = $('#expandAll');
+  var collapseAll = $('#collapseAll');
+  if (expandAll) expandAll.addEventListener('click', function () { $$('#qaList details').forEach(function (d) { d.open = true; }); });
+  if (collapseAll) collapseAll.addEventListener('click', function () { $$('#qaList details').forEach(function (d) { d.open = false; }); });
+})();
+</script>
+</body>
+</html>
