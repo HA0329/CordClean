@@ -25,10 +25,11 @@ pnpm start:desktop    # Electron 桌面应用
 
 | 能力 | 说明 |
 | --- | --- |
-| 插件化清理 | 13 个清理插件、15 个清理任务，每个插件独立启停、独立配置、热重载 |
+| 插件化清理 | 11 个内置插件、38 个清理任务，每个插件独立启停、独立配置、热重载 |
 | 运行时插件管理 | 「插件」页面可启用/停用/热重载插件，配置写入 `config.json`，无需重启应用 |
 | 安全策略 | 路径策略（保护系统/用户重要目录）+ 隔离区（可恢复）+ 注册表 `.reg` 备份 |
 | 扫描/清理分离 | 先扫描出「可清理项」，用户勾选后再执行；支持 `dryRun` 预演 |
+| 扫描结果选择 v2 | 千条级结果按「分类 → 任务」聚合；安全项智能推荐，谨慎/高风险项显式确认；支持风险/大小/任务筛选、三态整组勾选、逐项明细 + 详情说明 + 打开位置、受保护只读视图、清理确认摘要 |
 | 双外壳 | 同一内核与界面，可运行在浏览器（WebSocket）或 Electron（IPC）中 |
 | AI 顾问插件 | 把脱敏的本机画像交给 DeepSeek 等 OpenAI 兼容接口，产出结构化清理建议 |
 | 可观测 | 扫描/清理进度事件、结构化日志、清理历史、失败归因 |
@@ -40,7 +41,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现）
 - **桌面外壳**：Electron 38
-- **测试**：Vitest（26 个用例）
+- **测试**：Vitest（289 个用例 / 40 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -54,7 +55,7 @@ pnpm start:desktop    # Electron 桌面应用
                             │ JSON-RPC │
 ┌───────────────────────────▼──────────▼───────────────────────────────┐
 │                     传输层 packages/host                             │
-│   api.ts：38 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
+│   api.ts：55 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
 └───────────────────────────┬──────────────────────────────────────────┘
                             │ 直接调用
 ┌───────────────────────────▼──────────────────────────────────────────┐
@@ -228,15 +229,16 @@ pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 179 个用例 / 17 个文件
+pnpm test          # 289 个用例 / 40 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
-pnpm exec tsx scripts/audit-plugins.ts   # 14 个插件的真实扫描审计（只读）
+pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）
 pnpm exec tsx scripts/audit-rules.ts     # 规则库审计（校验/死目标/拦截/重复）→ docs/rules-report.md
 pnpm exec tsx scripts/import-rules.ts    # 从 PC-Cleaner 重新导入规则目录
 pnpm exec tsx scripts/dryrun-clean.ts    # 真实环境预演清理验证（不删除文件）
 $env:DEEPSEEK_API_KEY='sk-...'; pnpm exec tsx scripts/ai-live-test.ts   # AI 插件真实接口联调（三形态）
 node scripts/e2e-ui.mjs                  # Electron 界面端到端点检（CDP）
+node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选择体验验收（无头 Edge）
 ```
 
 测试覆盖：
@@ -289,8 +291,11 @@ node scripts/e2e-ui.mjs                  # Electron 界面端到端点检（CDP�
 
 - [架构设计](docs/architecture.md) —— 论文第 3、4 章可直接引用
 - [插件开发规范](docs/plugin-authoring.md)
+- [扫描结果选择设计](docs/scan-selection-design.md) —— 分组/推荐/风险分层/批量选择/详情说明
+- [市面清理工具选择交互调研](docs/research/scan-selection-ux.md) —— 11 个产品的横向对比与可借鉴模式
+- [v2 选择体验验收报告](docs/verification/scan-selection-verify.md) —— 289 条单测、真实 E2E、3000 条数据的语义与性能验收
 - [论文写作大纲](docs/thesis-outline.md) —— 章节结构、图表清单、数据引用
-- [缺陷记录](docs/defect-log.md) —— 自测发现并修复的 11 个问题（含 1 个高危越界删除）
+- [缺陷记录](docs/defect-log.md) —— 自测发现并修复的问题（含 1 个高危越界删除）
 - [性能基准](docs/benchmark.md)
 
 ## 12. 已知限制
