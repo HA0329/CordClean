@@ -1,4 +1,7 @@
 /**
+ * [LEGACY 2026-10] thumbnails 插件已随 commit 43cc831 退役（缩略图规则并入 rule-pack 的
+ * extra_windows 分类），本脚本仅作历史归档保留：检测到任务不存在时会打印提示并正常退出。
+ *
  * thumbnails 插件自测脚本（**只扫描，不执行真实清理**）。
  *
  * 验证五件事：
@@ -51,6 +54,12 @@ function printReport(title: string, report: ScanReport): void {
 
 const dataDir = path.join(os.tmpdir(), 'cordclean-check-thumbnails-' + Date.now())
 const app = await createApp({ dataDir, logLevel: 'warn' })
+// [LEGACY] 对应插件已退役：任务缺失时直接提示退出，避免误导性断言失败。
+if (!app.ctx.cleaner.list().some((task) => task.id === 'thumbnails')) {
+  console.log('LEGACY：thumbnails 插件已退役（43cc831），本自检脚本不再适用；仅作历史归档保留。')
+  await app.dispose()
+  process.exit(0)
+}
 const env = app.ctx.system.env
 const cacheDir = `${env.localAppData}\\Microsoft\\Windows\\Explorer`
 
