@@ -2,6 +2,10 @@
 
 > 本文档对应论文第 3 章（系统设计）与第 4 章（系统实现），包含分层结构、Cordis 的具体用法、
 > 关键流程、安全模型与工程折中。所有结论均可在源码中找到对应实现。
+>
+> 事实基准：11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法、
+> 44 个测试文件 / 346 个用例、规则库 catalog 28 类/271 条 + extra 9 类/130 条。
+> 安全边界与残余风险另见 [威胁模型与信任边界](threat-model.md)。
 
 ## 1. 设计目标与约束
 
@@ -71,7 +75,8 @@ record.taskIds = [...after].filter(id => !before.has(id))
 ```
 
 代价是**插件必须顺序加载**（并发加载会互相污染差分结果），换取插件零感知。
-`packages/core/src/services/plugins.ts` 中的 `loadAll()` 因此是串行的，实测 13 个插件共 17.8 ms，可接受。
+`packages/core/src/domains/kernel/plugins.ts` 中的 `loadAll()` 因此是串行的；11 个插件顺序加载的开销
+相对完整启动（162.6 ms，含服务初始化）很小，可接受。
 
 ## 4. 清理引擎设计（CleanerService）
 
@@ -219,7 +224,7 @@ ctx.effect(() => {
 校验是万级 QPS 的热路径，最初实现为 166 µs/次，成为扫描瓶颈（详见 [缺陷记录](defect-log.md) D-10）。
 优化后为 10.4 µs/次，做法有三点：
 
-1. **前缀树**：保护目录按路径段建树，匹配复杂度从 O(N=25) 降到 O(路径深度≈5)；
+1. **前缀树**：保护目录按路径段建树，匹配复杂度从 O(N)（N=保护根数量）降到 O(路径深度≈5)；
 2. **热状态对象**：Cordis 服务实例是代理，方法内每次 `this.x` 都有拦截开销（≈4 µs/次），
    因此把 `check()` 等热路径抽成「纯对象 + 模块级函数」，类方法只做一次委托；
 3. **去掉重复读取**：设置里的自定义扫描根缓存为数组，订阅 `settings.onChange` 刷新；
@@ -246,7 +251,7 @@ ctx.effect(() => {
 | | Web 外壳 | Electron 外壳 |
 | --- | --- | --- |
 | 传输 | WebSocket（`ws://127.0.0.1:7801/rpc`） | `ipcRenderer.invoke` + `webContents.send` |
-| 鉴权 | 启动时随机 token，注入 `window.__CORDCLEAN__` | 进程内 IPC，无需 token |
+| 鉴权 | 启动时 CSPRNG 随机 token（注入 `window.__CORDCLEAN__`），并校验 token + Host + Origin | 进程内 IPC，无需 token |
 | 静态资源 | 由 `server.ts` 提供（带 SPA 回退） | `loadFile()` 加载本地构建产物 |
 | 调试 | 浏览器 DevTools、`curl /api/rpc` | Electron DevTools |
 | 打包 | 单进程 Node 服务 | 主进程 + 渲染进程 |
@@ -255,33 +260,51 @@ ctx.effect(() => {
 
 ### 6.3 安全考虑
 
-- Web 外壳只监听 `127.0.0.1`，并对 `/api/rpc` 与 WebSocket 升级校验 token，
-  防止本机其它网页（CSRF/CSWSH）调用高权限清理接口；
-- 桌面外壳用 `contextIsolation: true` + `nodeIntegration: false`，preload 只暴露最小接口。
+- Web 外壳只监听 `127.0.0.1`，每次启动用 `crypto.randomBytes` 生成 CSPRNG 随机 token 并注入页面；
+  `/api/rpc` 与 WebSocket 升级均校验 token，防止本机其它网页（CSRF/CSWSH）调用高权限清理接口；
+- 所有 HTTP 请求先校验 **Host** 头（只允许 `127.0.0.1` / `localhost` / `[::1]`），阻断 **DNS rebinding**；
+  WebSocket 额外校验 **Origin** 必须等于界面自身 origin（无 Origin 的原生客户端放行）；
+- 畸形 URL/非法百分号编码返回 400 而不是抛未捕获异常；WebSocket `maxPayload` 限制 1 MB；
+  静态资源保留「目录 + 分隔符」边界校验（修复前缀误判）；
+- 桌面外壳用 `sandbox: true` + `contextIsolation: true` + `nodeIntegration: false`，preload 只暴露最小 IPC；
+  禁止新窗口（`setWindowOpenHandler` → deny）、拦截非白名单导航，界面 `index.html` 带 CSP；
+- `app/open-path` 改用 `explorer` 参数数组（不经 shell），消除路径拼接导致的命令注入面；
+- 外部插件不获得清空白名单（`addClearRoot`），`targets` 必须落在能力声明的 `fsRoots` 内，
+  仅白名单环境变量经 `workerData.env` 暴露给插件上下文。
+
+> 完整威胁模型（谁在防谁、插件信任模型、TOCTOU 等残余风险）见 [威胁模型与信任边界](threat-model.md)。
+
+### 6.4 插件信任边界（如实说明）
+
+- **内置插件 = 可信代码**：与内核同进程，安全依赖路径策略/补偿链等约定，而非沙箱；
+- **外部插件**：worker 只提供**故障隔离**（崩溃/超时不影响主线程），不是安全沙箱 ——
+  插件仍可访问文件系统、`process.env` 与 `child_process`；能力声明只是安装时静态校验，运行时并不强制；
+  安装外部插件等同于允许其执行本机代码，界面会给出风险警告；
+- 因此本系统的安全目标是「能力收窄 + 故障隔离 + 风险提示 + 删除链唯一入口」，不是「不可信插件沙箱」。
 
 ## 7. 界面实现
 
 - Vue 3 `<script setup>` + 轻量响应式 store（`packages/ui/src/api/store.ts`），不引入 Pinia；
 - 数据流单向：RPC 请求 → store → 视图；进度靠事件推送更新，不做轮询；
 - 页面：概览 / 清理 / 插件 / 历史与隔离区 / AI 建议 / 设置；
-- 结果表格分页（60 条/页）以避免上万行渲染卡顿；
+- 结果表格分页（默认 100 条/页，可选 200/500）以避免上万行渲染卡顿；分组总览按「分类 → 任务」聚合，只渲染任务级行；
 - 通过 URL hash 同步页面，便于深链接与自动化截图。
 
 ## 8. 性能优化点
 
 | 优化 | 位置 | 效果 |
 | --- | --- | --- |
-| 目录内批量并发 `lstat`（默认 24） | `utils/walk.ts` | 4000 文件遍历 0.12 s（含校验） |
-| 路径策略前缀树 + 热状态对象 | `core/services/path-policy.ts` | 单次校验 166 µs → **10.4 µs** |
-| 服务引用按会话缓存 | `core/cleaner.ts` | 避免每项都经 Cordis 代理取服务（省 ≈10 µs/项） |
-| 链接祖先检查按目录缓存 | `core/cleaner.ts` | 同目录文件只检查一次，删除吞吐 2331 → 6616 文件/秒 |
+| 目录内批量并发 `lstat`（默认 24） | `utils/walk.ts` | 4000 文件遍历 0.15 s（含校验） |
+| 路径策略前缀树 + 热状态对象 | `core/domains/safety/path-policy.ts` | 单次校验 166 µs → **10.4 µs** |
+| 服务引用按会话缓存 | `core/domains/engine/cleaner.ts` | 避免每项都经 Cordis 代理取服务（省 ≈10 µs/项） |
+| 链接祖先检查按目录缓存 | `core/domains/engine/cleaner.ts` | 同目录文件只检查一次，避免重复 lstat（删除吞吐见性能基准） |
 | 8.3 短名懒解析 + 模块级缓存 | `core/short-names.ts` | 每次启动不再付 35 ms；多实例复用结果 |
-| 任务级并发（默认 3） | `core/cleaner.ts` | 全量扫描 15 个任务 6.9 s |
-| 进度事件 120 ms 节流 | `core/cleaner.ts` | 避免 IPC/WS 洪泛 |
+| 任务级并发（默认 3） | `core/domains/engine/cleaner.ts` | 38 个任务并行调度，完整扫描耗时见性能基准 |
+| 进度事件 120 ms 节流 | `core/domains/engine/cleaner.ts` | 避免 IPC/WS 洪泛 |
 | 插件懒加载（`import()`） | `core/manifest.ts` | 启动只加载启用的插件 |
-| 重复文件三级筛选 | `plugins/duplicates` | 只对同尺寸+同前缀文件做全量哈希，实测 384 MB/s |
-| 删除并发池（上限 6） | `core/cleaner.ts` | 6616 文件/秒 |
-| 系统信息缓存（5 s / 10 s / 60 s） | `core/services/system.ts` | 界面刷新不重复探测磁盘 |
+| 重复文件三级筛选 | `plugins/duplicates` | 只对同尺寸+同前缀文件做全量哈希，实测 366 MB/s |
+| 删除并发池（上限 6） | `core/domains/engine/cleaner.ts` | 2 178 文件/秒（4000 个文件 1.84 s） |
+| 系统信息缓存（5 s / 10 s / 60 s） | `core/domains/engine/system.ts` | 界面刷新不重复探测磁盘 |
 
 > 性能数字均在 `pnpm bench` 中可复现，原始表格见 [性能基准](benchmark.md)。
 > 其中「路径策略」一项是自测阶段发现并优化的（详见 [缺陷记录](defect-log.md) D-10）。
@@ -290,23 +313,26 @@ ctx.effect(() => {
 
 | 层次 | 方式 | 覆盖 |
 | --- | --- | --- |
-| 单元 / 集成 | Vitest（13 个文件、**109 个用例**） | 路径策略与攻击面、文件系统安全、引擎、插件管理、隔离区、设置/历史、RPC、AI、插件纯逻辑 |
-| 插件审计 | `scripts/audit-plugins.ts` | 13 个插件真实扫描 + 清理项契约不变量（只读） |
-| 插件自测 | `scripts/check-*.ts` | 11 个插件的定向验证（只扫描，清理只用 dryRun） |
+| 单元 / 集成 | Vitest（44 个文件、**346 个用例**） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
+| 插件审计 | `scripts/audit-plugins.ts` | 11 个内置插件真实扫描 + 清理项契约不变量（只读） |
+| 插件自测 | `scripts/check-*.ts` | 现有插件的定向验证（只扫描，清理只用 dryRun） |
 | 冒烟 | `scripts/smoke.ts` | 内核启动 + 全插件加载 + 扫描 |
 | 端到端 | `scripts/e2e-ui.mjs` | 启动真实 Electron，CDP 点击 6 个页面、触发真实扫描、收集 JS 异常 |
 | 性能 | `bench/scan.bench.ts` | 启动/扫描/删除/隔离/哈希/内存 |
 
-安全类用例（`path-attack`、`fs-safety`）覆盖的绕过手法：
-尾点/尾空格、`..`、正斜杠与混合分隔符、`\\?\` 长路径前缀、8.3 短名、
-大小写混写、UNC、前缀相同的兄弟目录、辖区内 junction 穿透。
+安全类用例（`path-attack`、`fs-safety`、`paths-normalize`、`host-server`、`batch1-hardening`）覆盖：
+尾点/尾空格、`..`、正斜杠与混合分隔符、`\\?\` 长路径前缀、UNC/设备路径 fail-closed、8.3 短名、
+大小写混写、前缀相同的兄弟目录、辖区内 junction 穿透、Host/DNS rebinding、Origin 跨站、
+畸形 URL、设置原型污染、`addClearRoot` 边界。
 
 AI 插件的测试使用本地 HTTP Mock：验证请求体（隐私约束：不含路径与文件名）、
 JSON 解析（含 ```json 围栏）、字段兜底（风险值非法时降级为 caution）、
 接口 500、超时、非 JSON 输出、环境变量凭据。
 
-自测阶段发现并修复的 11 个缺陷记录在 [缺陷记录](defect-log.md)，其中 D-01（越界删除）
-与 D-10（路径校验性能）具有代表性，可作为论文第 6 章「测试发现的问题与改进」的素材。
+自测阶段与批次1 安全加固共发现并修复 **29 个缺陷**（D-01~D-17 自测阶段，D-18~D-29 批次1），
+记录在 [缺陷记录](defect-log.md)。其中 D-01（越界删除）、D-10（路径校验性能）、
+D-19（DNS rebinding/Origin）与 D-26（清空白名单放大）具有代表性，可作为论文第 6 章
+「测试发现的问题与改进」的素材。
 
 ## 10. AI 插件设计（接口可演进）
 
@@ -399,7 +425,7 @@ catalog.json / 用户规则（数据）
 
 ### 11.1 数据模型
 
-一条规则由「分类 + 目标 + 风险 + 来源」组成，目标支持 6 种已实现类型：
+一条规则由「分类 + 目标 + 风险 + 来源」组成，目标支持 **7 种全部已实现**的类型：
 
 | 类型 | 语义 | 典型用法 |
 | --- | --- | --- |
@@ -409,6 +435,7 @@ catalog.json / 用户规则（数据）
 | `glob_dirs` | 按模式匹配目录 | `net_*`（微信多实例） |
 | `files_by_rule` | 按大小/年龄筛选 | Downloads 中 180 天前的大文件 |
 | `find_dirs` | 按目录名递归查找 | 散落的 `node_modules`/`dist` |
+| `compact_db` | SQLite 数据库压缩（VACUUM，不删数据） | 浏览器 History/Favicons |
 
 条件字段：`olderThanDays`、`minSizeMb`、`maxDepth`、`excludeDirs`、`deepOnly`、
 `skipIfInUse`、`requiresAdmin`、`paths`/`bases`（多候选）。
@@ -434,9 +461,10 @@ catalog.json / 用户规则（数据）
 
 ### 11.4 已导入规模
 
-从 PC-Cleaner `rules.json` 转换：**29 个分类 / 274 条规则 / 272 个候选根目录**，
-其中 15 条属于尚未实现的类型（`broken_shortcuts`、`compact_db`），由审计脚本持续报告。
-本机实测：21 个分类 / 170 条规则默认装载，一次样本扫描命中 62 项、271 MB。
+从 PC-Cleaner `rules.json` 转换并扩充：`catalog.json` 为 **28 个分类 / 271 条规则 / 284 个候选根目录**，
+`extra.json` 为 9 个分类 / 130 条规则，两套合计 37 类 / 401 条 / 414 个候选根（同一目标可能被多个分类引用）。
+7 种目标类型全部已实现，**不存在“未实现类型”**；`scripts/audit-rules.ts` 目前只审计 `catalog.json`
+（报告见 [规则库审计报告](rules-report.md)）。默认装载非高风险、非 `deepOnly` 的规则，约 31 个分类 / 312 条规则。
 
 ## 12. 补偿链与唯一删除入口
 
@@ -487,9 +515,9 @@ catalog.json / 用户规则（数据）
 
 | 论文 | 本实现 |
 | --- | --- |
-| 表 5-2 补偿链七步 | `packages/core/src/services/compensate.ts` |
+| 表 5-2 补偿链七步 | `packages/core/src/domains/safety/compensate.ts` |
 | 令牌化唯一入口 | `CleanTicket` + `isCleanTicket()` + `executor.recheck()` |
-| 回收站批量执行 | `recycle-bin.ts`（JSON 清单 + PowerShell 批量 + 逐项回执） |
+| 回收站批量执行 | `domains/safety/recycle-bin.ts`（JSON 清单 + PowerShell 批量 + 逐项回执） |
 | 诚实计量 | `CleanReport.recycledBytes / quarantinedBytes / vanished / skipped` |
 | 高风险进隔离区 | `settings.clean.highRiskQuarantine`，引擎按风险拆两批执行 |
 ## 13. 工程折中与反思
