@@ -10,7 +10,7 @@ export const BUILTIN_MANIFEST: PluginManifestEntry[] = [
   {
     id: 'rule-pack',
     name: '规则库',
-    description: '把 JSON 规则自动转换为清理能力：30 个分类、270+ 条规则，新增清理域只需加数据',
+    description: '把 JSON 规则自动转换为清理能力：catalog 28 类/271 条 + extra 9 类/130 条，新增清理域只需加数据',
     category: 'system',
     version: '2.0.0',
     load: () => import('@cordclean/plugin-rule-pack'),

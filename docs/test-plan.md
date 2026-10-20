@@ -46,5 +46,5 @@ pnpm bench && pnpm exec tsx scripts/audit-plugins.ts
 - `app/open-path` 命令注入修复（D-25）暂无专门单测，目前靠代码审阅 + E2E 覆盖；
 - Electron 外壳的 CSP / `sandbox: true` / 导航拦截（批次1）缺少自动化断言，依赖人工/E2E；
 - E2E 只覆盖主流程，未覆盖 AI 工坊、规则试运行弹窗的点击；
-- UI 无组件级单测（仅 CDP 端到端），模板/脚本类型不由 `tsc` 覆盖（未接入 `vue-tsc`）；
+- UI 无组件级单测（仅 CDP 端到端）；Vue 模板/脚本类型由 `pnpm typecheck:ui`（vue-tsc）覆盖并已接入 CI，但还没有 UI 组件渲染测试；
 - 没有性能回归门禁（bench 需手动跑，参考 `docs/benchmark.md`）。
