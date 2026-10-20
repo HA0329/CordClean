@@ -1,0 +1,272 @@
+
+<!-- ================= 09 界面演示 ================= -->
+<section class="section reveal" id="gallery">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">09</span><span>Interface</span></div>
+      <h2 class="sec-title">界面演示：六个页面，一套内核</h2>
+      <p class="sec-lede">
+        截图来自 v0.2.4 真机运行（Windows 11 · Electron 外壳）。界面数据流单向：RPC 请求 → store → 视图，
+        进度靠事件推送更新，不做轮询。点击任意截图可放大查看。
+      </p>
+    </div>
+
+    <div class="gallery" id="galleryGrid">
+      <figure class="shot" data-caption="概览：磁盘与内存占用、38 个清理任务、启动耗时与最近清理记录，一屏可见。">
+        <img src="__SHOT_OVERVIEW__" alt="CordClean 概览页">
+        <figcaption><span class="zoom">点击放大 ↗</span><b>① 概览</b>磁盘 / 内存 / 任务 / 最近清理，启动即见</figcaption>
+      </figure>
+      <figure class="shot" data-caption="扫描与清理：38 个清理能力按风险分组，默认只勾选安全项；支持仅预演、单独扫描与取消。">
+        <img src="__SHOT_CLEAN__" alt="CordClean 扫描与清理页">
+        <figcaption><span class="zoom">点击放大 ↗</span><b>② 扫描与清理</b>只扫描不删除，按风险勾选后再清理</figcaption>
+      </figure>
+      <figure class="shot" data-caption="插件管理：每个清理能力都是独立 Cordis 插件，可启用、停用、热重载、改配置、查看源码。">
+        <img src="__SHOT_PLUGINS__" alt="CordClean 插件管理页">
+        <figcaption><span class="zoom">点击放大 ↗</span><b>③ 插件管理</b>8 个默认启用 · 独立启停 / 配置 / 热重载</figcaption>
+      </figure>
+      <figure class="shot" data-caption="AI 清理顾问：三种接口形态、模型与推理等级可现场修改；上下文采集器只输出脱敏摘要，分析过程可取消。">
+        <img src="__SHOT_AI__" alt="CordClean AI 顾问页">
+        <figcaption><span class="zoom">点击放大 ↗</span><b>④ AI 顾问</b>接口形态 / 推理等级 / 脱敏上下文 / 流式分析</figcaption>
+      </figure>
+      <figure class="shot" data-caption="设置：定时任务授权、清理行为（回收站 / 隔离区 / 预演 / 上限）、扫描性能参数集中管理。">
+        <img src="__SHOT_SETTINGS__" alt="CordClean 设置页">
+        <figcaption><span class="zoom">点击放大 ↗</span><b>⑤ 设置</b>定时授权、清理行为、扫描并发与安全上限</figcaption>
+      </figure>
+      <figure class="shot" data-caption="深色主题：同一套界面与数据，仅切换主题变量，适合长期驻留与夜间使用。">
+        <img src="__SHOT_DARK__" alt="CordClean 深色主题">
+        <figcaption><span class="zoom">点击放大 ↗</span><b>⑥ 深色主题</b>同一界面双主题，偏好保存在本机</figcaption>
+      </figure>
+    </div>
+    <p class="table-note">另：历史与隔离区页面支持按会话查看清理记录、恢复隔离项；因截图页数限制未单独展示，可在演示时现场打开。</p>
+  </div>
+</section>
+
+<!-- ================= 10 论文映射 ================= -->
+<section class="section reveal" id="thesis">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">10</span><span>Thesis Mapping</span></div>
+      <h2 class="sec-title">论文映射：每一章都有可引用的实现与数据</h2>
+      <p class="sec-lede">
+        本页不是论文本身，而是「系统说明书」。下面的映射帮助快速定位：论文的每一章分别由系统的哪一部分支撑，
+        哪些图表与数据已经就绪。
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:19%">论文章节</th><th style="width:32%">对应内容</th><th>可引用的实现 / 材料</th></tr></thead>
+        <tbody>
+          <tr><td><b>第 1 章 绪论</b></td><td>选题背景、研究问题、创新点</td><td>本页 01；<code>docs/thesis-outline.md</code> 的「创新点表述」</td></tr>
+          <tr><td><b>第 2 章 相关技术</b></td><td>Cordis、Vue 3、Electron、JSON-RPC</td><td><code>docs/architecture.md</code> §2–3、§6；插件机制对照表</td></tr>
+          <tr><td><b>第 3 章 需求分析</b></td><td>功能需求、非功能需求、用例</td><td>11 个插件 / 38 个任务清单；安全性与性能指标</td></tr>
+          <tr><td><b>第 4 章 系统设计</b></td><td>分层架构、插件机制、引擎、安全模型</td><td>本页 02–05；<code>architecture.md</code> §5、§12（补偿链七步）</td></tr>
+          <tr><td><b>第 5 章 系统实现</b></td><td>内核、引擎、插件、界面、外壳</td><td>源码 <code>packages/core</code>、<code>packages/plugins/*</code>、<code>packages/ui</code>；插件开发规范</td></tr>
+          <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 性能 / 缺陷改进</td><td>352 个测试、<code>docs/defect-log.md</code>（29 个缺陷）、<code>docs/benchmark.md</code></td></tr>
+          <tr><td><b>第 7 章 总结与展望</b></td><td>局限、后续工作</td><td>本页「局限与后续」；<code>architecture.md</code> §13 工程折中</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subhead">创新点及其证据</div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-kicker">创新点 1</div>
+        <h3>插件化清理域</h3>
+        <p>把「清理域」而非「清理条目」作为插件粒度：用 Cordis fiber 管理生命周期、配置、启停与故障隔离，插件只依赖契约层。</p>
+        <div class="tags"><span class="tag tag-brand">11 个插件</span><span class="tag tag-brand">新增域零内核改动</span><span class="tag tag-brand">热重载</span></div>
+      </div>
+      <div class="card">
+        <div class="card-kicker">创新点 2</div>
+        <h3>删除安全链</h3>
+        <p>七步补偿链 + 私有 Symbol 防伪票据 + 执行器二次复核，把「不可回滚的删除」变成一条可验证的工程约束。</p>
+        <div class="tags"><span class="tag tag-safe">白名单辖区</span><span class="tag tag-safe">诚实计量</span><span class="tag tag-safe">D-01 回归测试</span></div>
+      </div>
+      <div class="card">
+        <div class="card-kicker">创新点 3</div>
+        <h3>规则即数据</h3>
+        <p>规则库与代码分离：28 个分类、271 条规则由数据驱动；新增清理域可以只加 JSON，不需要改内核或插件。</p>
+        <div class="tags"><span class="tag tag-caution">审计 0 错误</span><span class="tag tag-caution">17 个目标被策略拦截</span></div>
+      </div>
+      <div class="card">
+        <div class="card-kicker">创新点 4</div>
+        <h3>AI 有边界、接口可演进</h3>
+        <p>三种接口形态 + <code>extraBody</code> 逃生舱，厂商变化无需改业务层；隐私脱敏、只建议不执行、生成插件需校验。</p>
+        <div class="tags"><span class="tag tag-ai">SSE 流式 + 可取消</span><span class="tag tag-ai">外发审计</span><span class="tag tag-ai">脱敏有测试</span></div>
+      </div>
+    </div>
+
+    <div class="subhead">局限与后续</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:34%">当前局限</th><th>后续可做</th></tr></thead>
+        <tbody>
+          <tr><td>仅支持 Windows（路径策略、回收站、注册表均针对 Windows）</td><td>抽象平台层，评估 Linux / macOS 适配成本</td></tr>
+          <tr><td>Node 没有真正的插件沙箱：加载即全权限，需人工审阅</td><td>插件签名、权限声明、安装前静态扫描</td></tr>
+          <tr><td>永久删除模式下目录仍可能部分完成（预检降低概率）</td><td>更细粒度的临时快照 / 文件级日志</td></tr>
+          <tr><td>AI 依赖外网 API，离线不可用</td><td>本地小模型或离线规则建议作为兜底</td></tr>
+          <tr><td>无代码签名与安装包；计划任务型启动项只报告</td><td>electron-builder 打包、签名、自动更新</td></tr>
+          <tr><td>调度目前是单计划（间隔或每天）</td><td>多计划调度、按磁盘水位触发</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:16px">
+      <span class="callout-title">可直接发给导师的配套材料</span>
+      <code>docs/architecture.md</code>（架构与补偿链）、<code>docs/plugin-authoring.md</code>（插件规范）、
+      <code>docs/benchmark.md</code>（性能基准）、<code>docs/rules-report.md</code>（规则审计）、
+      <code>docs/defect-log.md</code>（29 个缺陷）、<code>docs/test-plan.md</code>（测试计划）、
+      <code>docs/thesis-outline.md</code>（论文大纲与图表清单）。
+    </div>
+  </div>
+</section>
+
+<!-- ================= 11 演示与答辩 ================= -->
+<section class="section reveal" id="defense">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">11</span><span>Demo &amp; Defense</span></div>
+      <h2 class="sec-title">5 分钟演示路径与答辩速查</h2>
+      <p class="sec-lede">
+        建议按下面的顺序演示：先结论、再能力、最后证明。整个过程中只清理测试缓存目录，不碰用户数据。
+        时间可根据现场压缩到 3 分钟。
+      </p>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-kicker">演示脚本</div>
+        <h3>5 分钟怎么走</h3>
+        <div class="timeline" style="margin-top:12px">
+          <div class="tl-item">
+            <div class="tl-time">0:00 – 0:30</div>
+            <div class="tl-title">概览：先给结论</div>
+            <div class="tl-desc">11 个插件、38 个清理任务、启动耗时；强调「插件化清理」而不是功能数量。</div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-time">0:30 – 1:30</div>
+            <div class="tl-title">扫描：只扫描，不删除</div>
+            <div class="tl-desc">展示 38 个清理能力按风险分组、默认只勾安全项、仅预演开关、取消扫描。</div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-time">1:30 – 2:30</div>
+            <div class="tl-title">清理与还原：诚实计量</div>
+            <div class="tl-desc">清理后分别说明「进回收站 / 进隔离区 / 真释放」；现场从隔离区恢复一项。</div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-time">2:30 – 3:15</div>
+            <div class="tl-title">插件页：插件化的证据</div>
+            <div class="tl-desc">启用/停用/热重载一个插件，说明任务归属与辖区随 fiber 回收。</div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-time">3:15 – 4:15</div>
+            <div class="tl-title">AI：只建议，不执行</div>
+            <div class="tl-desc">展示脱敏上下文、流式输出、取消按钮、外发记录；指出 AI 建议仍要用户确认。</div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-time">4:15 – 5:00</div>
+            <div class="tl-title">安全链与测试：证明而不是宣称</div>
+            <div class="tl-desc">七步链动画 + 352 个测试 + 29 个缺陷（尤其 D-01 越界删除）收尾。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-kicker">答辩速查</div>
+        <h3>可能被问到的 8 个问题</h3>
+        <div class="qa" id="qaList" style="margin-top:12px">
+          <div class="qa-actions">
+            <button class="btn" id="expandAll" type="button">展开全部</button>
+            <button class="btn" id="collapseAll" type="button">收起全部</button>
+          </div>
+          <details>
+            <summary><span class="q">Q1</span>和 CCleaner 这类工具的核心区别是什么？<span class="plus">+</span></summary>
+            <div class="qa-body">
+              <p>定位不同：本项目不是功能堆叠，而是验证「清理能力 = 插件」这一架构命题。三个结构性差异：清理域是独立插件（独立生命周期、配置、故障隔离）；删除统一走安全链（白名单辖区 + 防伪票据 + 执行器复核）；规则数据化（271 条规则，加规则不改代码）。AI 只做建议，不直接执行。</p>
+            </div>
+          </details>
+          <details>
+            <summary><span class="q">Q2</span>插件化是不是过度设计？<span class="plus">+</span></summary>
+            <div class="qa-body">
+              <p>清理软件恰恰需要：规则增长快、删除高危、不同用户想裁剪不同功能。成本主要是插件管理器与生命周期（1 个服务 + 11 个包），实测顺序加载 11 个插件约 18 ms；收益是扩展零内核改动、故障隔离、热重载。规则规模小时也可以只用规则库——项目里两层都有：插件负责「域」，规则库负责「条目」。</p>
+            </div>
+          </details>
+          <details>
+            <summary><span class="q">Q3</span>AI 会不会误删文件？<span class="plus">+</span></summary>
+            <div class="qa-body">
+              <p>四道约束：① 画像脱敏，不发送路径 / 文件名 / 用户名；② 只建议不执行，必须用户勾选；③ AI 建议不会绕过安全链，和普通清理项走同一条补偿链；④ 生成的插件先静态校验并人工审阅。另有外发审计，能查每次发了什么。</p>
+            </div>
+          </details>
+          <details>
+            <summary><span class="q">Q4</span>安全性怎么证明，不能只说「我做了检查」？<span class="plus">+</span></summary>
+            <div class="qa-body">
+              <p>三类证据：① 攻击测试覆盖尾点 / 8.3 短名 / UNC / junction 穿透等 9 类绕过；② 结构约束（私有 Symbol 票据、执行器 recheck、白名单辖区），不是靠流程自觉；③ 真实缺陷 D-01：自测发现辖区联接点可导致越界删除，随后修复并补回归测试。所有删除测试都在临时沙箱中执行。</p>
+            </div>
+          </details>
+          <details>
+            <summary><span class="q">Q5</span>这个题的工作量够吗？<span class="plus">+</span></summary>
+            <div class="qa-body">
+              <p>可量化：源码约 1.93 万行、测试 0.63 万行、脚本 0.57 万行；151 次提交；11 个插件、38 个任务、271 条规则；13 份文档、29 条缺陷记录；352 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
+            </div>
+          </details>
+          <details>
+            <summary><span class="q">Q6</span>为什么选 Cordis，而不是自己写插件系统？<span class="plus">+</span></summary>
+            <div class="qa-body">
+              <p>需要的能力恰好是它的强项：服务 DI、fiber 生命周期、<code>effect</code> 自动回收、Schemastery 配置校验、热重载。自己写会把时间花在生命周期与依赖管理上，偏离论文重点（清理架构与安全）。同时插件只依赖契约层，保留了替换框架的可能。</p>
+            </div>
+          </details>
+          <details>
+            <summary><span class="q">Q7</span>性能怎么样？扫描会不会很慢？<span class="plus">+</span></summary>
+            <div class="qa-body">
+              <p>基准数据：内核启动 5.4 ms、完整启动 162.6 ms；扫描 4,000 个文件 0.15 s（35.9k 文件/秒）；删除 2,178 文件/秒；路径校验 10.4 µs。扫描默认并发 3、进度 120 ms 节流，界面不卡；长任务可取消并返回半成品报告。</p>
+            </div>
+          </details>
+          <details>
+            <summary><span class="q">Q8</span>有哪些没做完的？下一步做什么？<span class="plus">+</span></summary>
+            <div class="qa-body">
+              <p>仅 Windows；插件没有真正沙箱（加载即全权限，需签名 / 审阅）；永久删除下目录仍可能部分完成；AI 离线不可用；没有代码签名安装包；计划任务型启动项只报告。后续：插件签名与市场、多计划调度、句柄占用主动探测、低配机性能与兼容性评测。</p>
+            </div>
+          </details>
+        </div>
+        <div class="card-note">回答原则：先给结论，再给证据（测试 / 缺陷 / 基准），最后主动说局限。不夸大「百分之百安全」。</div>
+      </div>
+    </div>
+
+    <div class="end-quote">
+      <p>“CordClean 想证明的不是「我能清理多少垃圾」，而是：<br>当清理能力可以被装、被卸、被审计，删除这件事才真正可控。”</p>
+      <span>—— 项目一句话总结 · 本科毕业设计 · 2026.10</span>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div>
+      <h4>CordClean · 模块化电脑清理工具</h4>
+      <p>本科毕业设计项目说明（导师版） · 基于 Cordis 插件框架 · MIT License</p>
+      <p class="footer-tag">版本 <b>v0.2.4</b> · 页面生成于 2026-10 · 单文件离线 HTML</p>
+    </div>
+    <div style="text-align:right">
+      <p class="footer-tag">数据来源：<b>docs/benchmark.md</b> · <b>docs/rules-report.md</b> · 自动化测试实测</p>
+      <p class="footer-tag">截图：v0.2.4 真机运行（Electron 外壳）</p>
+      <p class="footer-tag">按 Ctrl+P 可导出 A4 PDF；深色模式在右上角切换</p>
+    </div>
+  </div>
+</footer>
+</main>
+
+<button class="to-top" id="toTop" title="回到顶部" aria-label="回到顶部">
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+</button>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="截图预览">
+  <span class="lb-count" id="lbCount">1 / 6</span>
+  <button class="lb-close" id="lbClose" aria-label="关闭">×</button>
+  <button class="lb-btn lb-prev" id="lbPrev" aria-label="上一张">‹</button>
+  <figure>
+    <img id="lbImg" alt="">
+    <figcaption id="lbCap"></figcaption>
+  </figure>
+  <button class="lb-btn lb-next" id="lbNext" aria-label="下一张">›</button>
+</div>
+

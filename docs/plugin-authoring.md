@@ -180,6 +180,9 @@ import {
 4. **默认不勾选**：风险等级为 `caution` / `risky` 的项要设置 `defaultSelected: false`。
 5. **需要管理员权限的操作**（清空回收站、写 HKLM、Prefetch）要在 `note` 中说明，并在 `env.elevated === false` 时降级处理而不是抛错。
 6. **所有清理都必须幂等、可跳过**：文件被占用时返回失败而不是让整个任务崩溃。
+7. **不要依赖「插件是沙箱」**：内置插件与内核同进程，属于受信任代码；外部插件在 worker 中运行只是故障隔离，
+   且不会获得清空白名单（`addClearRoot`），`targets` 必须落在能力声明的 `fsRoots` 内。
+   安全边界与残余风险见 [威胁模型](threat-model.md)。
 
 ## 8. 自测方式
 
@@ -203,9 +206,9 @@ await app.dispose()
 > 注意：**只做扫描（scan）验证，不要在自测中执行真实的 `clean()`**，以免误删本机文件。
 > 如需验证清理逻辑，请使用 `dryRun: true`。
 
-## 六、另一种扩展方式：加一条规则（不用写代码）
+## 9. 另一种扩展方式：加一条规则（不用写代码）
 
-从 v5 起，清理能力有两种扩展粒度：
+从规则库（`rule-pack`）引入起，清理能力有两种扩展粒度（当前规则库含 catalog 28 类 / 271 条 + extra 9 类 / 130 条，默认装载约 31 类 / 312 条）：
 
 | 方式 | 适用场景 | 成本 |
 | --- | --- | --- |
@@ -214,7 +217,7 @@ await app.dispose()
 
 加规则的步骤：
 
-1. 在 `packages/plugins/rule-pack/rules/catalog.json` 对应分类的 `rules` 数组里加一条：
+1. 在 `packages/plugins/rule-pack/rules/catalog.json`（原始导入）或 `extra.json`（扩充）对应分类的 `rules` 数组里加一条：
 
 ```json
 {
