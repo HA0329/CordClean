@@ -73,6 +73,22 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
+/** 禁止出现在配置路径/补丁中的键：防止原型污染与原型链写入 */
+const DANGEROUS_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+
+function assertSafePatch(value: unknown, depth = 0): void {
+  if (depth > 20) throw new Error('设置补丁层级过深')
+  if (Array.isArray(value)) {
+    for (const item of value) assertSafePatch(item, depth + 1)
+    return
+  }
+  if (!isPlainObject(value)) return
+  for (const key of Object.keys(value)) {
+    if (DANGEROUS_KEYS.has(key)) throw new Error(`非法设置键：${key}`)
+    assertSafePatch(value[key], depth + 1)
+  }
+}
+
 /** 深拷贝（避免共享默认值对象导致「一次校正污染全局」） */
 export function cloneSettings<T>(value: T): T {
   return structuredClone(value)
@@ -83,6 +99,7 @@ export function deepMerge<T>(base: T, patch: unknown): T {
   if (!isPlainObject(base) || !isPlainObject(patch)) return (patch === undefined ? base : (patch as T))
   const result: Record<string, unknown> = { ...(base as Record<string, unknown>) }
   for (const [key, value] of Object.entries(patch)) {
+    if (DANGEROUS_KEYS.has(key)) throw new Error(`非法设置键：${key}`)
     const current = result[key]
     if (isPlainObject(current) && isPlainObject(value)) {
       result[key] = deepMerge(current, value)
@@ -135,6 +152,10 @@ export class SettingsService extends Service implements SettingsLike {
   /** 数值范围与枚举校正，防止用户手改配置导致越界 */
   private sanitize(input: Settings): Settings {
     const settings = input
+    // 配置段被写成 null/数组等异常值时先恢复默认，避免后续属性访问抛 TypeError
+    for (const key of ['scan', 'clean', 'quarantine', 'analysis', 'rules', 'ui', 'scheduler', 'plugins'] as const) {
+      if (!isPlainObject(settings[key])) (settings as any)[key] = cloneSettings(DEFAULT_SETTINGS[key])
+    }
     const clamp = (value: unknown, min: number, max: number, fallback: number) => {
       const num = Number(value)
       if (!Number.isFinite(num)) return fallback
@@ -183,6 +204,11 @@ export class SettingsService extends Service implements SettingsLike {
   set(keyPath: string, value: unknown): void {
     const keys = keyPath.split('.').filter(Boolean)
     if (!keys.length) return
+    if (keys.some((key) => DANGEROUS_KEYS.has(key))) throw new Error('非法设置路径：包含保留键')
+    // 只允许写已知的一级配置段，避免向任意字段注入
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, keys[0])) {
+      throw new Error(`未知设置项：${keys[0]}`)
+    }
     let cursor: Record<string, any> = this.data as any
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i]
@@ -195,6 +221,7 @@ export class SettingsService extends Service implements SettingsLike {
   }
 
   patch(patch: DeepPartial<Settings>): void {
+    assertSafePatch(patch)
     this.data = this.sanitize(deepMerge(this.data, patch))
     this.commit()
   }

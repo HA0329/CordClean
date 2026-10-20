@@ -108,6 +108,8 @@ export class CompensateService extends Service {
     const policy = this.ctx.pathPolicy
     const candidates: CleanTicketItem[] = []
     const linkCache = new Map<string, string | undefined>()
+    // 允许根本身若被替换成联接点，删除会落到辖区外；每个���只检查一次
+    const rootLinkCache = new Map<string, string | undefined>()
 
     const reject = (item: CleanItem, reason: RejectReason, message: string) => {
       rejections.push({ itemId: item.id, path: item.path, reason, message })
@@ -175,6 +177,16 @@ export class CompensateService extends Service {
         }
       } else {
         const stopAt = policy.rootOf(canonical) ?? path.parse(canonical).root
+        const stopKey = stopAt.toLowerCase()
+        let rootLink = rootLinkCache.get(stopKey)
+        if (rootLink === undefined && !rootLinkCache.has(stopKey)) {
+          rootLink = (await isLinkPath(stopAt)) ? stopAt : undefined
+          rootLinkCache.set(stopKey, rootLink)
+        }
+        if (rootLink) {
+          reject(item, 'protected', `允许根本身是联接点/符号链接，已拒绝：${rootLink}`)
+          continue
+        }
         const link = await linkAncestorOf(canonical, stopAt, linkCache)
         if (link) {
           reject(item, 'protected', `路径包含联接点或符号链接，已拒绝：${link}`)
@@ -268,12 +280,25 @@ export class CompensateService extends Service {
     if (!check.allowed) {
       return { itemId: item.itemId, path: item.path, reason: 'protected', message: `执行前复核失败：${check.reason ?? 'policy'}` }
     }
+    // 清空目标在执行前被替换成链接：clearDirectory 会顺着链接删除，必须复核
+    if (item.action === 'clear' && (await isLinkPath(item.path))) {
+      return { itemId: item.itemId, path: item.path, reason: 'protected', message: '执行前复核：清空目标已变成联接点/符号链接' }
+    }
     try {
       await stat(item.path)
     } catch {
       return { itemId: item.itemId, path: item.path, reason: 'vanished', message: '执行前复核：目标已不存在' }
     }
     return undefined
+  }
+}
+
+/** 路径本身是否为符号链接/联接点（不存在或权限不足时返回 false） */
+async function isLinkPath(target: string): Promise<boolean> {
+  try {
+    return (await lstat(target)).isSymbolicLink()
+  } catch {
+    return false
   }
 }
 

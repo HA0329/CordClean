@@ -59,8 +59,15 @@ export const Config: Schema<SchedulerConfig> = Schema.object({
   atMinute: Schema.number().min(0).max(59).default(0),
 })
 
-/** 规则指纹：规则开关或统计变化都会导致授权失效 */
-export function rulesHash(ctx: any): string {
+/** 规则 + 计划范围指纹：规则开关或统计变化、以及计划的任务范围/删除模式变化，都会让授权失效 */
+export interface RulesHashScope {
+  id?: string
+  taskIds?: string[]
+  mode?: string
+  everyMinutes?: number
+}
+
+export function rulesHash(ctx: any, scope: RulesHashScope = {}): string {
   const settings = ctx.settings.get()
   const stats = ctx.rules?.stats?.() ?? {}
   return createHash('sha1')
@@ -69,6 +76,13 @@ export function rulesHash(ctx: any): string {
       includeDeep: settings.rules.includeDeep,
       includeCustom: settings.rules.includeCustom,
       stats,
+      // 把计划范围纳入指纹：只授权「这些任务 + clean 模式」，改范围后必须重新授权
+      plan: {
+        id: scope.id ?? '',
+        taskIds: [...(scope.taskIds ?? [])].sort(),
+        mode: scope.mode ?? 'scan',
+        everyMinutes: scope.everyMinutes ?? 0,
+      },
     }))
     .digest('hex')
     .slice(0, 16)
@@ -127,7 +141,7 @@ export default defineCleanerPlugin<SchedulerConfig>({
         notify({ planId: plan.id, planName: plan.name, items: report.items.length, bytes: totalBytes, elapsedMs: report.elapsedMs, errors: report.errors.length })
 
         if (plan.mode === 'clean') {
-          const hash = rulesHash(ctx)
+          const hash = rulesHash(ctx, plan)
           if (!plan.authorizedHash || plan.authorizedHash !== hash) {
             notify({ planId: plan.id, planName: plan.name, blocked: true, reason: '规则已变化，自动清理授权失效，请重新授权' })
           } else {
@@ -161,12 +175,24 @@ export default defineCleanerPlugin<SchedulerConfig>({
       }
     })
 
-    ;(ctx.on as any)('scheduler/authorize', (patch: { planId?: string }, done: (next: SchedulerConfig) => void) => {
-      const hash = rulesHash(ctx)
+    ;(ctx.on as any)('scheduler/authorize', (patch: { planId?: string; taskIds?: string[]; everyMinutes?: number }, done: (next: SchedulerConfig) => void) => {
       const target = patch.planId ?? plans()[0]?.id
+      if (!target) return
+      const current = plans().find((plan) => plan.id === target)
+      if (!current) return
+      // 授权时把计划范围一起绑定进指纹（并写入配置，保证后续运行按同一范围校验）
+      const effective: SchedulePlan = {
+        ...current,
+        enabled: true,
+        mode: 'clean',
+        everyMinutes: patch.everyMinutes ?? current.everyMinutes,
+        taskIds: Array.isArray(patch.taskIds) ? patch.taskIds : current.taskIds,
+      }
+      const hash = rulesHash(ctx, effective)
+      effective.authorizedHash = hash
       done({
         ...config,
-        plans: plans().map((plan) => (plan.id === target ? { ...plan, enabled: true, mode: 'clean', authorizedHash: hash } : plan)),
+        plans: plans().map((plan) => (plan.id === target ? effective : plan)),
         enabled: false,
         mode: 'scan',
         authorizedHash: '',
@@ -176,7 +202,9 @@ export default defineCleanerPlugin<SchedulerConfig>({
     ;(ctx.on as any)('scheduler/revoke', (planId: string | undefined, done: (next: SchedulerConfig) => void) => {
       done({
         ...config,
-        plans: plans().map((plan) => (plan.id === (planId ?? plan.id) ? { ...plan, mode: 'scan', authorizedHash: '' } : plan)),
+        plans: plans().map((plan) => ((planId ? plan.id === planId : true) ? { ...plan, mode: 'scan', authorizedHash: '' } : plan)),
+        mode: 'scan',
+        authorizedHash: '',
       })
     })
 

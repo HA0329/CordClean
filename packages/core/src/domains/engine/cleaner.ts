@@ -296,7 +296,6 @@ export class CleanerService extends Service implements CleanerLike {
     await mapLimit(targets, Math.max(1, settings.scan.concurrency), runTask)
 
     items.sort((a, b) => b.size - a.size)
-    this.lastItems = new Map(items.map((item) => [item.id, item]))
 
     const report: ScanReport = {
       scanId,
@@ -314,9 +313,13 @@ export class CleanerService extends Service implements CleanerLike {
       tasks: taskResults,
       cancelled: controller.signal.aborted,
     }
-    this.lastScanReport = report
-    if (this.scanController === controller) this.scanController = undefined
-    this.ctx.emit('cleaner/scan-done', report)
+    // 只有仍是「当前扫描」才提交结果：被新扫描取消/替换的旧扫描不得覆盖 lastScan/lastItems
+    if (this.scanController === controller) {
+      this.lastItems = new Map(items.map((item) => [item.id, item]))
+      this.lastScanReport = report
+      this.scanController = undefined
+      this.ctx.emit('cleaner/scan-done', report)
+    }
     void duplicateCount
     return report
   }
@@ -381,7 +384,9 @@ export class CleanerService extends Service implements CleanerLike {
     let vanished = 0
     let skipped = 0
     const undoAll: Array<{ path: string; mode: string }> = []
-
+    // 历史会话只登记一次：之前误放在任务循环的文件分支里，多任务会重复登记、纯注册表清理反而丢失
+    this.ctx.history.beginSession(sessionId, [...groups.keys()])
+    try {
     for (const [taskId, groupItems] of groups) {
       if (controller.signal.aborted) break
       const registered = this.tasks.get(taskId)
@@ -450,7 +455,6 @@ export class CleanerService extends Service implements CleanerLike {
         // 文件/目录：走补偿链 + 唯一删除入口（高风险项强制隔离区）
         const riskyItems = settings.clean.highRiskQuarantine ? groupItems.filter((item) => item.risk === 'risky') : []
         const normalItems = groupItems.filter((item) => !riskyItems.includes(item))
-    this.ctx.history.beginSession(sessionId, [...groups.keys()])
 
         const batches: Array<{ items: CleanItem[]; mode: CleanMode }> = []
         if (normalItems.length) batches.push({ items: normalItems, mode: forceQuarantine ? 'quarantine' : settings.clean.mode })
@@ -516,8 +520,6 @@ export class CleanerService extends Service implements CleanerLike {
       perTask.push({ taskId, cleaned: taskCleaned, bytes: taskBytes, failed: taskFailed })
     }
 
-    await quarantineSession?.close()
-
     const undo = undoAll
 
     const report: CleanReport = {
@@ -560,15 +562,23 @@ export class CleanerService extends Service implements CleanerLike {
       this.ctx.history.append(entry)
     }
 
-    if (this.cleanController === controller) this.cleanController = undefined
-    this.currentSessionId = undefined
     this.ctx.emit('cleaner/clean-done', report)
     this.ctx.logger?.info?.(
       `清理完成：释放 %s，清理 ${cleaned} 项，失败 ${failures.length} 项`,
       formatBytes(freedBytes),
     )
-    this.ctx.history.finishSession(sessionId, cleaned)
     return report
+    } finally {
+      // 无论成功、取消还是中途抛错，都必须收尾：关闭隔离会话、复位控制器、结束历史会话
+      try {
+        await quarantineSession?.close()
+      } catch (error) {
+        this.ctx.logger?.warn?.('关闭隔离会话失败：%s', String(error))
+      }
+      if (this.cleanController === controller) this.cleanController = undefined
+      this.currentSessionId = undefined
+      this.ctx.history.finishSession(sessionId, cleaned)
+    }
   }
 
   /**

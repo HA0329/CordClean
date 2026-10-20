@@ -272,8 +272,8 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
   await refreshTasks()
 }
 
-export async function installPlugin(filePath: string): Promise<void> {
-  await requireTransport().request('plugins/install', { path: filePath })
+export async function installPlugin(filePath: string, allowCustomClean = false): Promise<void> {
+  await requireTransport().request('plugins/install', { path: filePath, allowCustomClean })
   await refreshPlugins()
 }
 

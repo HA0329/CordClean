@@ -30,6 +30,8 @@ export interface MoveFileOutcome {
 export interface MoveFileOptions {
   /** 路径策略检查（与清理使用同一套辖区/保护目录规则） */
   check: (target: string) => { allowed: boolean; reason?: string }
+  /** 目标目录是否受保护（系统/用户重要目录）；受保护目录禁止作为搬家目标 */
+  isProtected?: (target: string) => boolean
   /** 最大并发（默认 4） */
   concurrency?: number
   /** 移动后是否在原位置创建符号链接（失败会自动还原） */
@@ -38,6 +40,23 @@ export interface MoveFileOptions {
 
 function absolute(value: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\')
+}
+
+/** 校验目标目录：绝对路径、非 UNC/设备路径、非盘符根、未受保护 */
+function validateTargetDir(raw: string, isProtected?: (target: string) => boolean): string {
+  if (!absolute(raw)) throw new Error('目标目录必须是绝对路径')
+  const target = path.resolve(raw)
+  if (target.startsWith('\\\\')) throw new Error('目标目录不支持网络共享路径（UNC）')
+  if (target.startsWith('\\\\.\\') || target.startsWith('\\\\?\\')) throw new Error('目标目录不支持设备路径')
+  if (/^[a-zA-Z]:\\?$/.test(target)) throw new Error('目标目录不能是盘符根目录')
+  if (isProtected?.(target)) throw new Error('目标目录位于受保护目录，不能作为搬家目标')
+  return target
+}
+
+function isSubPathOf(child: string, parent: string): boolean {
+  const c = child.toLowerCase().replace(/[\\/]+$/, '')
+  const p = parent.toLowerCase().replace(/[\\/]+$/, '')
+  return c === p || c.startsWith(p + '\\')
 }
 
 async function uniqueTarget(dir: string, name: string): Promise<string> {
@@ -58,10 +77,11 @@ async function uniqueTarget(dir: string, name: string): Promise<string> {
 /** 移动一批文件；逐个处理，失败不影响其他文件 */
 export async function moveFiles(request: MoveFileRequest, options: MoveFileOptions): Promise<MoveFileOutcome> {
   const outcome: MoveFileOutcome = { moved: [], failed: [], freedBytes: 0 }
-  if (!absolute(request.targetDir)) throw new Error('目标目录必须是绝对路径')
-  await mkdir(request.targetDir, { recursive: true })
+  const targetDir = validateTargetDir(request.targetDir, options.isProtected)
+  await mkdir(targetDir, { recursive: true })
 
   const queue = [...new Set(request.paths.map((item) => path.resolve(item)))]
+  queue.sort((a, b) => a.length - b.length) // 先移动浅层路径，避免先动子项导致父项失败
   const limit = Math.max(1, Math.min(8, options.concurrency ?? 4))
 
   const runOne = async (source: string) => {
@@ -71,14 +91,15 @@ export async function moveFiles(request: MoveFileRequest, options: MoveFileOptio
       if (!absolute(source)) throw new Error('源路径必须是绝对路径')
       const info = await stat(source)
       if (!info.isFile() && !info.isDirectory()) throw new Error('只支持移动文件或目录')
-      if (path.dirname(source).toLowerCase() === path.resolve(request.targetDir).toLowerCase()) {
+      if (path.dirname(source).toLowerCase() === targetDir.toLowerCase()) {
         throw new Error('目标目录与源目录相同')
       }
       // 目录：仅支持同盘重命名（原子、快、可回滚）；跨盘目录搬家先拒绝，避免半复制
       if (info.isDirectory()) {
-        const sameVolume = path.parse(source).root.toLowerCase() === path.parse(request.targetDir).root.toLowerCase()
+        if (isSubPathOf(targetDir, source)) throw new Error('目标目录不能位于源目录内部')
+        const sameVolume = path.parse(source).root.toLowerCase() === path.parse(targetDir).root.toLowerCase()
         if (!sameVolume) throw new Error('目录跨盘搬家暂不支持（请先手动复制到目标盘）')
-        const dirTarget = await uniqueTarget(request.targetDir, path.basename(source))
+        const dirTarget = await uniqueTarget(targetDir, path.basename(source))
         await rename(source, dirTarget)
         if (options.link) {
           try {
@@ -92,7 +113,7 @@ export async function moveFiles(request: MoveFileRequest, options: MoveFileOptio
         return
       }
 
-      const target = await uniqueTarget(request.targetDir, path.basename(source))
+      const target = await uniqueTarget(targetDir, path.basename(source))
       try {
         await copyFile(source, target)
         const copied = await stat(target)
@@ -113,7 +134,10 @@ export async function moveFiles(request: MoveFileRequest, options: MoveFileOptio
         throw error
       }
       outcome.moved.push({ from: source, to: target, bytes: info.size })
-      outcome.freedBytes += info.size
+      // 同盘移动不释放空间；只有跨盘时才计入 freedBytes
+      if (path.parse(source).root.toLowerCase() !== path.parse(targetDir).root.toLowerCase()) {
+        outcome.freedBytes += info.size
+      }
     } catch (error) {
       outcome.failed.push({ path: source, error: error instanceof Error ? error.message : String(error) })
     }

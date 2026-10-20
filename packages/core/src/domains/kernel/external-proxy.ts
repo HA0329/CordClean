@@ -1,9 +1,14 @@
 /**
  * 路线 3A：外部插件跨线程协议与代理。
  *
- * 安全边界：
- * - 外部插件的 setup / scan 全部在 worker 中执行，主进程只拿可序列化的任务描述与候选；
- * - worker 内没有删除能力：只能回传候选，删除仍由主进程补偿链 + 执行器完成；
+ * 安全边界（如实说明，不要夸大）：
+ * - worker 只是**故障隔离**，不是安全沙箱：插件代码与内核同进程、运行在 worker 线程中，
+ *   仍可直接 `require('node:fs')` / `child_process`、读取完整的 `process.env` 与文件系统；
+ * - 能力声明（capabilities）只是「声明 + 安装时静态校验」，运行时并不强制；worker 内也没有删除能力，
+ *   只能回传候选，删除仍由主进程补偿链 + 执行器完成；
+ * - 本文件能做到的边界收紧：只把**白名单环境变量**放进 `workerData.env`（供 `ctx.env` /
+ *   `system.env` 便利访问器使用），避免把 AI/第三方 API Key、Token、Secret、Password
+ *   等敏感变量交给插件上下文（插件若直接读 `process.env` 仍可看到，见第一条）；
  * - 崩溃/超时只影响该插件 worker。
  *
  * 协议：
@@ -12,6 +17,60 @@
  *   configure → 重新校验配置并重跑 setup，返回新的任务元数据（不销毁 worker）
  */
 import { Worker } from 'node:worker_threads'
+
+/**
+ * 允许通过 `workerData.env` 暴露给插件上下文的环境变量（键名统一大写）。
+ *
+ * 仅覆盖插件定位系统目录 / 临时目录所需的最小集合；其它变量（尤其是凭据）一律不传。
+ */
+export const PLUGIN_ENV_ALLOWLIST = [
+  'SYSTEMROOT',
+  'WINDIR',
+  'TEMP',
+  'TMP',
+  'USERPROFILE',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PROGRAMDATA',
+  'PROGRAMFILES',
+  'PROGRAMFILES(X86)',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'PATH',
+  'COMSPEC',
+  'PATHEXT',
+] as const
+
+/** 敏感变量模式：命中即丢弃（大小写不敏感） */
+const PLUGIN_ENV_DENY_PATTERNS: RegExp[] = [
+  /_API_KEY$/i,
+  /_TOKEN$/i,
+  /_SECRET$/i,
+  /_PASSWORD$/i,
+  /^DEEPSEEK_/i,
+  /^OPENAI_/i,
+  /^DASHSCOPE_/i,
+]
+
+/**
+ * 构造传给插件 worker 的环境变量白名单。
+ *
+ * 输入默认为 `process.env`，返回的键统一为大写（worker 内 `workerData.env` 是普通对象，
+ * 属性访问区分大小写；RUNTIME 里读取的是 `env.WINDIR` 等大写形态）。
+ * 测试可显式传入模拟 env。
+ */
+export function sanitizePluginEnv(source: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env): Record<string, string> {
+  const allowed = new Map(PLUGIN_ENV_ALLOWLIST.map((key) => [key.toLowerCase(), key]))
+  const result: Record<string, string> = {}
+  for (const [rawKey, rawValue] of Object.entries(source)) {
+    if (rawValue === undefined) continue
+    if (PLUGIN_ENV_DENY_PATTERNS.some((pattern) => pattern.test(rawKey))) continue
+    const canonical = allowed.get(rawKey.toLowerCase())
+    if (!canonical) continue
+    result[canonical] = rawValue
+  }
+  return result
+}
 
 export interface ExternalTaskMeta {
   id: string
@@ -44,6 +103,8 @@ const { pathToFileURL } = require('node:url')
 
 const MAX_ITEMS = 5000
 const env = workerData.env || {}
+/** 白名单键统一大写存储；按 Windows 习惯做大小写不敏感读取 */
+const envGet = (name) => env[String(name).toUpperCase()] ?? undefined
 const noop = () => {}
 const state = { plugin: null, tasks: [], ctx: null, config: {} }
 
@@ -51,7 +112,7 @@ function makeScanContext(items) {
   return {
     emit(item) { if (items.length < MAX_ITEMS) items.push(item) },
     logger: { info: noop, warn: noop, debug: noop, error: noop },
-    env: { get: (name) => env[name] ?? undefined, userProfile: env.USERPROFILE, localAppData: env.LOCALAPPDATA, windowsDir: env.WINDIR, temp: env.TEMP },
+    env: { get: envGet, userProfile: env.USERPROFILE, localAppData: env.LOCALAPPDATA, windowsDir: env.WINDIR, temp: env.TEMP },
     pathPolicy: { addRoot: noop, addClearRoot: noop, check: () => ({ allowed: true }), checkClear: () => ({ allowed: true }), containsProtected: () => false },
     signal: undefined,
     throwIfAborted: noop,
@@ -64,7 +125,7 @@ function makeCtx() {
     cleaner: { define(definition) { state.tasks.push(definition); return noop }, list: () => state.tasks },
     pathPolicy: { addRoot: noop, addClearRoot: noop, check: () => ({ allowed: true }), checkClear: () => ({ allowed: true }), containsProtected: () => false },
     settings: { get: () => ({}) },
-    system: { env: { get: (name) => env[name] ?? undefined, userProfile: env.USERPROFILE, localAppData: env.LOCALAPPDATA, windowsDir: env.WINDIR, temp: env.TEMP } },
+    system: { env: { get: envGet, userProfile: env.USERPROFILE, localAppData: env.LOCALAPPDATA, windowsDir: env.WINDIR, temp: env.TEMP } },
     effect: (fn) => { try { fn() } catch {}; return noop },
     on: () => noop,
     emit: noop,
@@ -129,7 +190,7 @@ parentPort.on('message', async (message) => {
         mode: message.mode || 'delete',
         dryRun: message.dryRun === true,
         logger: { info: noop, warn: noop, debug: noop, error: noop },
-        env: { get: (name) => env[name] ?? undefined },
+        env: { get: envGet },
         pathPolicy: { addRoot: noop, addClearRoot: noop, check: () => ({ allowed: true }), checkClear: () => ({ allowed: true }), containsProtected: () => false },
         throwIfAborted: noop,
         signal: undefined,
@@ -188,7 +249,7 @@ export class ExternalPluginProxy {
   ): Promise<{ proxy: ExternalPluginProxy; info: ExternalDescribe }> {
     const worker = new Worker(RUNTIME, {
       eval: true,
-      workerData: { modulePath, env: options.env ?? process.env },
+      workerData: { modulePath, env: sanitizePluginEnv(options.env ?? process.env) },
       resourceLimits: { maxOldGenerationSizeMb: 128 },
     })
     const proxy = new ExternalPluginProxy(worker)

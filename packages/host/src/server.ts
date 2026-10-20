@@ -3,12 +3,15 @@
  *
  * 设计要点：
  * - 只监听 127.0.0.1，且每次启动生成随机 token，防止本机其它网页跨站调用；
+ * - 校验 Host 头（阻断 DNS rebinding）与 WebSocket 的 Origin 头（阻断跨站页面）；
  * - 内核事件（扫描进度、清理进度等）通过广播通知推送到所有已连接客户端；
  * - 界面静态资源由同一端口提供，无需额外的 Web 服务器。
  */
+import { randomBytes } from 'node:crypto'
 import { createReadStream, promises as fs } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import path from 'node:path'
+import type { Duplex } from 'node:stream'
 import type { Context } from 'cordis'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { RpcRequest, RpcResponse, ServerEvent } from '@cordclean/shared'
@@ -72,6 +75,57 @@ class HttpError extends Error {
   }
 }
 
+/** WebSocket 单条消息上限（1MB），防止超大帧耗尽内存 */
+const WS_MAX_PAYLOAD = 1024 * 1024
+
+/** 允许的 Host 主机名（不含端口）；只接受本机回环地址，阻断 DNS rebinding */
+const ALLOWED_HOSTNAMES = ['127.0.0.1', 'localhost', '[::1]']
+
+/**
+ * 校验 Host 头（不区分大小写）。
+ * 只允许 127.0.0.1 / localhost / [::1]，带端口时端口必须等于实际监听端口；
+ * 也接受省略端口的写法（浏览器访问默认端口 80/443 时的形态）。缺少 Host 头直接拒绝。
+ */
+function isAllowedHost(header: string | undefined, port: number): boolean {
+  if (typeof header !== 'string' || !header.trim()) return false
+  const value = header.trim().toLowerCase()
+  return ALLOWED_HOSTNAMES.some((name) => value === name || value === `${name}:${port}`)
+}
+
+/**
+ * 校验 WebSocket 的 Origin 头：
+ * - 没有 Origin（原生客户端、测试、非浏览器环境）允许；
+ * - 有 Origin 时必须等于界面自身的 origin（http://127.0.0.1:<port> 或 http://localhost:<port>）。
+ */
+function isAllowedOrigin(header: string | undefined, port: number): boolean {
+  if (header === undefined) return true
+  if (typeof header !== 'string') return false
+  const value = header.trim().toLowerCase()
+  return value === `http://127.0.0.1:${port}` || value === `http://localhost:${port}`
+}
+
+/**
+ * 解析请求目标。基准地址使用固定值，绝不复用未经验证的 Host 头；
+ * 非法的请求目标按 400 处理，而不是抛出未捕获异常。
+ */
+function parseRequestUrl(rawUrl: string | undefined): URL {
+  try {
+    return new URL(rawUrl ?? '/', 'http://127.0.0.1')
+  } catch {
+    throw new HttpError(400, '请求路径不合法')
+  }
+}
+
+/** 拒绝 WebSocket 升级：先回写状态行再销毁连接 */
+function rejectUpgrade(socket: Duplex, status: number, reason: string): void {
+  try {
+    socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`)
+  } catch {
+    /* 连接可能已被对端关闭，忽略写入失败 */
+  }
+  socket.destroy()
+}
+
 /**
  * 读取请求体（默认上限 2MB）。
  * 超限时不销毁连接，而是排空数据后返回 413，让客户端能正常收到错误响应。
@@ -102,7 +156,7 @@ function readBody(req: IncomingMessage, limit = 2 * 1024 * 1024): Promise<string
 
 export async function startHostServer(options: HostServerOptions): Promise<HostServer> {
   const host = options.host ?? '127.0.0.1'
-  const token = options.token ?? Math.random().toString(36).slice(2) + Date.now().toString(36)
+  const token = options.token ?? randomBytes(24).toString('base64url')
   const clients = new Set<WebSocket>()
   let port = 0
 
@@ -153,14 +207,19 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     }
   }
 
-  const serveStatic = async (req: IncomingMessage, res: ServerResponse) => {
+  const serveStatic = async (url: URL, res: ServerResponse) => {
     const staticDir = options.staticDir
     if (!staticDir) {
       res.writeHead(404).end('Not Found')
       return
     }
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`)
-    let pathname = decodeURIComponent(url.pathname)
+    let pathname: string
+    try {
+      pathname = decodeURIComponent(url.pathname)
+    } catch {
+      // 非法百分号编码（如 /%）必须转成 400，而不是让 URIError 逃逸成未处理拒绝
+      throw new HttpError(400, '请求路径编码不合法')
+    }
     if (pathname === '/') pathname = '/index.html'
     // 防目录穿越
     const base = path.normalize(staticDir)
@@ -201,55 +260,91 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     }
   }
 
+  const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
+    // 所有 HTTP 请求（含静态资源）先校验 Host：页面内联了 token，必须阻断 DNS rebinding
+    if (!isAllowedHost(req.headers.host, port)) {
+      res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ error: 'forbidden host' }))
+      return
+    }
+    const url = parseRequestUrl(req.url)
+    // 健康检查 / 版本探测
+    if (url.pathname === '/api/ping') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, name: 'CordClean' }))
+      return
+    }
+    // 兼容非 WebSocket 的 JSON-RPC（便于 curl 调试与自动化测试）
+    if (url.pathname === '/api/rpc' && req.method === 'POST') {
+      if (url.searchParams.get('token') !== token) {
+        res.writeHead(401).end(JSON.stringify({ error: 'unauthorized' }))
+        return
+      }
+      try {
+        const body = await readBody(req)
+        const response = await dispatch(JSON.parse(body) as RpcRequest)
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify(response))
+      } catch (error) {
+        const status = error instanceof HttpError ? error.status : 400
+        res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ error: String(error instanceof Error ? error.message : error) }))
+      }
+      return
+    }
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405).end('Method Not Allowed')
+      return
+    }
+    await serveStatic(url, res)
+  }
+
   const server = createServer((req, res) => {
-    void (async () => {
-      const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`)
-      // 健康检查 / 版本探测
-      if (url.pathname === '/api/ping') {
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ ok: true, name: 'CordClean' }))
+    // 处理入口统一兜底：任何异常都转成错误响应，不能出现未处理的 Promise 拒绝
+    handleRequest(req, res).catch((error: unknown) => {
+      if (res.headersSent) {
+        res.destroy()
         return
       }
-      // 兼容非 WebSocket 的 JSON-RPC（便于 curl 调试与自动化测试）
-      if (url.pathname === '/api/rpc' && req.method === 'POST') {
-        if (url.searchParams.get('token') !== token) {
-          res.writeHead(401).end(JSON.stringify({ error: 'unauthorized' }))
-          return
-        }
-        try {
-          const body = await readBody(req)
-          const response = await dispatch(JSON.parse(body) as RpcRequest)
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
-          res.end(JSON.stringify(response))
-        } catch (error) {
-          const status = error instanceof HttpError ? error.status : 400
-          res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
-          res.end(JSON.stringify({ error: String(error instanceof Error ? error.message : error) }))
-        }
-        return
+      const status = error instanceof HttpError ? error.status : 500
+      const message = status === 500 ? 'internal server error' : ((error as Error)?.message ?? String(error))
+      try {
+        res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ error: message }))
+      } catch {
+        res.destroy()
       }
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        res.writeHead(405).end('Method Not Allowed')
-        return
-      }
-      await serveStatic(req, res)
-    })()
+    })
   })
 
-  const wss = new WebSocketServer({ noServer: true })
+  const wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD })
 
   server.on('upgrade', (req, socket, head) => {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`)
-    if (url.pathname !== '/rpc') {
+    try {
+      // 与普通 HTTP 请求一致：先校验 Host（带端口的写法已由 isAllowedHost 归一化处理）
+      if (!isAllowedHost(req.headers.host, port)) {
+        rejectUpgrade(socket, 403, 'Forbidden Host')
+        return
+      }
+      const url = parseRequestUrl(req.url)
+      if (url.pathname !== '/rpc') {
+        socket.destroy()
+        return
+      }
+      // 浏览器发起的跨站页面会带上自己的 Origin，必须等于界面自身的 origin
+      if (!isAllowedOrigin(req.headers.origin, port)) {
+        rejectUpgrade(socket, 403, 'Forbidden Origin')
+        return
+      }
+      if (url.searchParams.get('token') !== token) {
+        rejectUpgrade(socket, 401, 'Unauthorized')
+        return
+      }
+      wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
+    } catch {
+      // 升级阶段同样不允许异常逃逸（例如被破坏的请求目标）
       socket.destroy()
-      return
     }
-    if (url.searchParams.get('token') !== token) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
-      socket.destroy()
-      return
-    }
-    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
   })
 
   wss.on('connection', (socket) => {

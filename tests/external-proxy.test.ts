@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ExternalPluginProxy } from '../packages/core/src/domains/kernel/external-proxy.ts'
+import { ExternalPluginProxy, sanitizePluginEnv } from '../packages/core/src/domains/kernel/external-proxy.ts'
 import { createSandbox } from './helpers.ts'
 
 const sandbox = createSandbox()
@@ -105,6 +105,93 @@ export default {
       await expect(second.proxy.clean('t', [])).rejects.toThrow(/customClean/)
     } finally {
       await second.proxy.dispose()
+    }
+  })
+})
+
+describe('外部插件 worker 环境变量白名单', () => {
+  it('sanitizePluginEnv 只保留白名单变量并过滤凭据', () => {
+    const env = sanitizePluginEnv({
+      SystemRoot: 'C:\\Windows',
+      windir: 'C:\\Windows',
+      TEMP: 'C:\\Temp',
+      TMP: 'C:\\Tmp',
+      USERPROFILE: 'C:\\Users\\mock',
+      APPDATA: 'C:\\Users\\mock\\AppData\\Roaming',
+      LOCALAPPDATA: 'C:\\Users\\mock\\AppData\\Local',
+      PROGRAMDATA: 'C:\\ProgramData',
+      PROGRAMFILES: 'C:\\Program Files',
+      'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+      HOMEDRIVE: 'C:',
+      homedrive: 'C:',
+      HOMEPATH: '\\Users\\mock',
+      PATH: 'C:\\Windows\\System32',
+      COMSPEC: 'C:\\Windows\\System32\\cmd.exe',
+      PATHEXT: '.EXE;.CMD',
+      // 以下全部不应出现在白名单结果中
+      DEEPSEEK_API_KEY: 'sk-deepseek',
+      OPENAI_API_KEY: 'sk-openai',
+      DASHSCOPE_API_KEY: 'sk-dashscope',
+      MOCK_API_KEY: 'sk-mock',
+      GITHUB_TOKEN: 'ghp_xxx',
+      CLIENT_SECRET: 'secret',
+      DB_PASSWORD: 'password',
+      DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
+      RANDOM_VAR: 'nope',
+    })
+    expect(env).toEqual({
+      SYSTEMROOT: 'C:\\Windows',
+      WINDIR: 'C:\\Windows',
+      TEMP: 'C:\\Temp',
+      TMP: 'C:\\Tmp',
+      USERPROFILE: 'C:\\Users\\mock',
+      APPDATA: 'C:\\Users\\mock\\AppData\\Roaming',
+      LOCALAPPDATA: 'C:\\Users\\mock\\AppData\\Local',
+      PROGRAMDATA: 'C:\\ProgramData',
+      PROGRAMFILES: 'C:\\Program Files',
+      'PROGRAMFILES(X86)': 'C:\\Program Files (x86)',
+      HOMEDRIVE: 'C:',
+      HOMEPATH: '\\Users\\mock',
+      PATH: 'C:\\Windows\\System32',
+      COMSPEC: 'C:\\Windows\\System32\\cmd.exe',
+      PATHEXT: '.EXE;.CMD',
+    })
+  })
+
+  it('worker 内 ctx.env 只能读到白名单变量，读不到 API Key', async () => {
+    const file = write('env-probe.mjs', `
+export default {
+  name: 'env-probe',
+  capabilities: { fsRoots: [] },
+  setup(ctx) {
+    ctx.cleaner.define({
+      id: 'env-task', name: 'Env', category: 'system', risk: 'safe', targets: [],
+      scan(scan) {
+        const profile = ctx.system.env.get('userprofile') ?? ''
+        const secret = ctx.system.env.get('deepseek_api_key') ?? ctx.system.env.get('OPENAI_API_KEY') ?? ''
+        scan.emit({ path: 'C:\\\\Temp\\\\probe.tmp', kind: 'file', size: profile ? 1 : 0, title: secret || 'no-secret' })
+      },
+    })
+  },
+}
+`)
+    const { proxy } = await ExternalPluginProxy.create(file, {
+      env: {
+        USERPROFILE: 'C:\\Users\\mock',
+        WINDIR: 'C:\\Windows',
+        DEEPSEEK_API_KEY: 'sk-deepseek',
+        OPENAI_API_KEY: 'sk-openai',
+        DASHSCOPE_API_KEY: 'sk-dashscope',
+        GITHUB_TOKEN: 'ghp_xxx',
+        DB_PASSWORD: 'password',
+      },
+    })
+    try {
+      const items = await proxy.scan('env-task')
+      expect(items).toHaveLength(1)
+      expect(items[0]).toMatchObject({ size: 1, title: 'no-secret' })
+    } finally {
+      await proxy.dispose()
     }
   })
 })
