@@ -2,39 +2,60 @@ import { z } from 'zod'
 
 /** 关键 RPC 的入参 schema；未列出的方法只要求 params 是对象 */
 const schemas: Record<string, z.ZodTypeAny> = {
-  'settings/patch': z.object({ patch: z.record(z.string(), z.unknown()) }),
+  'settings/patch': z.object({ patch: z.record(z.string(), z.unknown()) }).strict(),
+  'settings/set': z.object({ path: z.string().min(1).max(200), value: z.unknown() }).strict(),
   'clean/start': z
     .object({
       itemIds: z.array(z.string()).optional(),
-      items: z.array(z.record(z.string(), z.unknown())).optional(),
       dryRun: z.boolean().optional(),
       forceQuarantine: z.boolean().optional(),
     })
-    .refine((value) => (value.itemIds?.length ?? 0) > 0 || (value.items?.length ?? 0) > 0, {
-      message: 'itemIds 与 items 至少提供一个',
+    .strict()
+    .refine((value) => (value.itemIds?.length ?? 0) > 0, {
+      message: 'itemIds 至少提供一个（不支持界面回传清理项）',
     }),
-  'scan/start': z.object({ taskIds: z.array(z.string()).optional() }),
-  'plugins/enable': z.object({ id: z.string().min(1) }),
-  'plugins/disable': z.object({ id: z.string().min(1) }),
-  'plugins/config': z.object({ id: z.string().min(1), config: z.record(z.string(), z.unknown()) }),
-  'plugins/install': z.object({ path: z.string().min(1) }),
-  'plugins/uninstall': z.object({ id: z.string().min(1) }),
-  'quarantine/restore': z.object({ ids: z.array(z.string()) }),
-  'history/list': z.object({ limit: z.number().int().positive().max(1000).optional() }).optional(),
+  'scan/start': z.object({ taskIds: z.array(z.string()).optional() }).strict(),
+  'files/move': z
+    .object({
+      paths: z.array(z.string().min(1)).min(1).max(10_000),
+      targetDir: z.string().min(1),
+      link: z.boolean().optional(),
+    })
+    .strict(),
+  'plugins/enable': z.object({ id: z.string().min(1) }).strict(),
+  'plugins/disable': z.object({ id: z.string().min(1) }).strict(),
+  'plugins/reload': z.object({ id: z.string().min(1) }).strict(),
+  'plugins/config': z.object({ id: z.string().min(1), config: z.record(z.string(), z.unknown()) }).strict(),
+  'plugins/install': z.object({ path: z.string().min(1), allowCustomClean: z.boolean().optional() }).strict(),
+  'plugins/uninstall': z.object({ id: z.string().min(1) }).strict(),
+  'quarantine/restore': z.object({ ids: z.array(z.string()).max(10_000) }).strict(),
+  'quarantine/purge': z.object({ ids: z.array(z.string()).max(10_000).optional() }).strict(),
+  'history/list': z.object({ limit: z.number().int().positive().max(1000).optional() }).strict().optional(),
+  'app/open-path': z.object({ path: z.string().min(1) }).strict(),
+  'app/open-editor': z.object({ path: z.string().min(1) }).strict(),
+  'app/logs/recent': z.object({ limit: z.number().int().positive().max(2000).optional() }).strict().optional(),
   'ai/analyze': z
     .object({
       taskIds: z.array(z.string()).optional(),
       extraContext: z.string().max(4000).optional(),
       contextProviders: z.array(z.string()).max(20).optional(),
+      image: z.object({ mime: z.string().min(1).max(100), data: z.string().min(1).max(8 * 1024 * 1024) }).optional(),
     })
+    .strict()
     .optional(),
-  'ai/rules/dry-run': z.object({ suggestion: z.record(z.string(), z.unknown()) }),
-  'ai/plugin/draft': z.object({ requirement: z.string().min(1).max(2000) }),
-  'ai/plugin/validate': z.object({ code: z.string().min(1).max(200_000) }),
-  'ai/plugin/install': z.object({ name: z.string().min(1).max(80), code: z.string().min(1).max(200_000) }),
-  'scheduler/authorize': z.object({ everyMinutes: z.number().int().min(15).max(1440).optional(), taskIds: z.array(z.string()).optional() }),
-  'app/open-path': z.object({ path: z.string().min(1) }),
-  'app/open-editor': z.object({ path: z.string().min(1) }),
+  'ai/rules/dry-run': z.object({ suggestion: z.record(z.string(), z.unknown()) }).strict(),
+  'ai/plugin/draft': z.object({ requirement: z.string().min(1).max(2000) }).strict(),
+  'ai/plugin/validate': z.object({ code: z.string().min(1).max(200_000) }).strict(),
+  'ai/plugin/install': z.object({ name: z.string().min(1).max(80), code: z.string().min(1).max(200_000) }).strict(),
+  'scheduler/authorize': z
+    .object({
+      planId: z.string().min(1).optional(),
+      everyMinutes: z.number().int().min(15).max(1440).optional(),
+      taskIds: z.array(z.string()).optional(),
+    })
+    .strict(),
+  'scheduler/run': z.object({ planId: z.string().min(1).optional() }).strict().optional(),
+  'scheduler/revoke': z.object({ planId: z.string().min(1).optional() }).strict().optional(),
 }
 
 export interface ValidationResult {

@@ -21,6 +21,7 @@ import type {
   CleanItemDraft,
   CleanRule,
   EvalInput,
+  PathPolicyLike,
   RiskLevel,
   RuleTarget,
   TaskEnv,
@@ -144,6 +145,34 @@ export function ruleRoots(rule: CleanRule, env: TaskEnv): string[] {
 function needsAdmin(rule: CleanRule, env: TaskEnv): boolean {
   if (rule.target.requiresAdmin) return true
   return ruleRoots(rule, env).some((root) => /^[a-z]:\\windows(\\|$)/i.test(root) || /^[a-z]:\\programdata(\\|$)/i.test(root))
+}
+
+/**
+ * 判断单个候选路径在「引擎视角」下是否允许清理。
+ *
+ * 这里必须与内核 `cleaner.pushItem` 的路径策略判断**完全一致**，否则评估器会算出
+ * 与引擎相反的 `protected`，产出「位于受保护目录，工具不会删除」这类误导说明
+ * （真实故障：普通缓存目录的 clear 规则被标成受保护，但引擎其实允许清理）。
+ *
+ * 引擎语义：
+ * - 文件：只用 `check(path)`；
+ * - 目录且 `action === 'clear'`：先 `checkClear(path)`（清空白名单），
+ *   **不允许时回落到 `check(path)`**（普通缓存目录本来就在允许根内）；
+ * - 其它目录动作：`check(path)`。
+ *
+ * @returns 引擎是否允许处理该路径（false 表示引擎会把该项标记为 protected）
+ */
+export function policyAllowsItem(
+  pathPolicy: Pick<PathPolicyLike, 'check' | 'checkClear'>,
+  path: string,
+  kind: 'file' | 'directory',
+  action?: string,
+): boolean {
+  const isClear = kind === 'directory' && action === 'clear'
+  const clearCheck = isClear ? pathPolicy.checkClear(path) : undefined
+  // 清空白名单命中则放行；否则回落普通允许根校验（与 cleaner.pushItem 同一分支）
+  const policy = clearCheck?.allowed === true ? clearCheck : pathPolicy.check(path)
+  return policy.allowed
 }
 
 /** 年龄/大小条件 */
@@ -404,17 +433,20 @@ export default defineCleanerPlugin<RulePackConfig>({
           async scan(scan) {
             const drafts = await scanCategory(scan)
             if (!drafts.length) return
-            const inputs: EvalInput[] = drafts.map(({ rule, draft }) => ({
-              rule,
-              path: draft.path,
-              kind: draft.kind === 'directory' ? 'directory' : 'file',
-              size: draft.size ?? 0,
-              mtimeMs: 0,
-              protected:
-                draft.meta?.action === 'clear'
-                  ? !scan.pathPolicy.checkClear(draft.path).allowed
-                  : !scan.pathPolicy.check(draft.path).allowed,
-            }))
+            const inputs: EvalInput[] = drafts.map(({ rule, draft }) => {
+              const kind = draft.kind === 'directory' ? 'directory' : 'file'
+              const action = typeof draft.meta?.action === 'string' ? draft.meta.action : undefined
+              return {
+                rule,
+                path: draft.path,
+                kind,
+                size: draft.size ?? 0,
+                mtimeMs: 0,
+                // 与引擎 cleaner.pushItem 对齐：clear 先查清空白名单，不允许再回落普通允许根，
+                // 避免把引擎允许清理的项误判为 protected、向用户输出错误说明
+                protected: !policyAllowsItem(scan.pathPolicy, draft.path, kind, action),
+              }
+            })
             const results = await ctx.evaluator.evaluate(inputs)
             for (let index = 0; index < drafts.length; index++) {
               const { rule, draft } = drafts[index]

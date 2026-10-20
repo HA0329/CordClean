@@ -271,10 +271,33 @@ export class PathPolicyService extends Service implements PathPolicyLike {
    *
    * 用于 `C:\Windows\System32\LogFiles`、`%WINDIR%\Temp` 这类
    * 「目录受保护但内容可重建」的场景，对应 PC-Cleaner 的 clear 白名单。
+   *
+   * 安全约束：不允许登记保护根本身（等于允许清空整个 Windows/用户目录），
+   * 也不允许登记任何保护根的祖先目录；只接受绝对路径/UNC。
    */
-  addClearRoot(target: string, _source?: string): () => void {
-    const key = pathKey(target)
+  addClearRoot(target: string, source?: string): () => void {
+    const normalized = normalizePath(target)
+    const key = pathKey(normalized)
     if (!key) return () => {}
+    if (!/^[a-zA-Z]:\\/.test(normalized) && !normalized.startsWith('\\\\')) {
+      this.ctx.logger?.warn?.('清空白名单只接受绝对路径，已忽略：%s', target)
+      return () => {}
+    }
+    // 盘符根（允许根的最上层）永远不能进入清空白名单
+    if (/^[a-zA-Z]:\\?$/.test(normalized)) {
+      this.ctx.logger?.warn?.('拒绝把盘符根登记为清空白名单（来源 %s）：%s', source ?? 'unknown', target)
+      return () => {}
+    }
+    const keyBase = key.replace(/\\+$/, '')
+    for (const root of this.hot.protectedRoots) {
+      const rootKey = pathKey(root).replace(/\\+$/, '')
+      if (!rootKey) continue
+      // 保护根本身，或保护根的祖先：登记后会放大清空范围，一律拒绝
+      if (rootKey === keyBase || rootKey.startsWith(keyBase + '\\')) {
+        this.ctx.logger?.warn?.('拒绝登记清空白名单（会覆盖保护目录 %s，来源 %s）：%s', root, source ?? 'unknown', target)
+        return () => {}
+      }
+    }
     const roots = this.hot.clearRoots
     roots.set(key, (roots.get(key) ?? 0) + 1)
     return () => {
