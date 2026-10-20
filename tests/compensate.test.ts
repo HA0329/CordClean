@@ -44,6 +44,16 @@ function makeItem(target: string, size: number, patch: Partial<CleanItem> = {}):
   }
 }
 
+/**
+ * `ctx.compensate.issue()` 在对外契约里返回 any；测试在这里补一个最小结构类型，
+ * 让回调参数有明确类型（纯类型标注，不改变运行时语义）。
+ */
+interface IssueSummary {
+  ticket?: unknown
+  rejections: Array<{ itemId?: string; path?: string; reason: string; message?: string }>
+  stats: { aborted: boolean }
+}
+
 function file(name: string, bytes: number): string {
   const target = path.join(sandbox.root, name)
   mkdirSync(path.dirname(target), { recursive: true })
@@ -54,7 +64,7 @@ function file(name: string, bytes: number): string {
 describe('补偿链七步', () => {
   it('拒绝受保护路径与相对路径', async () => {
     const app = await boot('compensate-policy')
-    const result = await app.ctx.compensate.issue({
+    const result: IssueSummary = await app.ctx.compensate.issue({
       mode: 'delete',
       items: [
         makeItem('C:\\Windows\\System32\\kernel32.dll', 10),
@@ -69,7 +79,7 @@ describe('补偿链七步', () => {
     const app = await boot('compensate-budget', { clean: { budget: { maxFiles: 2, maxBytes: 1024 } } })
     const target = file('budget/a.bin', 10)
     app.ctx.pathPolicy.addRoot(sandbox.root)
-    const result = await app.ctx.compensate.issue({
+    const result: IssueSummary = await app.ctx.compensate.issue({
       mode: 'delete',
       items: [makeItem(target, 10), makeItem(target, 10), makeItem(target, 10)],
     })
@@ -90,7 +100,7 @@ describe('补偿链七步', () => {
 
     // 10 项里 2 项变化 → 20% > 5%，整批中止
     const items = Array.from({ length: 10 }, (_, index) => makeItem(target, index < 2 ? 999 : 100))
-    const aborted = await app.ctx.compensate.issue({ mode: 'delete', items })
+    const aborted: IssueSummary = await app.ctx.compensate.issue({ mode: 'delete', items })
     expect(aborted.ticket).toBeUndefined()
     expect(aborted.stats.aborted).toBe(true)
     expect(aborted.rejections.some((item) => item.reason === 'changed-ratio')).toBe(true)

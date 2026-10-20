@@ -16,7 +16,8 @@ describe('大文件搬家', () => {
     writeFileSync(path.join(src, 'b.bin'), Buffer.alloc(2048, 2))
     const result = await moveFiles({ paths: [path.join(src, 'a.bin'), path.join(src, 'b.bin')], targetDir: dst }, allow)
     expect(result.moved).toHaveLength(2)
-    expect(result.freedBytes).toBe(3072)
+    // 同盘移动不释放磁盘空间，freedBytes 应为 0（跨盘才计入）
+    expect(result.freedBytes).toBe(0)
     expect(readFileSync(path.join(dst, 'a.bin')).length).toBe(1024)
     await expect(statSafe(path.join(src, 'a.bin'))).resolves.toBe(false)
   })
@@ -66,6 +67,27 @@ describe('大文件搬家', () => {
     const result = await moveFiles({ paths: [path.join(src, 'x.bin')], targetDir: path.join(sandbox.root, 'deny-dst') }, { check: () => ({ allowed: false, reason: 'protected' }) })
     expect(result.moved).toHaveLength(0)
     expect(result.failed[0].error).toContain('策略保护')
+  })
+
+  it('拒绝 UNC / 盘符根 / 受保护目标目录', async () => {
+    const src = path.join(sandbox.root, 'guard-src')
+    mkdirSync(src, { recursive: true })
+    writeFileSync(path.join(src, 'x.bin'), 'x')
+    const file = path.join(src, 'x.bin')
+    await expect(moveFiles({ paths: [file], targetDir: '\\\\server\\share\\backup' }, allow)).rejects.toThrow(/UNC/)
+    await expect(moveFiles({ paths: [file], targetDir: 'C:\\' }, allow)).rejects.toThrow(/盘符根/)
+    await expect(
+      moveFiles({ paths: [file], targetDir: path.join(sandbox.root, 'protected-dst') }, { ...allow, isProtected: () => true }),
+    ).rejects.toThrow(/受保护/)
+  })
+
+  it('目标目录位于源目录内部时拒绝移动', async () => {
+    const src = path.join(sandbox.root, 'self-src')
+    mkdirSync(path.join(src, 'sub'), { recursive: true })
+    writeFileSync(path.join(src, 'sub', 'f.txt'), 'x')
+    const result = await moveFiles({ paths: [src], targetDir: path.join(src, 'sub') }, allow)
+    expect(result.moved).toHaveLength(0)
+    expect(result.failed[0].error).toContain('内部')
   })
 })
 
