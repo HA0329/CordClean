@@ -115,6 +115,7 @@ pnpm start:desktop
 # 其它命令
 pnpm test             # 单元/集成测试（会先构建 UI）
 pnpm typecheck        # 类型检查（tsc，覆盖 packages/apps/bench/tests 的 TS 源码）
+pnpm typecheck:ui     # Vue 模板类型检查（vue-tsc）
 pnpm bench            # 性能基准（输出 docs/benchmark.md）
 pnpm smoke            # 内核冒烟测试
 pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）

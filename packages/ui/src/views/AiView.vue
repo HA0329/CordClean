@@ -64,6 +64,7 @@ const form = reactive({
   baseUrl: 'https://api.deepseek.com',
   model: 'deepseek-flash',
   effort: 'auto',
+  stream: true,
   jsonMode: 'auto',
   maxTokens: 65536,
   timeoutMs: 90000,
@@ -101,6 +102,7 @@ function syncFromConfig() {
   form.baseUrl = String(config.baseUrl ?? status.baseUrl ?? RECOMMENDED_BASE[form.apiShape] ?? '')
   form.model = String(config.model ?? status.model ?? 'deepseek-flash')
   form.effort = String(config.reasoningEffort ?? status.effort ?? 'auto')
+  form.stream = config.stream !== false
   form.jsonMode = String(config.jsonMode ?? status.jsonMode ?? 'auto')
   // 0 是「未设置」的哨兵值（保证旧配置能回落），界面上显示真实默认值
   form.maxTokens = Number(config.maxTokens) > 0 ? Number(config.maxTokens) : 2048
@@ -217,14 +219,12 @@ async function loadEgress() {
 }
 
 async function run() {
-  running.value = true
+  // running 是 state.busy 的只读派生值，由 analyzeAi 内部维护，这里不再手动赋值
   try {
     await analyzeAi(undefined, [...form.contextProviders], visionImage.value ? { ...visionImage.value } : undefined)
     ElMessage.success('AI 分析完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    running.value = false
   }
 }
 

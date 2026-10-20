@@ -20,6 +20,7 @@ import type {
   ItemKind,
   ItemSort,
   RiskLevel,
+  TaskDescriptor,
   TaskGroup,
 } from '@cordclean/shared'
 import { cancelClean, cancelScan, moveFiles, openPath, startClean, startScan, state } from '../api/store.ts'
@@ -892,7 +893,7 @@ async function handleBulkCommand(command: string) {
             </el-table-column>
             <el-table-column label="风险" width="82">
               <template #default="{ row }">
-                <span class="cc-pill" :class="`risk-${row.risk}`">{{ RISK_META[row.risk].name }}</span>
+                <span class="cc-pill" :class="`risk-${row.risk}`">{{ RISK_META[row.risk as RiskLevel].name }}</span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="132">
