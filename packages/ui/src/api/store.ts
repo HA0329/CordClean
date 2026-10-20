@@ -369,6 +369,9 @@ export async function cancelAi(): Promise<void> {
 }
 
 export async function analyzeAi(taskIds?: string[], contextProviders?: string[], image?: { mime: string; data: string }): Promise<void> {
+  // 新一次分析必须从空白流式缓冲开始：上一次的输出/思维链不能残留到这次（分析结束后仍保留结果区内容）
+  state.aiStream = ''
+  state.aiStreamReasoning = ''
   state.busy = true
   try {
     state.ai = await requireTransport().request('ai/analyze', { taskIds, contextProviders, image })

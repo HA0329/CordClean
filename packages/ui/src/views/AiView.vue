@@ -66,7 +66,7 @@ const form = reactive({
   effort: 'auto',
   stream: true,
   jsonMode: 'auto',
-  maxTokens: 65536,
+  maxTokens: 3000,
   timeoutMs: 90000,
   apiKey: '',
   asEvaluator: false,
@@ -75,53 +75,139 @@ const form = reactive({
   extraHeaders: '',
 })
 
+/**
+ * 表单是否被用户改动过。
+ * 用于避免「分析完成后刷新 aiStatus / 插件列表」触发的配置回填把未保存的配置覆盖回默认值。
+ * 使用 sync 刷新：syncFromConfig 的写入靠 syncingForm 抑制，不会误标脏。
+ */
+const formDirty = ref(false)
+/** syncFromConfig 写入表单期间抑制 dirty 标记 */
+let syncingForm = false
+watch(
+  form,
+  () => {
+    if (!syncingForm) formDirty.value = true
+  },
+  { deep: true, flush: 'sync' },
+)
+
 const onlineAi = computed(() => (state.settings as any).privacy?.onlineAi !== false)
 const egress = ref<{ stats: { requests: number; bytes: number; tokens: number }; records: any[] } | null>(null)
 const egressOpen = ref(false)
-// 打开页面或插件启用后刷新 AI 状态，避免插件页启用后这里仍显示未启用
-onMounted(() => {
-  refreshAiStatus().catch(() => undefined)
-})
-watch(
-  () => state.plugins?.find((plugin) => plugin.id === 'ai')?.enabled,
-  (enabled) => {
-    if (enabled) refreshAiStatus().catch(() => undefined)
-  },
-)
 const available = computed(() => state.aiStatus.available)
 const configured = computed(() => state.aiStatus.configured)
 const analysis = computed(() => state.ai)
 const probe = computed(() => state.aiProbe ?? state.aiStatus.lastProbe)
 const modelOptions = computed(() => state.aiModels)
 
-/** 用插件配置回填表单 */
-function syncFromConfig() {
+/** 已自动拉取模型列表的配置指纹：同一配置只自动拉一次（手动「获取模型」不受限） */
+let autoModelsKey = ''
+
+/** 当前 AI 配置指纹（形态 / 地址 / 模型 / 是否已有凭据） */
+function aiConfigFingerprint(): string {
   const config = aiPluginConfig()
   const status = state.aiStatus
-  form.apiShape = String(config.apiShape ?? status.shape ?? 'chat')
-  form.baseUrl = String(config.baseUrl ?? status.baseUrl ?? RECOMMENDED_BASE[form.apiShape] ?? '')
-  form.model = String(config.model ?? status.model ?? 'deepseek-flash')
-  form.effort = String(config.reasoningEffort ?? status.effort ?? 'auto')
-  form.stream = config.stream !== false
-  form.jsonMode = String(config.jsonMode ?? status.jsonMode ?? 'auto')
-  // 0 是「未设置」的哨兵值（保证旧配置能回落），界面上显示真实默认值
-  form.maxTokens = Number(config.maxTokens) > 0 ? Number(config.maxTokens) : 2048
-  form.timeoutMs = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 90000
-  form.apiKey = String(config.apiKey ?? '')
-  form.asEvaluator = config.asEvaluator === true
-  const configuredContext = Array.isArray(config.contextProviders) ? [...config.contextProviders] : []
-  const defaultContext = (state.aiStatus.contextAvailable ?? []).filter((item) => item.defaultEnabled).map((item) => item.id)
-  let savedContext: string[] = []
-  try {
-    const raw = localStorage.getItem('cordclean.ai.context')
-    savedContext = Array.isArray(JSON.parse(raw ?? '[]')) ? JSON.parse(raw ?? '[]') : []
-  } catch {}
-  form.contextProviders = savedContext.length ? savedContext : (configuredContext.length ? configuredContext : defaultContext)
-  form.extraBody = config.extraBody && Object.keys(config.extraBody).length ? JSON.stringify(config.extraBody, null, 2) : ''
-  form.extraHeaders = config.extraHeaders && Object.keys(config.extraHeaders).length ? JSON.stringify(config.extraHeaders, null, 2) : ''
+  const shape = String(config.apiShape ?? status.shape ?? 'chat')
+  const baseUrl = String(config.baseUrl ?? status.baseUrl ?? '')
+  const model = String(config.model ?? status.model ?? '')
+  return `${shape}|${baseUrl}|${model}|${configured.value}`
 }
 
-watch(() => [state.plugins, state.aiStatus] as const, syncFromConfig, { immediate: true, deep: true })
+/**
+ * 静默自动拉取模型候选（进页面 / 插件启用 / 凭据就绪时各一次）。
+ * - 加载期间不清空已有候选（fetchAiModels 只在成功后整体替换）；
+ * - 失败静默回退内置目录，不打扰用户；手动「获取模型」仍可强制刷新。
+ */
+async function autoLoadModels(): Promise<void> {
+  if (!configured.value || loadingModels.value) return
+  const fingerprint = aiConfigFingerprint()
+  if (fingerprint === autoModelsKey) return
+  autoModelsKey = fingerprint
+  loadingModels.value = true
+  try {
+    await fetchAiModels(false)
+  } catch {
+    /* 静默失败：保留现有候选与内置目录 */
+  } finally {
+    loadingModels.value = false
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 生命周期：状态刷新与自动预取                                        */
+/* ------------------------------------------------------------------ */
+
+// 打开页面：刷新 AI 状态；凭据已就绪则静默预取一次模型候选（失败回退内置目录）
+onMounted(() => {
+  refreshAiStatus().catch(() => undefined)
+  if (configured.value) void autoLoadModels()
+})
+
+// 插件启用状态变化：刷新运行时状态；首次启用时无条件用已保存配置回填表单并预取模型
+watch(
+  () => state.plugins?.find((plugin) => plugin.id === 'ai')?.enabled === true,
+  (enabled, previous) => {
+    if (!enabled) return
+    refreshAiStatus().catch(() => undefined)
+    if (!previous) {
+      formDirty.value = false
+      syncFromConfig()
+    }
+    void autoLoadModels()
+  },
+)
+
+// 凭据从「无」到「有」时自动拉一次模型候选（provider 列表不用等第一次分析）
+watch(configured, (value, previous) => {
+  if (value && !previous) void autoLoadModels()
+})
+
+/**
+ * 用插件配置回填表单。
+ * 写入期间抑制 dirty 标记（回填不是用户改动）；回填完成后视为「表单与已保存配置一致」。
+ */
+function syncFromConfig() {
+  syncingForm = true
+  try {
+    const config = aiPluginConfig()
+    const status = state.aiStatus
+    form.apiShape = String(config.apiShape ?? status.shape ?? 'chat')
+    form.baseUrl = String(config.baseUrl ?? status.baseUrl ?? RECOMMENDED_BASE[form.apiShape] ?? '')
+    form.model = String(config.model ?? status.model ?? 'deepseek-flash')
+    form.effort = String(config.reasoningEffort ?? status.effort ?? 'auto')
+    form.stream = config.stream !== false
+    form.jsonMode = String(config.jsonMode ?? status.jsonMode ?? 'auto')
+    // 旧默认 1200 / 2048 统一提升到 3000：未设置（0/NaN）用 3000，已保存的更小值在界面上显示 3000（保存后生效）
+    const savedMaxTokens = Number(config.maxTokens)
+    form.maxTokens = savedMaxTokens > 0 ? (savedMaxTokens < 3000 ? 3000 : savedMaxTokens) : 3000
+    form.timeoutMs = Number(config.timeoutMs) > 0 ? Number(config.timeoutMs) : 90000
+    form.apiKey = String(config.apiKey ?? '')
+    form.asEvaluator = config.asEvaluator === true
+    const configuredContext = Array.isArray(config.contextProviders) ? [...config.contextProviders] : []
+    const defaultContext = (state.aiStatus.contextAvailable ?? []).filter((item) => item.defaultEnabled).map((item) => item.id)
+    let savedContext: string[] = []
+    try {
+      const raw = localStorage.getItem('cordclean.ai.context')
+      savedContext = Array.isArray(JSON.parse(raw ?? '[]')) ? JSON.parse(raw ?? '[]') : []
+    } catch {}
+    form.contextProviders = savedContext.length ? savedContext : (configuredContext.length ? configuredContext : defaultContext)
+    form.extraBody = config.extraBody && Object.keys(config.extraBody).length ? JSON.stringify(config.extraBody, null, 2) : ''
+    form.extraHeaders = config.extraHeaders && Object.keys(config.extraHeaders).length ? JSON.stringify(config.extraHeaders, null, 2) : ''
+  } finally {
+    syncingForm = false
+    formDirty.value = false
+  }
+}
+
+// 插件/运行时状态刷新时的回填：仅在表单未脏时进行。
+// 关键修复：analyzeAi 结束后会刷新 aiStatus，此时绝不能把用户未保存的表单覆盖回默认值。
+watch(
+  () => [state.plugins, state.aiStatus] as const,
+  () => {
+    if (!formDirty.value) syncFromConfig()
+  },
+  { immediate: true, deep: true },
+)
 
 // 切换形态时，如果当前地址还是「某个推荐地址」，就顺手换成新形态的推荐地址
 watch(
@@ -151,6 +237,8 @@ async function loadModels() {
   loadingModels.value = true
   try {
     const result = await fetchAiModels(true)
+    // 手动刷新成功即视为「当前配置已拉取过」，避免自动预取重复请求
+    autoModelsKey = aiConfigFingerprint()
     ElMessage.success(`获取到 ${result.count} 个模型（来源：${result.source === 'remote' ? '接口' : '内置目录'}）`)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -159,7 +247,12 @@ async function loadModels() {
   }
 }
 
-async function save() {
+/**
+ * 校验并保存表单到插件配置（热重载）。
+ * @param silent 静默模式（分析前自动保存）：成功不弹提示、不刷新模型列表；失败给出错误提示
+ * @returns 是否保存成功（额外参数 JSON 非法或请求失败返回 false）
+ */
+async function saveForm(silent = false): Promise<boolean> {
   formError.value = ''
   let extraBody: Record<string, unknown> = {}
   let extraHeaders: Record<string, unknown> = {}
@@ -168,7 +261,7 @@ async function save() {
     extraHeaders = form.extraHeaders.trim() ? JSON.parse(form.extraHeaders) : {}
   } catch (error) {
     formError.value = '额外参数必须是合法 JSON：' + (error instanceof Error ? error.message : String(error))
-    return
+    return false
   }
   saving.value = true
   try {
@@ -187,13 +280,27 @@ async function save() {
       extraBody,
       extraHeaders,
     })
-    ElMessage.success('接口配置已保存，插件已热重载')
-    await loadModels()
+    // 已落盘：之后的状态刷新可以安全回填，且表单值等于已保存配置
+    formDirty.value = false
+    syncFromConfig()
+    if (!silent) {
+      ElMessage.success('接口配置已保存，插件已热重载')
+      await loadModels()
+    }
+    return true
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : String(error))
+    const message = error instanceof Error ? error.message : String(error)
+    formError.value = message
+    ElMessage.error('接口配置保存失败：' + message)
+    return false
   } finally {
     saving.value = false
   }
+}
+
+/** 「保存并热重载」按钮 */
+async function save(): Promise<void> {
+  await saveForm(false)
 }
 
 async function doProbe() {
@@ -219,6 +326,13 @@ async function loadEgress() {
 }
 
 async function run() {
+  if (running.value || saving.value) return
+  // 表单有未保存改动时先自动保存并热重载：保证内核使用的配置与界面一致，
+  // 也避免分析完成后的状态刷新把未保存配置覆盖回默认值。
+  if (formDirty.value) {
+    const saved = await saveForm(true)
+    if (!saved) return
+  }
   // running 是 state.busy 的只读派生值，由 analyzeAi 内部维护，这里不再手动赋值
   try {
     await analyzeAi(undefined, [...form.contextProviders], visionImage.value ? { ...visionImage.value } : undefined)
@@ -458,7 +572,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
               allow-create
               default-first-option
               style="width: 100%"
-              placeholder="选择或直接输入模型名"
+              placeholder="选择或直接输入模型名（回车确认）"
             >
               <el-option v-for="model in modelOptions" :key="model.id" :label="model.id" :value="model.id">
                 <span>{{ model.id }}</span>
@@ -467,7 +581,15 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
                   <template v-if="model.contextWindow">· {{ Math.round(model.contextWindow / 1000) }}k</template>
                 </span>
               </el-option>
+              <!-- 手动输入 / 已保存但不在候选里的模型名也要能正常显示 -->
+              <el-option
+                v-if="form.model && !modelOptions.some((model) => model.id === form.model)"
+                :key="`manual:${form.model}`"
+                :label="form.model"
+                :value="form.model"
+              />
             </el-select>
+            <div class="cc-hint">候选来自接口或内置目录（「获取模型」失败时自动回退）；没有候选时可直接输入模型名后回车确认。</div>
           </el-form-item>
 
           <el-form-item label="推理等级">
@@ -586,6 +708,14 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
         <pre class="stream-box">{{ state.aiStream }}</pre>
       </div>
 
+      <!-- AI 插件工坊：不依赖分析结果，进页面即可使用 -->
+      <div class="cc-card">
+        <div class="cc-card-title"><h3>🛠️ AI 插件工坊</h3><span class="cc-faint">无需先分析：生成单文件插件 → 校验 → 你阅读代码后安装</span></div>
+        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。</p>
+        <el-input v-model="workshopRequirement" type="textarea" :rows="2" placeholder="例如：写一个插件，清理 D 盘下超过 30 天的 .log 文件" />
+        <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
+      </div>
+
       <!-- 分析结果 -->
       <template v-if="analysis">
     <div class="cc-card">
@@ -629,13 +759,6 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
           </div>
         </div>
 
-        <div class="cc-card">
-        <div class="cc-card-title"><h3>🛠️ AI 插件工坊</h3><span class="cc-faint">生成单文件插件 → 校验 → 你阅读代码后安装</span></div>
-        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。</p>
-        <el-input v-model="workshopRequirement" type="textarea" :rows="2" placeholder="例如：写一个插件，清理 D 盘下超过 30 天的 .log 文件" />
-        <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
-      </div>
-
         <div v-if="rootSuggestions.length" class="cc-card">
         <div class="cc-card-title">
           <h3>📁 AI 建议新增的扫描根</h3>
@@ -661,23 +784,6 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
         <p class="cc-hint">确认后会调用补偿链（路径策略 / 预算 / 预览一致性 / 回收站），与手动清理完全同一条路径。</p>
         <el-button type="primary" @click="selectionOpen = true">对比并应用</el-button>
       </div>
-
-      <el-dialog v-model="workshopOpen" title="插件草稿审阅" width="900px">
-      <template v-if="workshopDraft">
-        <p class="cc-hint">名称：{{ workshopDraft.name }} · {{ workshopDraft.notes }}</p>
-        <div v-if="workshopValidation">
-          <p v-if="workshopValidation.errors.length" class="error-text">校验未通过：{{ workshopValidation.errors.join('；') }}</p>
-          <p v-else class="cc-hint">✓ 语法与契约校验通过</p>
-          <p v-if="workshopValidation.warnings.length" class="cc-faint">提示：{{ workshopValidation.warnings.join('；') }}</p>
-        </div>
-        <el-input v-model="workshopDraft.code" type="textarea" :rows="18" class="cc-mono" spellcheck="false" @input="revalidateWorkshopDraft" />
-        <el-checkbox v-model="workshopReviewed" style="margin-top: 8px">我已阅读上述代码，理解它会以完整权限运行</el-checkbox>
-      </template>
-      <template #footer>
-        <el-button @click="workshopOpen = false">取消</el-button>
-        <el-button type="primary" :disabled="!workshopValidation?.ok || !workshopReviewed" @click="installWorkshopDraft">安装并启用</el-button>
-      </template>
-    </el-dialog>
 
     <el-dialog v-model="dryRunOpen" title="规则试运行（只读，不会删除）" width="720px">
       <p v-if="dryRunLoading" class="cc-faint">正在统计命中项…</p>
@@ -747,6 +853,23 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
         <pre class="reasoning-text">{{ record.preview || '(无请求体)' }}</pre>
       </div>
       <p v-if="!(egress?.records?.length)" class="cc-empty">还没有外发记录：发起一次分析或测试连接后即可看到。</p>
+    </el-dialog>
+
+    <el-dialog v-model="workshopOpen" title="插件草稿审阅" width="900px">
+      <template v-if="workshopDraft">
+        <p class="cc-hint">名称：{{ workshopDraft.name }} · {{ workshopDraft.notes }}</p>
+        <div v-if="workshopValidation">
+          <p v-if="workshopValidation.errors.length" class="error-text">校验未通过：{{ workshopValidation.errors.join('；') }}</p>
+          <p v-else class="cc-hint">✓ 语法与契约校验通过</p>
+          <p v-if="workshopValidation.warnings.length" class="cc-faint">提示：{{ workshopValidation.warnings.join('；') }}</p>
+        </div>
+        <el-input v-model="workshopDraft.code" type="textarea" :rows="18" class="cc-mono" spellcheck="false" @input="revalidateWorkshopDraft" />
+        <el-checkbox v-model="workshopReviewed" style="margin-top: 8px">我已阅读上述代码，理解它会以完整权限运行</el-checkbox>
+      </template>
+      <template #footer>
+        <el-button @click="workshopOpen = false">取消</el-button>
+        <el-button type="primary" :disabled="!workshopValidation?.ok || !workshopReviewed" @click="installWorkshopDraft">安装并启用</el-button>
+      </template>
     </el-dialog>
 
     </template>

@@ -42,9 +42,17 @@ describe('analyze 流式路径', () => {
       settingsOverrides: { plugins: { ai: { enabled: true, config: { apiKey: 'k', model: 'mock', baseUrl: `http://127.0.0.1:${port}`, stream: true } } } },
     })
     try {
+      const events: Array<{ kind: string; text?: string; at: number }> = []
+      app.ctx.on('ai/stream' as any, (event: any) => events.push({ kind: event.kind, text: event.text, at: Date.now() }) as any)
       const analysis = await app.ctx.ai!.analyze()
       expect(analysis.summary).toContain('流式摘要')
       expect(captured).toContain('"stream":true')
+      // 内核必须逐条广播增量（界面/外壳依赖这些事件渲染流式输出），而不是只发最终结果
+      const deltas = events.filter((event) => event.kind === 'delta')
+      expect(deltas.length).toBeGreaterThan(1)
+      expect(deltas.map((event) => event.text).join('')).toContain('流式摘要')
+      expect(events.some((event) => event.kind === 'done')).toBe(true)
+      expect(new Set(events.map((event) => event.kind))).toEqual(new Set(['delta', 'done']))
     } finally {
       await app.dispose()
     }

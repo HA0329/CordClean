@@ -95,6 +95,9 @@ async function createKernel() {
     ['cleaner/clean-done', 'clean/done'],
     ['plugins/changed', 'plugins/changed'],
     ['history/changed', 'history/changed'],
+    // AI 流式增量必须转发，否则桌面外壳要等分析结束才有输出（看起来“不是流式”）
+    ['ai/stream', 'ai/stream'],
+    ['scheduler/scan', 'scheduler/scan'],
     ['system/log', 'log'],
   ]
   for (const [internal, external] of events) {
