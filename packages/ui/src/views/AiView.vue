@@ -99,6 +99,8 @@ const configured = computed(() => state.aiStatus.configured)
 const analysis = computed(() => state.ai)
 const probe = computed(() => state.aiProbe ?? state.aiStatus.lastProbe)
 const modelOptions = computed(() => state.aiModels)
+/** 模型名手动输入模式：候选列表不可用/想用任意模型名时切换成普通输入框 */
+const manualModel = ref(false)
 
 /** 已自动拉取模型列表的配置指纹：同一配置只自动拉一次（手动「获取模型」不受限） */
 let autoModelsKey = ''
@@ -488,8 +490,8 @@ async function applyAiSelection() {
   }
 }
 
-const shapeLabel = computed(() => SHAPES.find((item) => item.value === state.aiStatus.shape)?.value ?? state.aiStatus.shape)
-const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.aiStatus.effort)?.value ?? state.aiStatus.effort)
+const shapeLabel = computed(() => SHAPES.find((item) => item.value === form.apiShape)?.value ?? form.apiShape)
+const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.effort)?.value ?? form.effort)
 </script>
 
 <template>
@@ -519,15 +521,18 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
     </el-alert>
 
     <template v-else>
-      <!-- 运行时状态 -->
+      <!-- 运行状态：全部来自当前表单/实时状态，避免“固定的无用信息” -->
       <div class="status-bar">
         <span class="cc-pill" :class="{ 'status-active': configured }">
           {{ configured ? '凭据已配置' : '未配置 API Key' }}
         </span>
-        <span class="cc-pill">形态：{{ shapeLabel }}</span>
-        <span class="cc-pill">模型：{{ state.aiStatus.model || '—' }}</span>
-        <span class="cc-pill">推理：{{ effortLabel }}</span>
-        <span class="cc-pill">JSON：{{ state.aiStatus.jsonMode }}</span>
+        <span class="cc-pill" :class="{ 'status-active': !formDirty, 'status-error': formDirty }">
+          {{ formDirty ? '有未保存修改（分析前会自动保存）' : '配置已保存' }}
+        </span>
+        <span class="cc-pill">将使用：{{ form.apiShape }} · {{ form.model || '—' }}</span>
+        <span class="cc-pill">推理：{{ form.effort }}</span>
+        <span class="cc-pill">JSON：{{ form.jsonMode }}</span>
+        <span class="cc-pill">最大输出：{{ form.maxTokens }} tokens</span>
         <span v-if="probe" class="cc-pill" :class="{ 'status-active': probe.ok, 'status-error': !probe.ok }">
           探测：{{ probe.ok ? `${probe.latencyMs} ms` : '失败' }}
         </span>
@@ -566,7 +571,11 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
           </el-form-item>
 
           <el-form-item label="模型">
+            <template v-if="manualModel">
+              <el-input v-model="form.model" placeholder="直接输入模型名，例如 deepseek-flash" />
+            </template>
             <el-select
+              v-else
               v-model="form.model"
               filterable
               allow-create
@@ -589,7 +598,12 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === state.a
                 :value="form.model"
               />
             </el-select>
-            <div class="cc-hint">候选来自接口或内置目录（「获取模型」失败时自动回退）；没有候选时可直接输入模型名后回车确认。</div>
+            <div class="cc-hint">
+              候选来自接口或内置目录（「获取模型」失败时自动回退）；默认使用 <code>deepseek-flash</code>。
+              <el-button text size="small" @click="manualModel = !manualModel">
+                {{ manualModel ? '从候选列表选择' : '手动输入模型名' }}
+              </el-button>
+            </div>
           </el-form-item>
 
           <el-form-item label="推理等级">

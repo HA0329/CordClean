@@ -127,6 +127,14 @@ export function normalizeConfig(raw: Partial<AiConfig> | undefined): AiConfig {
   const shape = pickShape(input.apiShape)
   const baseUrl = String(input.baseUrl ?? '').trim() || DEFAULT_BASE_URLS[shape]
   const chatPath = String(input.chatPath ?? '').trim() || DEFAULT_PATHS[shape]
+  // 默认模型固定为 deepseek-flash；把旧默认 deepseek-chat/reasoner/coder 迁移过来（官方已改名）
+  const LEGACY_MODEL_ALIASES: Record<string, string> = {
+    'deepseek-chat': 'deepseek-flash',
+    'deepseek-reasoner': 'deepseek-flash',
+    'deepseek-coder': 'deepseek-flash',
+  }
+  const rawModel = String(input.model ?? '').trim()
+  const model = LEGACY_MODEL_ALIASES[rawModel.toLowerCase()] ?? (rawModel || 'deepseek-flash')
   // timeoutMs/maxTokens 的 schema 默认值是 0（未设置），这里再回落到旧字段与内置默认值
   const timeoutMs = Number(input.timeoutMs ?? 0) || Number(input.timeout ?? 0) || 90_000
   let maxTokens = Number(input.maxTokens ?? 0) || Number((input as any).max_tokens ?? 0) || 393216
@@ -140,7 +148,7 @@ export function normalizeConfig(raw: Partial<AiConfig> | undefined): AiConfig {
     chatPath,
     modelsPath: String(input.modelsPath ?? '/models').trim() || '/models',
     modelsUrl: String(input.modelsUrl ?? '').trim(),
-    model: String(input.model ?? '').trim() || 'deepseek-flash',
+    model,
     reasoningEffort: pickEffort(input.reasoningEffort),
     jsonMode: (['auto', 'on', 'off'] as const).includes(input.jsonMode as any) ? (input.jsonMode as JsonMode) : 'auto',
   maxTokens: Number.isFinite(maxTokens) ? Math.min(1000000, Math.max(128, Math.trunc(maxTokens))) : 393216,
