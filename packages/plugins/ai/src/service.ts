@@ -483,7 +483,12 @@ export class AiService extends Service implements AiLike {
       if (options.image.data.length > 4_000_000) throw new Error('图片过大（base64 超过 4MB），请压缩后再试')
     }
     const limits = this.modelLimits()
-    const config = { ...this.rawConfig, maxTokens: Math.min(limits.maxOutputTokens, Math.max(32_768, this.rawConfig.maxTokens)) }
+    // 尊重用户配置的 max_tokens：只按模型能力上限收敛，不再偷偷抬到 32768
+    const requestedTokens = Number(this.rawConfig.maxTokens)
+    const config = {
+      ...this.rawConfig,
+      maxTokens: Math.min(limits.maxOutputTokens, Math.max(1, Number.isFinite(requestedTokens) ? requestedTokens : 3000)),
+    }
     const profile = await this.buildProfile(options.extraContext)
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan

@@ -99,6 +99,7 @@ const configured = computed(() => state.aiStatus.configured)
 const analysis = computed(() => state.ai)
 const probe = computed(() => state.aiProbe ?? state.aiStatus.lastProbe)
 const modelOptions = computed(() => state.aiModels)
+const currentModel = computed(() => modelOptions.value.find((model) => model.id === form.model))
 /** 模型名手动输入模式：候选列表不可用/想用任意模型名时切换成普通输入框 */
 const manualModel = ref(false)
 
@@ -603,6 +604,13 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
               <el-button text size="small" @click="manualModel = !manualModel">
                 {{ manualModel ? '从候选列表选择' : '手动输入模型名' }}
               </el-button>
+            </div>
+            <div v-if="!manualModel && form.model && modelOptions.length" class="cc-hint">
+              <template v-if="currentModel">
+                当前模型版本：{{ currentModel.name || '官方未提供显示名' }}
+                <template v-if="currentModel.contextWindow">· 上下文 {{ Math.round(currentModel.contextWindow / 1000) }}k</template>
+              </template>
+              <template v-else>自定义模型名（官方 /models 未返回该 ID），会原样发送给接口。</template>
             </div>
           </el-form-item>
 

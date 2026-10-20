@@ -119,6 +119,33 @@ function pickEffort(value: unknown): EffortLevel {
 }
 
 /**
+ * 官方模型 ID 与历史别名的映射。
+ *
+ * 依据 DeepSeek 官方文档（2026-10）：
+ * - 请求里的稳定模型 ID 是 `deepseek-flash`（实际由 DeepSeek-V4.1-Flash-1017 提供服务）
+ *   与 `deepseek-v4-pro`（DeepSeek-V4-Pro-0813）；
+ * - `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` 旧名仍被接受，
+ *   但对应模型已退役、请求会被路由到 V4.1-Flash；这里统一迁移到稳定 ID；
+ * - `deepseek-chat` / `deepseek-reasoner` / `deepseek-coder` 是更早的旧名。
+ *
+ * 迁移只做「有明确官方说明的别名」，未知模型名原样保留——
+ * 用户手填的新模型/代理模型不能被改写。
+ */
+export const LEGACY_MODEL_ALIASES: Record<string, string> = {
+  'deepseek-chat': 'deepseek-flash',
+  'deepseek-reasoner': 'deepseek-flash',
+  'deepseek-coder': 'deepseek-flash',
+  'deepseek-v4-flash': 'deepseek-flash',
+  'deepseek-v4-flash-vision-exp': 'deepseek-flash',
+}
+
+/** 把旧模型名解析成官方稳定 ID；未知名称原样返回 */
+export function resolveModelAlias(raw: string): string {
+  const id = String(raw ?? '').trim()
+  return LEGACY_MODEL_ALIASES[id.toLowerCase()] ?? (id || 'deepseek-flash')
+}
+
+/**
  * 规范化配置：补齐默认值、兼容旧字段、修正非法枚举。
  * 允许用户手改 config.json，因此这里必须对任何输入都给出可用结果。
  */
@@ -127,14 +154,7 @@ export function normalizeConfig(raw: Partial<AiConfig> | undefined): AiConfig {
   const shape = pickShape(input.apiShape)
   const baseUrl = String(input.baseUrl ?? '').trim() || DEFAULT_BASE_URLS[shape]
   const chatPath = String(input.chatPath ?? '').trim() || DEFAULT_PATHS[shape]
-  // 默认模型固定为 deepseek-flash；把旧默认 deepseek-chat/reasoner/coder 迁移过来（官方已改名）
-  const LEGACY_MODEL_ALIASES: Record<string, string> = {
-    'deepseek-chat': 'deepseek-flash',
-    'deepseek-reasoner': 'deepseek-flash',
-    'deepseek-coder': 'deepseek-flash',
-  }
-  const rawModel = String(input.model ?? '').trim()
-  const model = LEGACY_MODEL_ALIASES[rawModel.toLowerCase()] ?? (rawModel || 'deepseek-flash')
+  const model = resolveModelAlias(String(input.model ?? ''))
   // timeoutMs/maxTokens 的 schema 默认值是 0（未设置），这里再回落到旧字段与内置默认值
   const timeoutMs = Number(input.timeoutMs ?? 0) || Number(input.timeout ?? 0) || 90_000
   let maxTokens = Number(input.maxTokens ?? 0) || Number((input as any).max_tokens ?? 0) || 393216

@@ -1,6 +1,6 @@
 {
   "name": "cordclean",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "description": "CordClean - 基于 Cordis 插件框架的模块化电脑清理工具",
