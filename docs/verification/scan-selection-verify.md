@@ -6,6 +6,7 @@
 - 验收对象（工作区未提交改动）：`packages/shared/src/selection.ts`（新增）、`packages/shared/src/index.ts`（+1 行）、`packages/ui/src/views/CleanView.vue`（改版）、`tests/selection.test.ts`（新增 55 条）、`scripts/e2e-ui.mjs`（更新断言）
 - 复验说明：首轮验收后 Lead 修复了报告中 4 条低风险建议并重新构建；本验收员对**修复后最终 dist** 完整复验（2026-10-20 14:14–14:20），结果见第七节。
 - 最终构建：以 Lead 最后一次小修（`el-pagination` 改为 `size="small"`、E2E 截图前滚动到结果面板）后的源码重新执行 `pnpm build:ui`，本文所有 UI/E2E 证据均基于该最终 dist。
+- 快照说明：本报告是 2026-10-20 的验收快照（当时 40 文件 / 289 用例）。随后批次1 安全修复新增了回归测试，当前全量为 44 文件 / 346 用例；历史数字保留不改，仅在此说明。
 
 ## 结论：**通过**
 

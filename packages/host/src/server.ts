@@ -241,11 +241,10 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     try {
       let content = await fs.readFile(target)
       if (target.endsWith('index.html')) {
-        // 注入启动参数（token / WS 地址）
+        // 注入启动参数（token / WS 地址）；版本统一由 app/info 返回，避免此处硬编码漂移
         const boot = `<script>window.__CORDCLEAN__=${JSON.stringify({
           token,
           wsUrl: `ws://${host}:${port}/rpc`,
-          version: '0.1.0',
         })}</script>`
         content = Buffer.from(
           content.toString('utf8').replace('<!--CORDCLEAN_BOOT-->', boot),

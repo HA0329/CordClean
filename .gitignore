@@ -11,3 +11,9 @@ coverage/
 .env.local
 
 .run/
+
+# 本地 IDE 配置（不入库）
+.idea/
+
+# 本地验证截图（证据由报告文字记录，不入库）
+docs/verification/screenshots/

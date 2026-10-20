@@ -20,7 +20,7 @@ afterAll(async () => {
 })
 
 /** 带配置的插件：根据 includeA 注册不同任务 */
-const configurablePlugin = defineCleanerPlugin<{ includeA: boolean }>({
+const configurablePlugin = defineCleanerPlugin<{ includeA: boolean; label: string }>({
   name: 'cfg',
   inject: ['cleaner'],
   Config: Schema.object({

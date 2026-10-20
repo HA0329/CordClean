@@ -175,9 +175,6 @@ importers:
       ws:
         specifier: ^8.22.0
         version: 8.22.0
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
     devDependencies:
       '@cordclean/core':
         specifier: workspace:*
@@ -197,9 +194,6 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.2
-      '@vitejs/plugin-vue':
-        specifier: ^6.0.1
-        version: 6.0.10(vite@7.3.7(@types/node@24.19.2)(tsx@4.23.15))(vue@3.5.44(typescript@5.9.3))
       electron:
         specifier: ^38.0.0
         version: 38.8.6
@@ -212,9 +206,6 @@ importers:
       typescript:
         specifier: ^5.9.0
         version: 5.9.3
-      vite:
-        specifier: ^7.1.0
-        version: 7.3.7(@types/node@24.19.2)(tsx@4.23.15)
       vitest:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@24.19.2)(tsx@4.23.15)
@@ -230,12 +221,6 @@ importers:
       '@cordclean/host':
         specifier: workspace:*
         version: link:../../packages/host
-      '@cordclean/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@cordclean/utils':
-        specifier: workspace:*
-        version: link:../../packages/utils
 
   apps/web:
     dependencies:
@@ -245,9 +230,6 @@ importers:
       '@cordclean/host':
         specifier: workspace:*
         version: link:../../packages/host
-      '@cordclean/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@cordclean/utils':
         specifier: workspace:*
         version: link:../../packages/utils
@@ -297,7 +279,7 @@ importers:
         specifier: 4.0.0-rc.11
         version: 4.0.0-rc.11
       schemastery:
-        specifier: ^3.17.2
+        specifier: ^3.18.0
         version: 3.18.0
 
   packages/host:
@@ -315,7 +297,7 @@ importers:
         specifier: 4.0.0-rc.11
         version: 4.0.0-rc.11
       ws:
-        specifier: ^8.18.0
+        specifier: ^8.22.0
         version: 8.22.0
       zod:
         specifier: ^4.6.7

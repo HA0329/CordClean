@@ -117,7 +117,7 @@ export function summarizeSelection(items, selected, tasks): SelectionSummary
 | --- | --- |
 | 共享选择逻辑 | `packages/shared/src/selection.ts`（15 个导出，纯函数）；`tests/selection.test.ts` 55 条单测 |
 | 清理页 UI | `packages/ui/src/views/CleanView.vue` 重写：分组总览 / 逐项明细 / 受保护三视图 + 推荐横幅 + 批量选择助手 + 详情抽屉 + 确认摘要 |
-| 测试 | 全量 40 个文件 / 289 条用例全绿（原 234 + 新增 55） |
+| 测试 | 全量 44 个文件 / 346 条用例全绿（选择 v2 新增 55 条 + 批次1 安全回归 57 条） |
 | 类型检查 / 构建 | `pnpm typecheck` exit 0；`pnpm build:ui` exit 0 |
 | 真实 E2E | Electron 6 页正常、真实扫描 552 项、默认推荐 551 项（= safe 且非 protected）、0 JS 异常；截图 `docs/screenshots/ui-clean-result.png`、`ui-clean-items.png` |
 | 千条级验收 | 3,000 条 mock 数据：`scripts/verify-clean-ui.mjs` PASS 25/25；独立语义断言 98/98；默认推荐 1,776 项（36.6 GB）且零 risky/protected；交互最大 78 ms；首屏 669 ms |

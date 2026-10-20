@@ -67,13 +67,16 @@ const CATEGORY_META = {
 }
 
 /** [id, 名称, 描述, risk, requiresAdmin, icon, 典型扫描目标] */
+// 说明：本文件是 UI 压测用的合成数据，40 个 taskId 中多数是「合成 id」以便覆盖不同分类形态；
+// 已退役插件（temp/system-logs/update-cache/thumbnails，commit 43cc831）的旧 id 已改成
+// 真实 rule-pack 任务 id（`rule:<categoryKey>`），避免与真实 tasks/list 数据混淆。
 const TASK_BLUEPRINTS = [
   // system（0-4）
-  ['temp', '临时文件', '系统与用户临时目录中超过 7 天未修改的文件', 'safe', true, '🧹', ['C:\\Windows\\Temp', 'C:\\Users\\mock\\AppData\\Local\\Temp']],
-  ['system-logs', '系统日志', 'Windows 事件日志与组件日志的过期副本', 'caution', true, '📜', ['C:\\Windows\\Logs', 'C:\\Windows\\System32\\LogFiles']],
-  ['update-cache', 'Windows 更新缓存', '已安装更新留下的下载缓存，清理后不影响已装补丁', 'caution', true, '🪟', ['C:\\Windows\\SoftwareDistribution\\Download']],
-  ['recycle-bin', '回收站', '各磁盘回收站中等待清空的文件（清空后不可恢复）', 'safe', false, '🗑️', ['C:\\$Recycle.Bin', 'D:\\$Recycle.Bin']],
-  ['thumbnails', '缩略图缓存', '资源管理器为图片/视频生成的缩略图数据库', 'safe', false, '🖼️', ['C:\\Users\\mock\\AppData\\Local\\Microsoft\\Windows\\Explorer']],
+  ['rule:system_temp', '临时文件', '系统与用户临时目录中超过 7 天未修改的文件', 'safe', true, '🧹', ['C:\\Windows\\Temp', 'C:\\Users\\mock\\AppData\\Local\\Temp']],
+  ['rule:system_logs', '系统日志', 'Windows 事件日志与组件日志的过期副本', 'caution', true, '📜', ['C:\\Windows\\Logs', 'C:\\Windows\\System32\\LogFiles']],
+  ['rule:system_admin', 'Windows 更新缓存', '已安装更新留下的下载缓存，清理后不影响已装补丁', 'caution', true, '🪟', ['C:\\Windows\\SoftwareDistribution\\Download']],
+  ['recycle', '回收站', '各磁盘回收站中等待清空的文件（清空后不可恢复）', 'safe', false, '🗑️', ['C:\\$Recycle.Bin', 'D:\\$Recycle.Bin']],
+  ['rule:extra_windows', '缩略图缓存', '资源管理器为图片/视频生成的缩略图数据库', 'safe', false, '🖼️', ['C:\\Users\\mock\\AppData\\Local\\Microsoft\\Windows\\Explorer']],
   // browser（5-9）
   ['chrome-cache', 'Chrome 缓存', 'Chrome 网页缓存与代码缓存，清理后首次加载略慢', 'safe', false, '🌐', ['C:\\Users\\mock\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Cache']],
   ['chrome-history', 'Chrome 历史记录', 'Chrome 浏览历史数据库，属于隐私痕迹', 'caution', false, '🕘', ['C:\\Users\\mock\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\History']],
@@ -574,7 +577,7 @@ function buildHistory() {
     sessionId: `mock-session-${index + 1}`,
     startedAt: MOCK_NOW - (index + 1) * DAY,
     elapsedMs: 3_200 + index * 800,
-    taskIds: ['temp', 'chrome-cache', 'npm-cache'],
+    taskIds: ['rule:system_temp', 'rule:web_cache', 'rule:dev_caches'],
     freedBytes: (index + 1) * 1.5 * GIB,
     recycledBytes: 0,
     quarantinedBytes: index * 220 * 1024 * 1024,

@@ -1,4 +1,7 @@
 /**
+ * [LEGACY 2026-10] dev-cache 插件已随 commit 43cc831 退役（并入 rule-pack 开发缓存分类），
+ * 本脚本仅作历史归档保留：检测到任务不存在时会打印提示并正常退出。
+ *
  * dev-cache 插件自测脚本（只做扫描验证，不执行任何真实删除）。
  *
  * 验证内容：
@@ -81,6 +84,12 @@ async function scanTask(
 
 const dataDir = path.join(os.tmpdir(), 'cordclean-check-dev-cache-' + Date.now())
 const app = await createApp({ dataDir, logLevel: 'warn' })
+// [LEGACY] 对应插件已退役：任务缺失时直接提示退出，避免后续断言产生误导性失败。
+if (!app.ctx.cleaner.list().some((task) => task.id === 'dev-cache')) {
+  console.log('LEGACY：dev-cache/ide-cache 插件已退役（43cc831），本自检脚本不再适用；仅作历史归档保留。')
+  await app.dispose()
+  process.exit(0)
+}
 console.log('数据目录 =', dataDir)
 console.log('内置任务 =', app.ctx.cleaner.list().map((task) => task.id).join(', '))
 
