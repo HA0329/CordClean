@@ -22,8 +22,6 @@ import type {
   ApiMethod,
   ApiParams,
   ApiResult,
-  CleanItem,
-  CleanItemRef,
 } from '@cordclean/shared'
 import { dlog, exportDiagnostics, initDiagnostics, logDirPath, recentLogs } from './diagnostics.ts'
 import { saveGeneratedPlugin, validatePluginCode } from './plugin-workshop.ts'
@@ -48,23 +46,6 @@ export interface ApiContext {
 }
 
 export type HandlerMap = { [M in ApiMethod]: (params: ApiParams<M>) => Promise<ApiResult<M>> | ApiResult<M> }
-
-/** 把界面回传的精简项补全为完整 CleanItem */
-function toCleanItem(ref: CleanItemRef): CleanItem {
-  return {
-    id: ref.id,
-    taskId: ref.taskId,
-    path: ref.path,
-    title: ref.title,
-    kind: ref.kind,
-    size: ref.size,
-    risk: ref.risk,
-    category: ref.category as CleanItem['category'],
-    defaultSelected: true,
-    note: ref.note,
-    meta: ref.meta,
-  }
-}
 
 /** 构造 RPC 处理方法表 */
 export function createHandlers(api: ApiContext): HandlerMap {
@@ -151,14 +132,16 @@ export function createHandlers(api: ApiContext): HandlerMap {
       await ctx.plugins.updateConfig('scheduler', next)
       return { hash: String(next.authorizedHash ?? '') }
     },
-    'scheduler/run': () => {
-      ;(ctx as any).emit('scheduler/run')
+    'scheduler/run': ({ planId } = {}) => {
+      ;(ctx as any).emit('scheduler/run', planId)
       return { ok: true as const }
     },
-    'scheduler/revoke': async () => {
-      const plugin = ctx.plugins.list().find((item) => item.id === 'scheduler')
-      const config = { ...(plugin?.config ?? {}), mode: 'scan', authorizedHash: '' }
-      await ctx.plugins.updateConfig('scheduler', config)
+    'scheduler/revoke': async ({ planId } = {}) => {
+      // 交给插件处理：必须同时清空 plans[] 里的授权，否则多计划配置下会“撤销不了”
+      let next: Record<string, any> | undefined
+      ;(ctx as any).emit('scheduler/revoke', planId, (config: Record<string, any>) => { next = config })
+      if (!next) throw new Error('请先在插件页启用「定时扫描」')
+      await ctx.plugins.updateConfig('scheduler', next)
       return { ok: true as const }
     },
     'app/quit': async () => {
@@ -186,14 +169,24 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'scan/last': () => ctx.cleaner.lastScan() ?? null,
 
-    'files/move': ({ paths, targetDir, link }) => moveFiles({ paths, targetDir }, { check: (target) => ctx.pathPolicy.check(target), link: link === true }),
+    'files/move': ({ paths, targetDir, link }) =>
+      moveFiles(
+        { paths, targetDir },
+        {
+          check: (target) => ctx.pathPolicy.check(target),
+          isProtected: (target) => ctx.pathPolicy.isProtected(target),
+          link: link === true,
+        },
+      ),
     'clean/undo-state': () => {
       const state = readUndo()
       if (!state?.items?.length) return { available: false, quarantine: 0, recycle: 0, permanent: 0 }
+      const quarantine = state.items.filter((item: any) => item.mode === 'quarantine').length
       return {
-        available: true,
+        // 只有「隔离区项」才可通过本接口真正恢复；回收站/永久删除项不能在这里撤销
+        available: quarantine > 0,
         at: state.at,
-        quarantine: state.items.filter((item: any) => item.mode === 'quarantine').length,
+        quarantine,
         recycle: state.items.filter((item: any) => item.mode === 'recycle').length,
         permanent: state.items.filter((item: any) => item.mode === 'delete').length,
       }
@@ -206,15 +199,13 @@ export function createHandlers(api: ApiContext): HandlerMap {
       const result = await ctx.quarantine.restore(entries.map((entry) => entry.id))
       const recyclePending = state.items.filter((item: any) => item.mode === 'recycle').length
       const permanent = state.items.filter((item: any) => item.mode === 'delete').length
-      rmSync(UNDO_FILE, { force: true })
+      // 只有全部隔离项都恢复成功才清空撤销凭据；部分失败时保留，允许用户重试
+      if (result.failed.length === 0) rmSync(UNDO_FILE, { force: true })
+      else dlog('warn', 'undo', '部分隔离项恢复失败，保留撤销凭据', { failed: result.failed.length })
       return { restored: result.restored, recyclePending, permanent, failed: result.failed.length }
     },
-    'clean/start': async ({ itemIds, items, dryRun, forceQuarantine }) => {
-      if (items?.length) {
-        const cleaned = await ctx.cleaner.clean({ items: items.map(toCleanItem), dryRun, forceQuarantine })
-        saveUndo(cleaned)
-        return cleaned
-      }
+    // 只接受 itemIds：从最近一次扫描结果解析清理项，绝不信任界面回传的路径/大小/风险
+    'clean/start': async ({ itemIds, dryRun, forceQuarantine }) => {
       const result = await ctx.cleaner.clean({ itemIds, dryRun, forceQuarantine })
       saveUndo(result)
       dlog('info', 'clean', '清理完成', { mode: result.mode, cleaned: result.cleaned, freed: result.freedBytes, recycled: result.recycledBytes, failed: result.failed })

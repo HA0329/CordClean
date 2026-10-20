@@ -98,7 +98,7 @@ export interface ApiMap {
   'clean/undo-state': { params: void; result: { available: boolean; at?: number; quarantine: number; recycle: number; permanent: number } }
   'clean/undo': { params: void; result: { restored: number; recyclePending: number; permanent: number; failed: number } }
   'clean/start': {
-    params: { itemIds?: string[]; items?: CleanItemRef[]; dryRun?: boolean; forceQuarantine?: boolean }
+    params: { itemIds?: string[]; dryRun?: boolean; forceQuarantine?: boolean }
     result: CleanReport
   }
   'clean/cancel': { params: { sessionId?: string }; result: void }
@@ -148,22 +148,6 @@ export interface ApiMap {
   'ai/egress': { params: { limit?: number }; result: { stats: { requests: number; bytes: number; tokens: number }; records: EgressRecord[] } }
   'ai/egress/clear': { params: void; result: { ok: true } }
 }
-
-/** 清理项引用（界面回传选中项时使用的精简结构） */
-export interface CleanItemRef {
-  id: string
-  taskId: string
-  path: string
-  kind: CleanItemRefKind
-  size: number
-  risk: 'safe' | 'caution' | 'risky'
-  category: string
-  title: string
-  note?: string
-  meta?: Record<string, unknown>
-}
-
-export type CleanItemRefKind = 'file' | 'directory' | 'registry' | 'command' | 'entry'
 
 export const PROTOCOL_VERSION = 1
 

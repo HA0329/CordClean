@@ -1,6 +1,6 @@
 {
   "name": "@cordclean/host",
-  "version": "0.1.0",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "exports": {
@@ -12,6 +12,6 @@
     "@cordclean/shared": "workspace:*",
     "@cordclean/utils": "workspace:*",
     "cordis": "4.0.0-rc.11",
-    "ws": "^8.18.0"
+    "ws": "^8.22.0"
   }
 }

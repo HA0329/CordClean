@@ -54,10 +54,36 @@ const saving = ref(false)
 const importText = ref('')
 const importOpen = ref(false)
 const schedulerPlugin = computed(() => state.plugins.find((plugin) => plugin.id === 'scheduler'))
-const plans = computed<any[]>(() => {
-  const config = (schedulerPlugin.value?.config ?? {}) as any
-  if (Array.isArray(config.plans) && config.plans.length) return config.plans
-  return [{ id: 'default', name: '默认计划', enabled: config.enabled === true, daily: config.daily === true, everyMinutes: config.everyMinutes ?? 120, atHour: config.atHour ?? 3, atMinute: config.atMinute ?? 0, taskIds: config.taskIds ?? [], mode: config.mode === 'clean' ? 'clean' : 'scan', authorizedHash: config.authorizedHash ?? '' }]
+
+/** 定时计划（新格式为 settings.plugins.scheduler.config.plans；旧配置回退为单计划） */
+interface SchedulerPlan {
+  id: string
+  name: string
+  enabled: boolean
+  daily: boolean
+  everyMinutes: number
+  atHour: number
+  atMinute: number
+  taskIds: string[]
+  mode: 'scan' | 'clean'
+  authorizedHash: string
+}
+
+const plans = computed<SchedulerPlan[]>(() => {
+  const config = (schedulerPlugin.value?.config ?? {}) as Record<string, any>
+  if (Array.isArray(config.plans) && config.plans.length) return config.plans as SchedulerPlan[]
+  return [{
+    id: 'default',
+    name: '默认计划',
+    enabled: config.enabled === true,
+    daily: config.daily === true,
+    everyMinutes: config.everyMinutes ?? 120,
+    atHour: config.atHour ?? 3,
+    atMinute: config.atMinute ?? 0,
+    taskIds: config.taskIds ?? [],
+    mode: config.mode === 'clean' ? 'clean' : 'scan',
+    authorizedHash: config.authorizedHash ?? '',
+  }]
 })
 const selectedPlanId = ref('default')
 const selectedPlan = computed(() => plans.value.find((plan) => plan.id === selectedPlanId.value) ?? plans.value[0])
@@ -73,19 +99,20 @@ const schedule = reactive({
   authorizedHash: '',
 })
 
+// 选中计划变化或插件配置刷新时，把该计划回填到编辑表单
 watch(
-  () => [schedulerPlugin.value?.config, selectedPlanId.value],
-  (config) => {
-    if (!config) return
+  () => selectedPlan.value,
+  (plan) => {
+    if (!plan) return
     Object.assign(schedule, {
-      enabled: config.enabled === true,
-      daily: config.daily === true,
-      everyMinutes: Number(config.everyMinutes ?? 120),
-      atHour: Number(config.atHour ?? 3),
-      atMinute: Number(config.atMinute ?? 0),
-      taskIds: Array.isArray(config.taskIds) ? [...config.taskIds] : [],
-      mode: config.mode === 'clean' ? 'clean' : 'scan',
-      authorizedHash: String(config.authorizedHash ?? ''),
+      enabled: plan.enabled === true,
+      daily: plan.daily === true,
+      everyMinutes: Number(plan.everyMinutes ?? 120),
+      atHour: Number(plan.atHour ?? 3),
+      atMinute: Number(plan.atMinute ?? 0),
+      taskIds: Array.isArray(plan.taskIds) ? [...plan.taskIds] : [],
+      mode: plan.mode === 'clean' ? 'clean' : 'scan',
+      authorizedHash: String(plan.authorizedHash ?? ''),
     })
   },
   { deep: true, immediate: true },
@@ -100,7 +127,7 @@ async function saveSchedule() {
     if (!schedulerPlugin.value.enabled) await setPluginEnabled('scheduler', true)
     const current = (schedulerPlugin.value.config ?? {}) as any
     const firstPlan = Array.isArray(current.plans) && current.plans.length ? current.plans[0] : { id: 'default', name: '默认计划', authorizedHash: '' }
-    const nextPlans = plans.value.map((plan: any) => (plan.id === selectedPlanId.value ? { ...plan, enabled: schedule.enabled, daily: schedule.daily, everyMinutes: schedule.everyMinutes, atHour: schedule.atHour, atMinute: schedule.atMinute, taskIds: schedule.taskIds, mode: schedule.mode } : plan))
+    const nextPlans = plans.value.map((plan) => (plan.id === selectedPlanId.value ? { ...plan, enabled: schedule.enabled, daily: schedule.daily, everyMinutes: schedule.everyMinutes, atHour: schedule.atHour, atMinute: schedule.atMinute, taskIds: schedule.taskIds, mode: schedule.mode } : plan))
     await savePluginConfig('scheduler', { ...current, plans: nextPlans })
     await refreshPlugins()
     ElMessage.success('定时任务已保存')
@@ -123,7 +150,7 @@ async function removePlan() {
   if (plans.value.length <= 1) return
   try {
     await ElMessageBox.confirm('删除计划「' + (selectedPlan.value?.name ?? '') + '」？', '删除计划', { type: 'warning' })
-    const remaining = plans.value.filter((plan: any) => plan.id !== selectedPlanId.value)
+    const remaining = plans.value.filter((plan) => plan.id !== selectedPlanId.value)
     await savePluginConfig('scheduler', { ...(schedulerPlugin.value?.config ?? {}), plans: remaining })
     await refreshPlugins()
     selectedPlanId.value = remaining[0]?.id ?? 'default'

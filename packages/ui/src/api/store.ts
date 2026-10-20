@@ -15,6 +15,7 @@ import type {
   CleanReport,
   HistoryEntry,
   PluginRuntime,
+  PluginRuntimeInfo,
   QuarantineRecord,
   ScanProgressEvent,
   ScanReport,
@@ -23,6 +24,15 @@ import type {
   TaskDescriptor,
 } from '@cordclean/shared'
 import { createTransport, type ApiTransport } from './client.ts'
+
+/**
+ * 界面使用的插件运行时信息。
+ *
+ * 内核 `plugins/list` 实际会返回外部插件的 `capabilities`（见 `PluginRuntimeInfo`），
+ * 但 RPC 契约里的 `PluginRuntime` 尚未声明该字段；后端契约不在本次改动范围，
+ * 因此在 UI 层做一次精确扩展（而不是在模板里用 `as any`）。
+ */
+export type UiPluginRuntime = PluginRuntime & Pick<PluginRuntimeInfo, 'capabilities'>
 
 export interface UiState {
   aiStream: string
@@ -40,7 +50,7 @@ export interface UiState {
   cleanProgress?: CleanProgressEvent
   cleaning: boolean
   lastClean?: CleanReport | null
-  plugins: PluginRuntime[]
+  plugins: UiPluginRuntime[]
   settings?: Settings
   history: HistoryEntry[]
   totals: { sessions: number; freedBytes: number; cleaned: number }
@@ -164,7 +174,7 @@ export async function init(): Promise<void> {
     state.app = app
     state.system = system
     state.tasks = tasks
-    state.plugins = plugins as PluginRuntime[]
+    state.plugins = plugins as UiPluginRuntime[]
     state.settings = settings
     state.totals = totals
     state.aiStatus = aiStatus
@@ -198,7 +208,7 @@ export async function refreshTasks(): Promise<void> {
 }
 
 export async function refreshPlugins(): Promise<void> {
-  state.plugins = (await requireTransport().request('plugins/list', undefined)) as PluginRuntime[]
+  state.plugins = (await requireTransport().request('plugins/list', undefined)) as UiPluginRuntime[]
 }
 
 export async function refreshHistory(): Promise<void> {
@@ -272,8 +282,8 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
   await refreshTasks()
 }
 
-export async function installPlugin(filePath: string): Promise<void> {
-  await requireTransport().request('plugins/install', { path: filePath })
+export async function installPlugin(filePath: string, allowCustomClean = false): Promise<void> {
+  await requireTransport().request('plugins/install', { path: filePath, allowCustomClean })
   await refreshPlugins()
 }
 
@@ -307,14 +317,18 @@ export async function setSetting(path: string, value: unknown): Promise<void> {
 
 /* ---------------------------------- 隔离区 / 历史 ---------------------------------- */
 
-export async function restoreQuarantine(ids: string[]): Promise<void> {
-  await requireTransport().request('quarantine/restore', { ids })
+/** 恢复隔离项；返回实际恢复数与失败明细（供界面提示） */
+export async function restoreQuarantine(ids: string[]) {
+  const result = await requireTransport().request('quarantine/restore', { ids })
   await refreshQuarantine()
+  return result
 }
 
-export async function purgeQuarantine(ids?: string[]): Promise<void> {
-  await requireTransport().request('quarantine/purge', { ids })
+/** 彻底删除隔离项；返回删除数量（供界面提示） */
+export async function purgeQuarantine(ids?: string[]): Promise<number> {
+  const count = await requireTransport().request('quarantine/purge', { ids })
   await refreshQuarantine()
+  return count
 }
 
 export async function clearEgress(): Promise<void> {
@@ -355,6 +369,9 @@ export async function cancelAi(): Promise<void> {
 }
 
 export async function analyzeAi(taskIds?: string[], contextProviders?: string[], image?: { mime: string; data: string }): Promise<void> {
+  // 新一次分析必须从空白流式缓冲开始：上一次的输出/思维链不能残留到这次（分析结束后仍保留结果区内容）
+  state.aiStream = ''
+  state.aiStreamReasoning = ''
   state.busy = true
   try {
     state.ai = await requireTransport().request('ai/analyze', { taskIds, contextProviders, image })
