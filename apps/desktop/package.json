@@ -1,6 +1,6 @@
 {
   "name": "@cordclean/app-desktop",
-  "version": "0.1.0",
+  "version": "0.2.5",
   "private": true,
   "type": "module",
   "main": "dist/main.mjs",
@@ -10,8 +10,6 @@
   },
   "dependencies": {
     "@cordclean/core": "workspace:*",
-    "@cordclean/host": "workspace:*",
-    "@cordclean/shared": "workspace:*",
-    "@cordclean/utils": "workspace:*"
+    "@cordclean/host": "workspace:*"
   }
 }

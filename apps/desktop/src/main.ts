@@ -21,6 +21,33 @@ let window: BrowserWindow | null = null
 let disposeApp: (() => Promise<void>) | undefined
 let quitting = false
 
+/**
+ * 是否允许页面导航。
+ *
+ * 安全策略：
+ * - 本地构建产物通过 `file://` 加载，正常页面跳转（含 hash 路由）都放行；
+ * - 开发/截图模式允许停留在 `CORDCLEAN_DEV_URL` / `CORDCLEAN_SHOT_URL` 所属源；
+ * - 其余（如 `https://` 外链、`javascript:`、`data:`）一律拦截。
+ */
+function isAllowedNavigation(rawUrl: string): boolean {
+  try {
+    const target = new URL(rawUrl)
+    if (target.protocol === 'file:') return true
+    const allowed = [process.env.CORDCLEAN_DEV_URL, process.env.CORDCLEAN_SHOT_URL].filter(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    )
+    return allowed.some((entry) => {
+      try {
+        return target.origin === new URL(entry).origin
+      } catch {
+        return false
+      }
+    })
+  } catch {
+    return false
+  }
+}
+
 /** Electron 外壳的系统交互实现 */
 const shellAdapter: ShellAdapter = {
   electron: true,
@@ -68,6 +95,9 @@ async function createKernel() {
     ['cleaner/clean-done', 'clean/done'],
     ['plugins/changed', 'plugins/changed'],
     ['history/changed', 'history/changed'],
+    // AI 流式增量必须转发，否则桌面外壳要等分析结束才有输出（看起来“不是流式”）
+    ['ai/stream', 'ai/stream'],
+    ['scheduler/scan', 'scheduler/scan'],
     ['system/log', 'log'],
   ]
   for (const [internal, external] of events) {
@@ -94,8 +124,19 @@ async function createWindow() {
       preload: process.env.CORDCLEAN_SHOT ? undefined : path.join(here, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // 渲染进程启用 Chromium 沙箱：preload 只能用 electron / 受限 Node API，
+      // 已在 sandbox 下验证 preload.cjs（CJS 打包）可正常加载（见 scripts/build-desktop.mjs）
+      sandbox: true,
     },
+  })
+
+  // 安全加固：禁止页面打开新窗口；只允许 file:// 与当前 dev/shot 源的页面导航
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedNavigation(url)) {
+      event.preventDefault()
+      console.warn('[cordclean] 已拦截非白名单导航:', url)
+    }
   })
 
   window.once('ready-to-show', () => window?.show())

@@ -159,6 +159,9 @@ try {
   const transport = await evaluate('typeof window.cordclean === "object"')
   console.log('IPC 通道可用：', transport)
 
+  // 清理上一次 UI 验收遗留的本地偏好（例如 clean 视图模式），保证分组表格一定渲染
+  await evaluate(`(() => { try { localStorage.removeItem('cordclean.clean.view'); localStorage.removeItem('cordclean.clean.selected'); } catch {} return true })()`)
+
   const navNames = await evaluate('[...document.querySelectorAll(".nav-item")].map(el => el.textContent.trim())')
   console.log('侧边栏：', navNames.join(' / '))
 
@@ -190,13 +193,40 @@ try {
   )
   if (!clicked) throw new Error('未找到「开始扫描」按钮')
 
-  await waitFor('扫描结果表格', async () => evaluate('document.querySelectorAll(".el-table__row").length > 0'), 120_000, 500)
+  await waitFor('扫描结果分组', async () => evaluate('document.querySelectorAll(".group-row").length > 0'), 120_000, 500)
   const summary = await evaluate(
     `[...document.querySelectorAll('.cc-stat')].slice(0,4).map(el => el.textContent.replace(/\\s+/g,' ').trim()).join(' | ')`,
   )
+  const selectedText = await evaluate('document.querySelector(".selected-count")?.textContent?.replace(/\\s+/g," ").trim() ?? ""')
+  const recommendText = await evaluate('document.querySelector(".recommend-banner")?.textContent?.replace(/\\s+/g," ").trim().slice(0, 160) ?? ""')
+  if (!selectedText || /已选\s*0\s*项/.test(selectedText)) throw new Error('默认推荐选择为空：' + selectedText)
+  if (!recommendText.includes('智能推荐')) throw new Error('推荐横幅未渲染')
   console.log('扫描完成，统计卡片：', summary)
+  console.log('推荐横幅：', recommendText)
+  console.log('默认选择：', selectedText)
+  const groupRows = await evaluate('document.querySelectorAll(".group-row").length')
+  await evaluate(`document.querySelector('.result-card')?.scrollIntoView({block:'start'}); 'ok'`)
+  await new Promise((resolve) => setTimeout(resolve, 500))
   const file = await capture('clean-result')
   console.log('✓ 扫描结果截图：', path.relative(root, file))
+
+  // 3.1 切换逐项明细，验证分页与详情抽屉（不执行清理）
+  await evaluate(`document.querySelector('.view-tab[data-view="items"]').click()`)
+  await waitFor('逐项明细', async () => evaluate('document.querySelectorAll(".item-row").length > 0'), 15_000)
+  const itemRows = await evaluate('document.querySelectorAll(".item-row").length')
+  console.log(`✓ 视图切换：分组 ${groupRows} 行 / 明细本页 ${itemRows} 行`)
+  await evaluate(`document.querySelector('.el-table')?.scrollIntoView({block:'start'}); 'ok'`)
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  await evaluate(`document.querySelector('.item-detail-btn')?.click()`)
+  await waitFor('详情抽屉', async () => evaluate('!!document.querySelector(".detail-drawer")'), 10_000)
+  const detailText = await evaluate('document.querySelector(".detail-drawer")?.textContent?.replace(/\\s+/g," ").trim().slice(0, 120) ?? ""')
+  if (!detailText) throw new Error('详情抽屉内容为空')
+  console.log('✓ 详情抽屉：', detailText)
+  await evaluate(`document.querySelector('.el-drawer__close-btn')?.click()`)
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  const fileItems = await capture('clean-items')
+  console.log('✓ 逐项明细截图：', path.relative(root, fileItems))
+  await evaluate(`document.querySelector('.view-tab[data-view="groups"]').click()`)
 
   // 4. AI 页面：启用插件并验证新配置界面渲染（无 Key 时也能渲染表单）
   await evaluate(`document.querySelectorAll('.nav-item')[4].click()`)

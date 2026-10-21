@@ -1,0 +1,451 @@
+
+<!-- ================= 05 删除安全链 ================= -->
+<section class="section reveal" id="safety">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">05</span><span>Safety Chain</span></div>
+      <h2 class="sec-title">删除安全链：一次删除要过七道关</h2>
+      <p class="sec-lede">
+        删除是「不可回滚的外部事实」，框架的 <code>effect</code> 也救不了已经删掉的文件。
+        因此系统把删除前的检查显式化为一条<b>补偿链</b>，并让执行器<b>只接受过链的防伪令牌</b>。
+        下面可以模拟五种提交，观察哪一道关会拦下它。
+      </p>
+    </div>
+
+    <div class="card" style="padding:20px 20px 16px">
+      <div class="scenario-tabs" id="scenarioTabs">
+        <button class="scenario-tab active" data-scene="normal" type="button">正常清理缓存</button>
+        <button class="scenario-tab" data-scene="protected" type="button">提交 Windows 目录</button>
+        <button class="scenario-tab" data-scene="outside" type="button">提交辖区外路径</button>
+        <button class="scenario-tab" data-scene="junction" type="button">辖区内藏联接点</button>
+        <button class="scenario-tab" data-scene="changed" type="button">扫描后文件被改</button>
+        <button class="scenario-tab" data-scene="budget" type="button">一次提交 8 万项</button>
+      </div>
+
+      <div class="chain-steps" id="chainSteps">
+        <div class="step" data-step="1"><div class="dot">1</div><div class="sname">路径规范化</div><div class="sstate">等待</div></div>
+        <div class="step" data-step="2"><div class="dot">2</div><div class="sname">黑名单<br>保护目录</div><div class="sstate">等待</div></div>
+        <div class="step" data-step="3"><div class="dot">3</div><div class="sname">白名单<br>清理辖区</div><div class="sstate">等待</div></div>
+        <div class="step" data-step="4"><div class="dot">4</div><div class="sname">条件与<br>链接祖先</div><div class="sstate">等待</div></div>
+        <div class="step" data-step="5"><div class="dot">5</div><div class="sname">预览<br>一致性</div><div class="sstate">等待</div></div>
+        <div class="step" data-step="6"><div class="dot">6</div><div class="sname">单次<br>预算</div><div class="sstate">等待</div></div>
+        <div class="step" data-step="7"><div class="dot">7</div><div class="sname">回收站<br>可用性</div><div class="sstate">等待</div></div>
+      </div>
+
+      <div class="chain-outcome" id="chainOutcome" aria-live="polite">
+        <div class="ico">›</div>
+        <div>
+          <h4>选择左侧场景，观察安全链的判定过程</h4>
+          <p>七个步骤全部通过后，补偿链才会签发 <code>CleanTicket</code>；任一步失败都会返回结构化拒绝原因，由界面如实呈现。</p>
+        </div>
+      </div>
+      <div class="chain-foot">
+        <span class="chain-note">教学演示：逻辑与真实实现一致，数据为模拟；真实拒绝原因记录在清理报表与诊断日志中。</span>
+        <button class="btn" id="replayBtn" type="button">重播动画</button>
+      </div>
+    </div>
+
+    <div class="subhead">四层防护与它们拦截的威胁</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:17%">防护层</th><th style="width:30%">实现</th><th>拦截的威胁</th></tr></thead>
+        <tbody>
+          <tr><td><b>路径策略</b></td><td><code>PathPolicyService.check()</code> + 前缀树</td><td>误删系统目录、插件 bug 越权、驱动器根目录、尾点 / 8.3 短名写法绕过</td></tr>
+          <tr><td><b>链接祖先检查</b></td><td><code>findLinkAncestor()</code> + 清理引擎</td><td>辖区内 junction 把删除引到辖区外（真实发生过的 D-01 越界删除）</td></tr>
+          <tr><td><b>隔离区</b></td><td><code>QuarantineService</code> + manifest.jsonl</td><td>用户误勾选高风险项、清理后想找回；支持一键恢复</td></tr>
+          <tr><td><b>注册表备份</b></td><td>插件内 <code>reg export</code></td><td>误删启动项、误删卸载项；导出失败则放弃删除</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card">
+        <div class="card-kicker">白名单而非黑名单</div>
+        <h3>辖区（allowRoot）机制</h3>
+        <p>插件必须在 <code>setup</code> 阶段声明「我只会清这些目录」，否则连自己扫描出来的文件也删不掉。辖区随插件 fiber 自动回收。</p>
+        <pre><code>ctx.effect(() =&gt; {
+  const disposers = sources().map(s =&gt;
+    ctx.pathPolicy.addRoot(s.path, 'temp'))
+  return () =&gt; disposers.forEach(d =&gt; d())
+})</code></pre>
+        <div class="card-note">即使插件被替换或写错路径，也只能影响它声明过的目录。</div>
+      </div>
+      <div class="card">
+        <div class="card-kicker">唯一入口</div>
+        <h3>票据防伪 + 执行器二次复核</h3>
+        <p><code>CleanTicket</code> 用模块私有 <code>Symbol</code> 做运行期身份校验，外部无法伪造。类型标注挡不住 <code>any</code>，所以执行器每次执行前还会逐项 <code>recheck()</code>。</p>
+        <ul>
+          <li>签发：只有 <code>compensate</code> 模块能构造票据；</li>
+          <li>执行：只认 <code>isCleanTicket()</code> 为真的对象；</li>
+          <li>复核：规范化 + 策略 + 存在性，不信任票据内容。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="subhead">路径判定顺序与「写法绕过」</div>
+    <div class="grid g2">
+      <div class="card">
+        <h3>check(path) 的 6 步</h3>
+        <ol>
+          <li>空路径 / 非绝对路径 → 拒绝</li>
+          <li>驱动器根目录（<code>C:\</code>）→ 拒绝</li>
+          <li>位于保护根内 <b>或保护根的祖先</b> → 拒绝</li>
+          <li>文件名在黑名单（<code>pagefile.sys</code> 等）→ 拒绝</li>
+          <li>不在任何辖区 / 用户扫描根内 → 拒绝</li>
+          <li>否则 → 允许</li>
+        </ol>
+        <div class="card-note">只判断「是否在保护目录内」不够：删除 <code>C:\Windows</code> 这样的祖目录仍会连带删掉 System32，因此同时判断两个方向。</div>
+      </div>
+      <div class="card">
+        <h3>三种文件系统「写法差异」</h3>
+        <table style="font-size:12px;border:0">
+          <thead><tr><th style="background:transparent;padding-left:0">写法</th><th style="background:transparent">实际语义</th><th style="background:transparent">处理</th></tr></thead>
+          <tbody>
+            <tr><td><code>System32.</code></td><td>忽略尾部点</td><td>逐段去掉尾部 <code>.</code> / 空格</td></tr>
+            <tr><td><code>PROGRA~1</code></td><td>8.3 短名</td><td>解析短名并加入保护列表</td></tr>
+            <tr><td><code>\\?\C:\...</code></td><td>长路径前缀</td><td>剥离前缀后再比较</td></tr>
+          </tbody>
+        </table>
+        <div class="card-note">这些写法如果只做字符串比较，都会被绕过；每一种都有对应的攻击测试。</div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn" style="margin-top:16px">
+      <span class="callout-title">自测发现的高危缺陷（D-01）：辖区内联接点导致越界删除</span>
+      路径字符串完全落在辖区内，但辖区目录里的 NTFS 联接点指向了外部 —— 字符串检查通过，删除却命中了辖区外文件。
+      <b>修复</b>：删除前从父目录向上 <code>lstat</code> 到辖区根，任一祖先为链接即整项拒绝；该检查按目录缓存，不影响删除吞吐。
+      修复后补充了回归测试，并保留在安全测试集中。这个缺陷也是论文第 6 章「测试发现的问题与改进」的核心素材。
+    </div>
+
+    <div class="subhead">安全测试覆盖的绕过手法</div>
+    <div class="tags" style="gap:7px">
+      <span class="tag tag-plain">尾点 / 尾空格</span>
+      <span class="tag tag-plain">.. 相对路径</span>
+      <span class="tag tag-plain">正斜杠与混合分隔符</span>
+      <span class="tag tag-plain">\\?\ 长路径前缀</span>
+      <span class="tag tag-plain">8.3 短名</span>
+      <span class="tag tag-plain">大小写混写</span>
+      <span class="tag tag-plain">UNC 路径</span>
+      <span class="tag tag-plain">前缀相同的兄弟目录</span>
+      <span class="tag tag-plain">辖区内 junction 穿透</span>
+      <span class="tag tag-plain">驱动器根目录</span>
+      <span class="tag tag-plain">受保护目录的祖目录</span>
+    </div>
+
+    <div class="subhead">最新进展（v0.2.5）：清理选择 v2 + 安全加固</div>
+    <div class="grid g3" style="margin-top:8px">
+      <div class="card">
+        <div class="card-kicker">清理选择 v2</div>
+        <h3>千条级结果不再逐条勾选</h3>
+        <p>按「分类 → 任务」分组聚合，安全项智能推荐、谨慎 / 高风险项显式确认；支持风险 / 大小 / 任务筛选、三态整组勾选、逐项明细 + 详情说明 + 打开位置、受保护只读视图。3000 条合成数据验收：默认推荐 1,776 项（36.6 GB）零风险误选，交互最大 78 ms。</p>
+      </div>
+      <div class="card">
+        <div class="card-kicker">安全加固（0.2.1）</div>
+        <h3>把「界面不可信」落实到 RPC 层</h3>
+        <p>清理接口只接受 itemIds 并从最近扫描解析；本地服务增加 Host / Origin 校验（防 DNS rebinding）与 CSPRNG token；设置拒绝原型污染；清理会话 try/finally 收尾；外部插件边界收紧并提示安装风险；长路径 / UNC 与「打开位置」注入面修复；Electron sandbox + 导航拦截 + CSP。</p>
+      </div>
+      <div class="card">
+        <div class="card-kicker">独立验收</div>
+        <h3>352 个用例 + 真实 E2E</h3>
+        <p>46 个测试文件 / 352 用例全绿；真实 Electron E2E 0 JS 异常；3000 条 mock UI 验收 PASS 25/25；Web 外壳安全复验 18/18；README 与 13 篇文档的关键数字一致。</p>
+      </div>
+    </div>
+    <div class="table-wrap" style="margin-top:16px">
+      <img src="__SHOT_SELECT__" alt="清理选择 v2：分组总览与智能推荐" style="width:100%;height:auto;border-radius:14px;border:1px solid var(--line-2)">
+    </div>
+    <p class="table-note">图：清理选择 v2 的分组总览——安全项默认推荐、谨慎 / 高风险项不默认勾选，可展开说明或下钻到逐项明细；截图来自 v0.2.5 的 3000 条 mock 验收数据。</p>
+  </div>
+</section>
+
+<!-- ================= 06 规则库 ================= -->
+<section class="section reveal" id="rules">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">06</span><span>Rule Library</span></div>
+      <h2 class="sec-title">规则库：让内容与代码分离</h2>
+      <p class="sec-lede">
+        清理规则会持续增长（新软件、新版本、新缓存目录）。如果每个清理域都写插件，插件目录迟早变成第二个「规则地狱」。
+        本系统在插件层之上再引入一层规则库：<b>规则是数据，插件只负责解释规则</b>。
+      </p>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi"><div class="k">规则分类</div><div class="v">28</div><div class="d">覆盖开发工具、浏览器、系统、游戏、办公等</div></div>
+      <div class="kpi"><div class="k">规则条数</div><div class="v">271</div><div class="d">从 PC-Cleaner 0.9.9 导入并保留来源</div></div>
+      <div class="kpi"><div class="k">候选根目录</div><div class="v">284</div><div class="d">本机可命中 136 个</div></div>
+      <div class="kpi"><div class="k">结构审计</div><div class="v">0<small>错误</small></div><div class="d">0 条「暂未实现类型」</div></div>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card">
+        <div class="card-kicker">规则数量 Top 8</div>
+        <h3>规则都落在哪些清理域</h3>
+        <div class="bars" style="margin-top:14px">
+          <div class="bar-row"><span class="bar-label">开发工具缓存</span><div class="bar-track"><div class="bar-fill" style="width:100%"></div></div><span class="bar-val">33</span></div>
+          <div class="bar-row"><span class="bar-label">浏览器 / 网页缓存</span><div class="bar-track"><div class="bar-fill" style="width:85%"></div></div><span class="bar-val">28</span></div>
+          <div class="bar-row"><span class="bar-label">系统日志与诊断</span><div class="bar-track"><div class="bar-fill" style="width:85%"></div></div><span class="bar-val">28</span></div>
+          <div class="bar-row"><span class="bar-label">浏览器站点数据</span><div class="bar-track"><div class="bar-fill" style="width:82%"></div></div><span class="bar-val">27</span></div>
+          <div class="bar-row"><span class="bar-label">系统深度清理</span><div class="bar-track"><div class="bar-fill" style="width:52%"></div></div><span class="bar-val">17</span></div>
+          <div class="bar-row"><span class="bar-label">微信运行缓存</span><div class="bar-track"><div class="bar-fill" style="width:48%"></div></div><span class="bar-val">16</span></div>
+          <div class="bar-row"><span class="bar-label">变态级隐蔽缓存</span><div class="bar-track"><div class="bar-fill" style="width:42%"></div></div><span class="bar-val">14</span></div>
+          <div class="bar-row"><span class="bar-label">浏览器数据库压缩</span><div class="bar-track"><div class="bar-fill" style="width:36%"></div></div><span class="bar-val">12</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-kicker">数据模型</div>
+        <h3>7 种已实现的目标类型</h3>
+        <table style="font-size:12px;border:0">
+          <thead><tr><th style="background:transparent;padding-left:0">类型</th><th style="background:transparent">语义</th><th style="background:transparent">典型用法</th></tr></thead>
+          <tbody>
+            <tr><td><code>clear_dir</code></td><td>清空内容保留目录</td><td><code>%TEMP%</code>、Chrome Cache</td></tr>
+            <tr><td><code>delete_dir</code></td><td>删除目录本身</td><td>已知可整体删除的缓存目录</td></tr>
+            <tr><td><code>glob_files</code></td><td>按模式匹配文件</td><td><code>thumbcache_*.db</code></td></tr>
+            <tr><td><code>glob_dirs</code></td><td>按模式匹配目录</td><td>微信多实例目录</td></tr>
+            <tr><td><code>files_by_rule</code></td><td>按大小 / 年龄筛选</td><td>Downloads 中 180 天前的大文件</td></tr>
+            <tr><td><code>find_dirs</code></td><td>按目录名递归查找</td><td>散落的 <code>node_modules</code> / <code>dist</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-top:16px">
+      <div class="card">
+        <div class="card-kicker">安全决定 1</div>
+        <h3>辖区照旧</h3>
+        <p>规则包在 <code>setup</code> 里把每条规则的根目录登记进路径策略；未登记的路径内核仍然拒绝。<b>规则是「申请」，不是「授权」</b>。</p>
+      </div>
+      <div class="card">
+        <div class="card-kicker">安全决定 2</div>
+        <h3>清空白名单</h3>
+        <p><code>C:\Windows\System32\LogFiles</code> 这类目录受保护但内容可重建，用 <code>addClearRoot()</code> 只放行「清空内容」，目录本身仍不可删。</p>
+      </div>
+      <div class="card">
+        <div class="card-kicker">安全决定 3</div>
+        <h3>默认收紧</h3>
+        <p>高风险分类（浏览器密码 / Cookie、Windows.old、Downloads 大文件）与 <code>deep_only</code> 规则默认不装载，需在设置里显式打开。</p>
+      </div>
+    </div>
+
+    <div class="callout callout-good" style="margin-top:16px">
+      <span class="callout-title">一个可验证的安全信号</span>
+      规则审计报告显示：本机可命中的 136 个根目录中，有 <b>17 个在登记辖区后仍被路径策略拦截</b>。
+      这不是规则写错了，而是恰好证明「即使规则想清受保护目录，内核也不会放行」。
+    </div>
+  </div>
+</section>
+
+<!-- ================= 07 AI 顾问 ================= -->
+<section class="section reveal" id="ai">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">07</span><span>AI Advisor</span></div>
+      <h2 class="sec-title">AI 顾问：接口可演进，行为有边界</h2>
+      <p class="sec-lede">
+        大模型接口是本系统里变化最快的依赖：DeepSeek 已把 <code>deepseek-chat</code> 换成 <code>deepseek-flash</code>，
+        新增思考模式与推理等级，并同时提供 OpenAI / Anthropic / Responses 三套兼容接口。
+        因此 AI 插件按「<b>稳定业务逻辑 + 可替换适配层 + 用户可改配置</b>」三层设计，不把接口细节写死。
+      </p>
+    </div>
+
+    <div class="grid g3">
+      <div class="card">
+        <div class="card-kicker">接口形态 A</div>
+        <h3>chat</h3>
+        <p><code>POST /chat/completions</code></p>
+        <ul>
+          <li><code>Authorization: Bearer</code></li>
+          <li>系统提示放在 <code>messages[0]</code></li>
+          <li>推理等级：<code>thinking</code> + <code>reasoning_effort</code></li>
+          <li>思维链：<code>reasoning_content</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-kicker">接口形态 B</div>
+        <h3>messages</h3>
+        <p><code>POST /anthropic/v1/messages</code></p>
+        <ul>
+          <li><code>x-api-key</code> + <code>anthropic-version</code></li>
+          <li>系统提示放在 <code>system</code> 字段</li>
+          <li>推理等级：<code>output_config.effort</code></li>
+          <li>思维链：<code>content[].thinking</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-kicker">接口形态 C</div>
+        <h3>responses</h3>
+        <p><code>POST /responses</code></p>
+        <ul>
+          <li><code>Authorization: Bearer</code></li>
+          <li>系统提示放在 <code>instructions</code></li>
+          <li>推理等级：<code>reasoning.effort</code></li>
+          <li>输出上限：<code>max_output_tokens</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="subhead">配置即扩展点：厂商变化时用户自己就能改</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:28%">变更类型</th><th style="width:45%">用户怎么做</th><th>需要改代码吗</th></tr></thead>
+        <tbody>
+          <tr><td>模型改名 / 新增模型</td><td>界面「获取模型」下拉选择，或直接输入模型名</td><td><span class="tag tag-safe">不需要</span></td></tr>
+          <tr><td>新增请求参数（缓存、工具、新推理字段）</td><td>写进 <code>extraBody</code>，深合并且优先级最高</td><td><span class="tag tag-safe">不需要</span></td></tr>
+          <tr><td>换网关 / 代理 / 自定义鉴权</td><td>改 <code>baseUrl</code> / <code>chatPath</code> / <code>extraHeaders</code></td><td><span class="tag tag-safe">不需要</span></td></tr>
+          <tr><td>提示词调整</td><td>覆盖 <code>systemPrompt</code></td><td><span class="tag tag-safe">不需要</span></td></tr>
+          <tr><td>出现第四种接口形态</td><td>在 <code>adapters.ts</code> 增加一个分支（约 40 行）</td><td><span class="tag tag-caution">需要</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card">
+        <div class="card-kicker">v0.2.5 修复</div>
+        <h3>流式输出与可取消</h3>
+        <p><code>ai/analyze</code> 优先走 SSE：逐块累积文本与思维链，实时发出 <code>ai/stream</code> 事件；取消按钮通过 <code>AbortSignal</code> 立即中断请求。</p>
+        <ul>
+          <li>流式失败或无内容 → 自动回退非流式请求；</li>
+          <li>请求超时与用户取消分别归类，界面显示可读原因；</li>
+          <li>非流式计时改为读完 body 再计时，避免把 8 秒显示成 0.2 秒（D-13）。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-kicker">模型能力</div>
+        <h3>deepseek-flash 的边界</h3>
+        <p>插件会从 <code>/models</code> 读取模型能力，并按上限收敛参数，避免「请求体超限」：</p>
+        <div class="tags" style="gap:7px">
+          <span class="tag tag-brand">上下文 1,048,576 tokens</span>
+          <span class="tag tag-brand">最大输出 393,216 tokens</span>
+          <span class="tag tag-safe">支持截图诊断</span>
+          <span class="tag tag-plain">推理等级 auto / off / low / medium / high / max</span>
+        </div>
+        <div class="card-note">Key 只存在本机 <code>config.json</code> 或环境变量，不写入源码、不进日志。</div>
+      </div>
+    </div>
+
+    <div class="subhead">隐私与边界：AI 只建议，不执行</div>
+    <div class="grid g4">
+      <div class="card">
+        <div class="card-icon">◌</div>
+        <h3>画像脱敏</h3>
+        <p>发送的是体积、软件名、任务归类等摘要，<b>不含路径、文件名、用户名</b>；有单元测试断言。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">▤</div>
+        <h3>外发审计</h3>
+        <p><code>ai/egress</code> 记录每次外发的字段与预览，可查看、可清空，避免「偷偷传数据」。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">✋</div>
+        <h3>不直接删除</h3>
+        <p>AI 输出结构化建议或勾选，必须由用户确认后才进入安全链；可先 dryRun 预演。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⌘</div>
+        <h3>生成插件需审阅</h3>
+        <p>AI 工坊生成的插件先静态校验（禁止 <code>fs.rm</code>、<code>child_process</code> 等），再人工审阅后安装。</p>
+      </div>
+    </div>
+
+    <div class="subhead">实测延迟（deepseek-flash，真实 Key，2026-10）</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>场景</th><th>耗时</th><th>输出 token</th><th>思维链 token</th></tr></thead>
+        <tbody>
+          <tr><td>chat + 推理等级 high</td><td class="num">7.0 ~ 8.1 s</td><td class="num">~1,370</td><td class="num">~820</td></tr>
+          <tr><td>chat + 推理等级 off</td><td class="num">4.0 ~ 4.1 s</td><td class="num">~485</td><td class="num">0</td></tr>
+          <tr><td>messages + high</td><td class="num">7.9 s</td><td class="num">~1,400</td><td class="num">~900</td></tr>
+          <tr><td>responses + high</td><td class="num">7.7 s</td><td class="num">~1,370</td><td class="num">~880</td></tr>
+          <tr><td>测试连接 probe</td><td class="num">140 ~ 350 ms</td><td class="num">—</td><td class="num">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-note">关闭思考模式能省掉约一半时间，适合交互式建议；需要更完整的分析时再开 high。</p>
+  </div>
+</section>
+
+<!-- ================= 08 工程与验证 ================= -->
+<section class="section reveal" id="quality">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-kicker"><span class="sec-num">08</span><span>Engineering &amp; Verification</span></div>
+      <h2 class="sec-title">工程与验证：用数据回答「做完没有、靠不靠谱」</h2>
+      <p class="sec-lede">
+        项目从第一天起就把测试、审计、基准与缺陷记录当作交付物：<b>352 个自动化测试全绿</b>，
+        <b>规则审计 0 错误</b>，性能基准可复现，自测阶段<b>发现并修复 29 个缺陷</b>（含 1 个高危越界删除）。
+      </p>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi"><div class="k">自动化测试</div><div class="v">352<small>用例</small></div><div class="d">46 个测试文件 · 全部通过</div></div>
+      <div class="kpi"><div class="k">修复缺陷</div><div class="v">14<small>个</small></div><div class="d">含 1 个高危数据安全缺陷</div></div>
+      <div class="kpi"><div class="k">代码提交</div><div class="v">151<small>次</small></div><div class="d">源码 + 测试 + 脚本约 3.13 万行</div></div>
+      <div class="kpi"><div class="k">规则审计</div><div class="v">0<small>错误</small></div><div class="d">结构 / 死目标 / 重复 / 策略拦截</div></div>
+    </div>
+
+    <div class="subhead">测试矩阵</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:24%">层次</th><th style="width:31%">方式</th><th>覆盖重点</th></tr></thead>
+        <tbody>
+          <tr><td><b>单元 / 集成</b></td><td>Vitest，46 文件 / 352 用例</td><td>路径策略与攻击面、文件系统安全、引擎、插件管理、隔离区、设置 / 历史、RPC、AI、规则纯逻辑</td></tr>
+          <tr><td><b>安全专项</b></td><td><code>path-attack</code> / <code>fs-safety</code> / <code>compensate</code></td><td>尾点、8.3 短名、UNC、junction 穿透、受保护目录、预算与预览一致性</td></tr>
+          <tr><td><b>插件审计</b></td><td><code>scripts/audit-plugins.ts</code></td><td>真实扫描 + 清理项契约不变量（只读，不删除）</td></tr>
+          <tr><td><b>规则审计</b></td><td><code>scripts/audit-rules.ts</code></td><td>结构错误、未实现类型、死目标、重复目标、被策略拦截目标</td></tr>
+          <tr><td><b>端到端</b></td><td><code>scripts/e2e-ui.mjs</code>（CDP）</td><td>启动真实 Electron，点击 6 个页面、触发真实扫描、收集 JS 异常</td></tr>
+          <tr><td><b>冒烟 / 基准</b></td><td><code>scripts/smoke.ts</code> · <code>bench/scan.bench.ts</code></td><td>内核启动、全插件装载、扫描、删除、隔离、哈希、内存</td></tr>
+          <tr><td><b>真实环境预演</b></td><td><code>scripts/dryrun-clean.ts</code> / 插件自测</td><td>只 dryRun，不触碰真实用户数据；所有删除测试都在临时沙箱</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subhead">自测发现的代表性缺陷</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:9%">编号</th><th style="width:13%">级别</th><th style="width:46%">问题</th><th>修复结果</th></tr></thead>
+        <tbody>
+          <tr><td><b>D-01</b></td><td><span class="tag tag-risky">高危</span></td><td>辖区内 NTFS 联接点导致删除穿透到辖区外</td><td>链接祖先检查 + 回归测试</td></tr>
+          <tr><td><b>D-10</b></td><td><span class="tag tag-caution">性能</span></td><td>单次路径校验 166 µs，扫描吞吐仅 4.5k 文件/秒</td><td>前缀树 + 热状态对象 → 10.4 µs、35.9k 文件/秒</td></tr>
+          <tr><td><b>D-04</b></td><td><span class="tag tag-caution">中</span></td><td>静态资源目录穿越校验存在前缀误判（<code>C:\ui</code> 与 <code>C:\ui-evil</code>）</td><td>按路径段比较，补测试</td></tr>
+          <tr><td><b>D-02</b></td><td><span class="tag tag-caution">中</span></td><td>异步插件启动失败变成未处理 Promise 拒绝，Node 24 下可能终止进程</td><td>统一捕获并标记插件 FAILED，其余插件继续</td></tr>
+          <tr><td><b>D-11</b></td><td><span class="tag tag-caution">中</span></td><td>尾点与 8.3 短名可绕过字符串比较</td><td>路径规范化 + 短名解析，补攻击用例</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subhead">性能基准（Windows 11 · Ryzen 5 5600 · Node 24.19）</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:34%">指标</th><th style="width:24%">数值</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>内核启动（仅服务）</td><td class="num">5.4 ms</td><td>中位数 / 5 次</td></tr>
+          <tr><td>完整启动（加载插件）</td><td class="num">162.6 ms</td><td>中位数 / 3 次</td></tr>
+          <tr><td>扫描 4,000 个文件</td><td class="num">0.15 s</td><td>26,770 文件/秒</td></tr>
+          <tr><td>删除 4,000 个文件</td><td class="num">1.84 s</td><td>2,178 文件/秒</td></tr>
+          <tr><td>隔离区单项开销</td><td class="num">1.29 ms</td><td>移入 200 个文件共 258 ms</td></tr>
+          <tr><td>全量 SHA-256</td><td class="num">366 MB/秒</td><td>重复文件检测的三级策略</td></tr>
+          <tr><td>路径策略单次校验</td><td class="num">10.4 µs</td><td>优化前 166 µs</td></tr>
+          <tr><td>常驻内存 RSS</td><td class="num">132.2 MB</td><td>堆内存 12 MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-note">基准由 <code>pnpm bench</code> 生成到 <code>docs/benchmark.md</code>，可在同一环境复现；扫描 / 删除数据在临时目录生成，避免受本机磁盘状态影响。</p>
+
+    <div class="grid g3" style="margin-top:16px">
+      <div class="card">
+        <div class="card-kicker">交付形态</div>
+        <h3>双外壳 + 单文件发布</h3>
+        <p>浏览器版与 Electron 桌面版共用内核与 UI；提供一键启动脚本与 v0.2.5 源码 / zip 包，MIT 许可。</p>
+      </div>
+      <div class="card">
+        <div class="card-kicker">质量门禁</div>
+        <h3>每次改动都跑</h3>
+        <p><code>pnpm typecheck</code> → <code>pnpm test</code> → <code>pnpm build</code> → 端到端点检 → 必要时基准与审计。</p>
+      </div>
+      <div class="card">
+        <div class="card-kicker">工作量</div>
+        <h3>3.13 万行，151 次提交</h3>
+        <p>源码 1.93 万行、测试 0.63 万行、脚本 0.57 万行；13 份文档与 29 条缺陷记录。</p>
+      </div>
+    </div>
+  </div>
+</section>

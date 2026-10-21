@@ -19,8 +19,9 @@ const staticDir = process.env.CORDCLEAN_UI_DIR ?? path.join(repoRoot, 'packages'
 const shell: ShellAdapter = {
   electron: false,
   async openPath(target: string) {
-    // 用 cmd 的 start 命令交给 shell 处理，避免中文路径与空格问题
-    await runCommand('cmd.exe', ['/c', 'start', '', target], { timeout: 15_000 })
+    // 在资源管理器中「定位」目标（/select, 语义）；execFile 参数数组不经 shell，
+    // 路径里的 & | ^ 等字符不会被 cmd 二次解析，避免命令注入
+    await runCommand('explorer.exe', ['/select,', target], { timeout: 15_000 })
   },
   async openDataDir(target: string) {
     await runCommand('explorer.exe', [target], { timeout: 15_000 })
@@ -54,12 +55,13 @@ console.log('  │  CordClean 已启动                             │')
 console.log('  ╰──────────────────────────────────────────────╯')
 console.log(`  界面地址: ${server.url}`)
 console.log(`  RPC 地址: ${server.wsUrl}`)
-console.log(`  访问令牌: ${server.token}`)
 console.log(`  数据目录: ${app.dataDir}`)
 console.log('')
 
 if (process.env.CORDCLEAN_NO_OPEN !== '1') {
-  void shell.openPath(server.url)
+  // 启动时用默认浏览器打开界面：openPath 现在是 explorer /select 的定位语义，
+  // 不能用来开页面；explorer 收到 http(s) URL 会交给默认浏览器。
+  void shell.openDataDir(server.url)
 }
 
 let closing = false

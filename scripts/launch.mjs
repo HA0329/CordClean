@@ -87,7 +87,7 @@ if (alive(pid)) {
 
 // Node 版本（当前进程本身就是证据）
 const major = Number(process.versions.node.split('.')[0])
-if (major < 20) fail(`[错误] Node.js 版本过低：v${process.versions.node}（需要 20+）`)
+if (major < 22) fail(`[错误] Node.js 版本过低：v${process.versions.node}（需要 22+，见 package.json engines）`)
 else log(`[1/3] Node.js v${process.versions.node}  OK`)
 
 // pnpm
@@ -109,7 +109,8 @@ if (probe.status !== 0) {
 log('[2/3] pnpm 就绪  OK')
 
 // 依赖
-const needInstall = !existsSync('node_modules/.bin/tsx.cmd') || !existsSync('node_modules/.bin/vite.cmd')
+// 只要 tsx 存在就认为依赖已安装（vite 由 packages/ui 自带，不再出现在根 .bin 中）
+const needInstall = !existsSync('node_modules/.bin/tsx.cmd')
 const needElectron = mode === 'desktop' && !existsSync('node_modules/electron/dist/electron.exe')
 if (needInstall || needElectron) {
   log('[3/3] 首次运行或依赖缺失：安装依赖（只需一次）...')

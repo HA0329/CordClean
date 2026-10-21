@@ -20,8 +20,8 @@ const reply = {
     {
       title: '清理系统临时文件',
       reason: '临时目录共发现 948 个文件、约 53 MB，其中多数为程序诊断日志，删除后不影响使用。',
-      taskId: 'temp',
-      targets: ['temp', '系统垃圾'],
+      taskId: 'rule:system_temp',
+      targets: ['rule:system_temp', '系统垃圾'],
       estimatedBytes: 55_000_000,
       confidence: 0.93,
       risk: 'safe',
@@ -29,8 +29,8 @@ const reply = {
     {
       title: '清理开发者包缓存',
       reason: 'npm / pnpm / Gradle 等缓存合计约 1.07 GB，属于可再生成数据，适合在磁盘紧张时清理。',
-      taskId: 'dev-cache',
-      targets: ['dev-cache', '开发缓存'],
+      taskId: 'rule:dev_caches',
+      targets: ['rule:dev_caches', '开发缓存'],
       estimatedBytes: 1_070_000_000,
       confidence: 0.85,
       risk: 'caution',
@@ -38,8 +38,8 @@ const reply = {
     {
       title: '清理浏览器缓存',
       reason: 'Chrome / Edge 缓存约 234 MB，可随时重建；建议在关闭浏览器后清理以便释放更彻底。',
-      taskId: 'browser-cache',
-      targets: ['browser-cache', '浏览器缓存'],
+      taskId: 'rule:web_cache',
+      targets: ['rule:web_cache', '浏览器缓存'],
       estimatedBytes: 234_000_000,
       confidence: 0.8,
       risk: 'safe',
