@@ -89,6 +89,7 @@ const selectedPlanId = ref('default')
 const selectedPlan = computed(() => plans.value.find((plan) => plan.id === selectedPlanId.value) ?? plans.value[0])
 
 const schedule = reactive({
+  name: '',
   enabled: false,
   daily: false,
   everyMinutes: 120,
@@ -105,6 +106,7 @@ watch(
   (plan) => {
     if (!plan) return
     Object.assign(schedule, {
+      name: String(plan.name ?? ''),
       enabled: plan.enabled === true,
       daily: plan.daily === true,
       everyMinutes: Number(plan.everyMinutes ?? 120),
@@ -123,11 +125,29 @@ async function saveSchedule() {
     ElMessage.warning('插件页没有找到「定时扫描」插件')
     return
   }
+  const planName = schedule.name.trim()
+  if (!planName) {
+    ElMessage.warning('请先填写任务名称')
+    return
+  }
   try {
     if (!schedulerPlugin.value.enabled) await setPluginEnabled('scheduler', true)
     const current = (schedulerPlugin.value.config ?? {}) as any
-    const firstPlan = Array.isArray(current.plans) && current.plans.length ? current.plans[0] : { id: 'default', name: '默认计划', authorizedHash: '' }
-    const nextPlans = plans.value.map((plan) => (plan.id === selectedPlanId.value ? { ...plan, enabled: schedule.enabled, daily: schedule.daily, everyMinutes: schedule.everyMinutes, atHour: schedule.atHour, atMinute: schedule.atMinute, taskIds: schedule.taskIds, mode: schedule.mode } : plan))
+    const nextPlans = plans.value.map((plan) =>
+      plan.id === selectedPlanId.value
+        ? {
+            ...plan,
+            name: planName,
+            enabled: schedule.enabled,
+            daily: schedule.daily,
+            everyMinutes: schedule.everyMinutes,
+            atHour: schedule.atHour,
+            atMinute: schedule.atMinute,
+            taskIds: schedule.taskIds,
+            mode: schedule.mode,
+          }
+        : plan,
+    )
     await savePluginConfig('scheduler', { ...current, plans: nextPlans })
     await refreshPlugins()
     ElMessage.success('定时任务已保存')
@@ -138,18 +158,39 @@ async function saveSchedule() {
 
 async function createPlan() {
   const config = (schedulerPlugin.value?.config ?? {}) as any
+  // 默认给一个可读的候选名，用户可改成任意自定义名称；不再固定叫「新计划」
+  const defaultName = `定时任务 ${new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+  let name = ''
+  try {
+    const result = await ElMessageBox.prompt('给这个定时任务起个名字（之后也能在表单里改）', '新建定时任务', {
+      confirmButtonText: '创建',
+      cancelButtonText: '取消',
+      inputValue: defaultName,
+      inputPlaceholder: '例如：每周清理开发缓存',
+      inputValidator: (value: string) => {
+        const trimmed = String(value ?? '').trim()
+        if (!trimmed) return '名称不能为空'
+        if (trimmed.length > 40) return '名称最多 40 个字符'
+        return true
+      },
+    } as any)
+    name = String(result.value ?? '').trim()
+  } catch {
+    return
+  }
+  if (!name) return
   const id = 'plan-' + Date.now().toString(36)
-  const plan = { id, name: '新计划', enabled: false, daily: false, everyMinutes: 120, atHour: 3, atMinute: 0, taskIds: [], mode: 'scan', authorizedHash: '' }
+  const plan = { id, name, enabled: false, daily: false, everyMinutes: 120, atHour: 3, atMinute: 0, taskIds: [], mode: 'scan', authorizedHash: '' }
   await savePluginConfig('scheduler', { ...config, plans: [...plans.value, plan] })
   await refreshPlugins()
   selectedPlanId.value = id
-  ElMessage.success('已新建计划，修改后点保存')
+  ElMessage.success(`已创建定时任务「${name}」`)
 }
 
 async function removePlan() {
   if (plans.value.length <= 1) return
   try {
-    await ElMessageBox.confirm('删除计划「' + (selectedPlan.value?.name ?? '') + '」？', '删除计划', { type: 'warning' })
+    await ElMessageBox.confirm('删除任务「' + (selectedPlan.value?.name ?? '') + '」？', '删除任务', { type: 'warning' })
     const remaining = plans.value.filter((plan) => plan.id !== selectedPlanId.value)
     await savePluginConfig('scheduler', { ...(schedulerPlugin.value?.config ?? {}), plans: remaining })
     await refreshPlugins()
@@ -462,11 +503,14 @@ async function doClearEgress() {
             <el-select v-model="selectedPlanId" size="small" style="width: 220px">
               <el-option v-for="plan in plans" :key="plan.id" :label="plan.name" :value="plan.id" />
             </el-select>
-            <el-button size="small" @click="createPlan">新建计划</el-button>
-            <el-button size="small" type="danger" plain :disabled="plans.length <= 1" @click="removePlan">删除计划</el-button>
-            <span class="cc-faint">{{ plans.length }} 个计划</span>
+            <el-button size="small" @click="createPlan">新建任务</el-button>
+            <el-button size="small" type="danger" plain :disabled="plans.length <= 1" @click="removePlan">删除任务</el-button>
+            <span class="cc-faint">{{ plans.length }} 个任务</span>
           </div>
           <el-form label-position="left" label-width="120px" size="small" class="schedule-form">
+            <el-form-item label="任务名称">
+              <el-input v-model="schedule.name" maxlength="40" show-word-limit placeholder="例如：每周清理开发缓存" />
+            </el-form-item>
             <el-form-item label="启用"><el-switch v-model="schedule.enabled" /></el-form-item>
             <el-form-item label="执行方式">
               <el-radio-group v-model="schedule.daily">
