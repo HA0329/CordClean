@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { CATEGORIES, RISK_META } from '@cordclean/shared'
 import type { PluginRuntime } from '@cordclean/shared'
 import {
@@ -286,10 +286,17 @@ function categoryName(id: string) {
       <template #footer><el-button @click="ruleOpen = false">关闭</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="installOpen" title="添加本地插件" width="560px">
+    <el-dialog v-model="installOpen" title="添加本地插件" width="600px">
+      <el-alert type="warning" :closable="false" show-icon class="install-warning">
+        <template #title>第三方插件以当前用户权限执行代码</template>
+        <p>
+          插件可能访问、修改或删除你的文件，读取环境变量，或发起网络请求。能力声明（capabilities）只在安装时做静态检查，
+          不是运行时沙箱；请只加载你信任来源的 <code>.mjs</code> / <code>.js</code> 文件。
+        </p>
+      </el-alert>
       <p class="cc-hint">
         填写一个本地插件模块的绝对路径（<code>.mjs</code> / <code>.js</code>，需默认导出带 <code>apply()</code> 的 Cordis 插件，通常由 <code>defineCleanerPlugin</code> 生成）。
-        插件只加载到本次运行，不会复制或修改你的文件；重启后需重新添加。
+        插件只加载到本次运行，CordClean 不会复制插件文件；重启后需重新添加。注意插件代码自身在运行时仍可访问你的文件与环境变量。
       </p>
       <el-input v-model="installPath" placeholder="例如 D:\my-plugins\my-cleaner.mjs" />
       <template #footer>
@@ -442,4 +449,5 @@ code {
 <style scoped>
 .mode-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .form-mode { max-height: 420px; overflow: auto; }
+.install-warning { margin-bottom: 12px; }
 </style>

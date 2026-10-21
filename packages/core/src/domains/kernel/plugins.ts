@@ -22,7 +22,7 @@ import type {
   PluginManagerLike,
   PluginRuntimeInfo,
 } from '@cordclean/shared'
-import { errorMessage } from '@cordclean/utils'
+import { errorMessage, isAbsolutePath, isSubPath } from '@cordclean/utils'
 
 /** 插件清单项 */
 export interface PluginManifestEntry {
@@ -253,13 +253,36 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       capabilities,
       inject: ['cleaner', 'pathPolicy'],
       apply(ctx: any) {
-        for (const task of info.tasks) {
-          for (const target of task.targets ?? []) {
-            if (task.id && target) {
-              ctx.pathPolicy.addRoot(target)
-              ctx.pathPolicy.addClearRoot(target)
+        // 允许根必须随插件 fiber 回收，否则 disable/reload 后辖区残留到进程退出
+        const rootDisposers: Array<() => void> = []
+        ctx.effect(() => () => {
+          for (const dispose of rootDisposers) {
+            try {
+              dispose()
+            } catch {
+              /* 单个根回收失败不影响其它根 */
             }
           }
+          rootDisposers.length = 0
+        })
+        for (const task of info.tasks) {
+          const targets = (task.targets ?? []).filter(
+            (target: unknown): target is string => typeof target === 'string' && target.trim().length > 0,
+          )
+          // 外部插件不得扩大清空白名单（addClearRoot 只给内置规则使用）；
+          // target 还必须是绝对路径，且落在安装时声明的 capabilities.fsRoots 内，
+          // 否则整个任务不注册（不阻塞该插件的其它任务）。
+          const invalidTarget = targets.find((target) => {
+            if (!isAbsolutePath(target)) return true
+            return !capabilities.fsRoots.some((root) => isSubPath(root, target))
+          })
+          if (invalidTarget !== undefined) {
+            ctx.logger?.warn?.(
+              `外部插件 ${info.name || id} 的任务 ${task.id || '(未命名)'} 已跳过：目标 ${invalidTarget} 不是绝对路径或不在能力声明的 fsRoots 内`,
+            )
+            continue
+          }
+          for (const target of targets) rootDisposers.push(ctx.pathPolicy.addRoot(target))
           ctx.effect(() =>
             ctx.cleaner.define({
               ...task,
