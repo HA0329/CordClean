@@ -30,6 +30,7 @@ pnpm start:desktop    # Electron 桌面应用
 | 运行时插件管理 | 「插件」页面可启用/停用/热重载插件，配置写入 `config.json`，无需重启应用 |
 | 安全策略 | 路径策略（保护系统/用户重要目录）+ 隔离区（可恢复）+ 注册表 `.reg` 备份；本地服务随机 token + Host/Origin 校验（见 [威胁模型](docs/threat-model.md)） |
 | 扫描/清理分离 | 先扫描出「可清理项」，用户勾选后再执行；支持 `dryRun` 预演 |
+| 定时任务 | 多计划定时扫描；每个任务可自定义名称、按间隔或每天固定时间运行；自动清理需授权，规则变化后授权失效 |
 | 扫描结果选择 v2 | 千条级结果按「分类 → 任务」聚合；安全项智能推荐，谨慎/高风险项显式确认；支持风险/大小/任务筛选、三态整组勾选、逐项明细 + 详情说明 + 打开位置、受保护只读视图、清理确认摘要 |
 | 双外壳 | 同一内核与界面，可运行在浏览器（HTTP + WebSocket）或 Electron（IPC）中 |
 | AI 顾问插件 | 把脱敏的本机画像交给 DeepSeek 等 OpenAI 兼容接口，产出结构化清理建议 |
@@ -146,7 +147,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 | 插件 | 任务 | 风险 | 说明 |
 | --- | --- | --- | --- |
 | `rule-pack` | 规则库（默认 31 类 / 312 条规则任务） | 安全~高风险 | 数据驱动：catalog + extra 两套 JSON，新增清理域只需加数据（见 §6.2） |
-| `scheduler` | —（定时扫描，不产生清理任务） | — | 按计划扫描并通知；默认禁用，`clean` 模式需显式授权，授权与任务范围/模式绑定 |
+| `scheduler` | —（定时扫描，不产生清理任务） | — | 多计划扫描并通知；每个任务可自定义名称；默认禁用，`clean` 模式需显式授权，授权与任务范围/模式绑定 |
 | `shortcuts` | 失效快捷方式 | 高风险 | 纯二进制解析 `.lnk`，只清理目标不存在的死链；默认禁用 |
 | `recycle` | 回收站 | 安全 | 解析 `$I/$R` 结构，按原始路径展示 |
 | `large-files` | 大文件 | 谨慎 | 只报告，需手动勾选 |
@@ -165,13 +166,19 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 大模型接口是最容易变的部分（DeepSeek 已把 `deepseek-chat` 换成 `deepseek-flash`，
 并新增了思考模式 / 推理等级）。因此 AI 插件刻意不把任何接口细节写死：
 
+> 官方当前请求 ID：`deepseek-flash`（实际由 **DeepSeek-V4.1-Flash-1017** 提供服务）与
+> `deepseek-v4-pro`（DeepSeek-V4-Pro-0813）；旧 ID `deepseek-v4-flash` 等仍被接受但已退役。
+> 插件会把有官方说明的旧 ID 迁移到稳定 ID；`/models` 的显示名/上下文/输出上限才是运行时依据，
+> 未知模型名则原样保留。完整约定见 [AI 模型与接口兼容策略](docs/ai-model-compatibility.md)。
+
 | 配置项 | 作用 |
 | --- | --- |
 | `apiShape` | `chat` / `messages` / `responses` 三种形态，分别对应 `/chat/completions`、`/anthropic/v1/messages`、`/responses` |
 | `baseUrl` + `chatPath` + `modelsPath` | 地址与路径都可改；`messages` 形态会自动补 `/anthropic` 前缀 |
-| `model` | 自由文本；界面「获取模型」会从 `/models` 动态拉取候选（失败则用内置目录） |
+| `model` | 默认 `deepseek-flash`；自由文本，可手动输入任意模型名；界面「获取模型」从 `/models` 动态拉取候选（失败则用内置目录），并显示模型版本/上下文 |
 | `reasoningEffort` | `auto/off/low/medium/high/max`，按形态映射：chat → `thinking`+`reasoning_effort`，messages → `output_config.effort`，responses → `reasoning.effort` |
 | `jsonMode` | chat 用 `response_format`，responses 用 `text.format`，messages 用提示词约束 |
+| `maxTokens` | 最大输出 token；默认 3000，按 `/models` 的 `max_output_tokens` 上限收敛，不再静默抬高 |
 | `extraBody` | **逃生舱**：任意 JSON 深合并进请求体，可覆盖上述所有字段；厂商新增参数时改这里即可 |
 | `extraHeaders` | 追加/覆盖请求头（代理、beta 开关、自定义鉴权） |
 | `systemPrompt` | 覆盖内置提示词 |
@@ -291,8 +298,10 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 
 ## 9. 界面
 
-界面截图由 `scripts/e2e-ui.mjs` 与 `scripts/verify-clean-ui.mjs` 生成，保存在 `docs/screenshots/`
-（是否随仓库提交由发布决定；本地开发可直接打开）。
+截图已随仓库提交在 `docs/screenshots/`，由 `scripts/e2e-ui.mjs` 与 `scripts/verify-clean-ui.mjs`
+生成（脚本会直接覆盖更新）。**如果 GitHub 页面里图片显示为空白，通常是图片 CDN
+（`raw.githubusercontent.com` / `camo.githubusercontent.com`）被网络拦截，不是文件缺失**：
+可直接打开对应文件查看，或使用 GitHub 加速/代理后再刷新。
 
 | 概览 | 清理（v2 分组总览） |
 | --- | --- |
@@ -309,6 +318,12 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 | 设置 | 暗色主题 |
 | --- | --- |
 | ![设置](docs/screenshots/ui-settings.png) | ![暗色](docs/screenshots/ui-theme-dark.png) |
+
+图片打不开时可直接点文件： [概览](docs/screenshots/ui-overview.png) ·
+[清理结果](docs/screenshots/ui-clean-result.png) · [清理明细](docs/screenshots/ui-clean-items.png) ·
+[插件管理](docs/screenshots/ui-plugins.png) · [历史](docs/screenshots/ui-history.png) ·
+[AI](docs/screenshots/ui-ai.png) · [设置](docs/screenshots/ui-settings.png) ·
+[暗色主题](docs/screenshots/ui-theme-dark.png)
 
 ## 10. 扩展一个新清理能力
 
