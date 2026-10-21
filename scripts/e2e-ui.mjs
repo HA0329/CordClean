@@ -226,7 +226,19 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 400))
   const fileItems = await capture('clean-items')
   console.log('✓ 逐项明细截图：', path.relative(root, fileItems))
+
+  // 3.2 回归：分组「明细 →」钻取后切回分组，必须恢复全部组（不能只剩一个组）
   await evaluate(`document.querySelector('.view-tab[data-view="groups"]').click()`)
+  await waitFor('回到分组总览', async () => evaluate('document.querySelectorAll(".group-row").length > 0'), 10_000)
+  await evaluate(`(() => { const row = document.querySelector('.group-row'); const btn = [...(row?.querySelectorAll('.mini-btn') ?? [])].find(b => b.textContent.includes('明细')); btn?.click(); return !!btn })()`)
+  await waitFor('钻取任务明细', async () => evaluate('document.querySelectorAll(".item-row").length > 0'), 15_000)
+  await evaluate(`document.querySelector('.view-tab[data-view="groups"]').click()`)
+  await waitFor('分组全部恢复', async () => evaluate('document.querySelectorAll(".group-row").length > 0'), 10_000)
+  const groupCountAfterDrill = await evaluate('document.querySelectorAll(".group-row").length')
+  if (groupCountAfterDrill !== groupRows) {
+    throw new Error(`分组钻取后未恢复：钻取前 ${groupRows} 组，切回后 ${groupCountAfterDrill} 组`)
+  }
+  console.log(`✓ 分组→明细→分组：${groupRows} 组保持一致`)
 
   // 4. AI 页面：启用插件并验证新配置界面渲染（无 Key 时也能渲染表单）
   await evaluate(`document.querySelectorAll('.nav-item')[4].click()`)

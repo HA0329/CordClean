@@ -115,6 +115,8 @@ const search = ref('')
 const riskFilter = ref<RiskFilter>('all')
 const sizeFilter = ref<SizeFilter>('all')
 const taskFilter = ref<string>('all')
+/** 「明细 →」临时设置的任务筛选；记录钻取前的筛选，回分组时恢复，不污染分组总览 */
+const autoTaskFilter = ref<{ taskId: string; previous: string } | null>(null)
 const onlyRecommended = ref(false)
 const page = ref(1)
 const expanded = ref<Set<string>>(new Set())
@@ -246,6 +248,7 @@ function resetFilters() {
   riskFilter.value = 'all'
   sizeFilter.value = 'all'
   taskFilter.value = 'all'
+  autoTaskFilter.value = null
   onlyRecommended.value = false
 }
 
@@ -254,11 +257,23 @@ const paged = computed(() => filtered.value.slice((page.value - 1) * pageSize.va
 watch([search, riskFilter, sizeFilter, taskFilter, onlyRecommended, sort], () => {
   page.value = 1
 })
+// 用户手动改任务筛选时，解除「钻取」标记，避免回分组时误清掉用户自己的筛选
+watch(taskFilter, (value) => {
+  if (autoTaskFilter.value && value !== autoTaskFilter.value.taskId) autoTaskFilter.value = null
+})
 watch(view, () => {
   page.value = 1
+  // 从分组「明细 →」进入逐项明细后，再切回分组总览要恢复钻取前的筛选/全部组；
+  // 用户手动选择的筛选不会被覆盖。
+  if (view.value === 'groups' && autoTaskFilter.value) {
+    const { taskId, previous } = autoTaskFilter.value
+    autoTaskFilter.value = null
+    if (taskFilter.value === taskId) taskFilter.value = previous
+  }
 })
 
 function showTaskItems(taskId: string) {
+  autoTaskFilter.value = { taskId, previous: taskFilter.value }
   taskFilter.value = taskId
   view.value = 'items'
   page.value = 1
