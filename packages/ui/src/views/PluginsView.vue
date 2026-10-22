@@ -109,6 +109,11 @@ async function reload(plugin: PluginRuntime) {
 
 async function uninstall(plugin: PluginRuntime) {
   try {
+    if (plugin.id.startsWith('external:')) {
+      await uninstallPlugin(plugin.id)
+      ElMessage.success(plugin.name + ' 已卸载，工坊生成的插件文件与依赖目录已清理')
+      return
+    }
     await setPluginEnabled(plugin.id, false)
     ElMessage.success(plugin.name + ' 已卸载：任务与辖区已释放（内置插件可随时重新安装）')
   } catch (error) {

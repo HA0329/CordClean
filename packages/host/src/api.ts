@@ -24,7 +24,15 @@ import type {
   ApiResult,
 } from '@cordclean/shared'
 import { dlog, exportDiagnostics, initDiagnostics, logDirPath, recentLogs } from './diagnostics.ts'
-import { saveGeneratedPlugin, validatePluginCode, installPluginDependencies } from './plugin-workshop.ts'
+import {
+  cleanupGeneratedPlugin,
+  cleanupGeneratedPlugins,
+  generatedPluginPath,
+  installPluginDependencies,
+  isGeneratedPluginPath,
+  saveGeneratedPlugin,
+  validatePluginCode,
+} from './plugin-workshop.ts'
 import { RpcError } from '@cordclean/shared'
 
 /** 外壳能力适配器（不同运行环境的系统交互） */
@@ -50,6 +58,9 @@ export type HandlerMap = { [M in ApiMethod]: (params: ApiParams<M>) => Promise<A
 /** 构造 RPC 处理方法表 */
 export function createHandlers(api: ApiContext): HandlerMap {
   initDiagnostics(api.dataDir)
+  // 外部插件不是持久加载的：上次运行留下的工坊插件目录会在启动时清理，
+  // 避免安装失败/退出后残留 node_modules 占空间。
+  cleanupGeneratedPlugins(api.dataDir)
   const UNDO_FILE = path.join(api.dataDir, '.undo', 'last-clean.json')
   const saveUndo = (report: any): void => {
     if (report.dryRun || !Array.isArray(report.undo) || !report.undo.length) return
@@ -223,7 +234,20 @@ export function createHandlers(api: ApiContext): HandlerMap {
       await ctx.plugins.disable(id)
     },
     'plugins/install': ({ path, allowCustomClean }) => ctx.plugins.installExternal(path, { allowCustomClean: allowCustomClean === true }),
-  'plugins/uninstall': ({ id }) => ctx.plugins.uninstallExternal(id),
+    'plugins/uninstall': async ({ id }) => {
+      const source = ctx.plugins.sourcePath(id)
+      await ctx.plugins.uninstallExternal(id)
+      if (source && isGeneratedPluginPath(api.dataDir, source)) {
+        try {
+          // 有依赖时 source 是 .../<name>/plugin.mjs，需要删除整个 <name> 目录
+          const dir = path.dirname(source)
+          if (path.basename(source) === 'plugin.mjs') rmSync(dir, { recursive: true, force: true })
+          else rmSync(source, { force: true })
+        } catch {
+          /* 插件卸载已成功，删除文件失败只影响残留 */
+        }
+      }
+    },
   'plugins/reload': async ({ id }) => {
       await ctx.plugins.reload(id)
     },
@@ -291,12 +315,39 @@ export function createHandlers(api: ApiContext): HandlerMap {
       if (dependencyCount > 0 && acknowledgeDependencies !== true) {
         throw new Error(`该插件声明了 ${dependencyCount} 个第三方依赖，需要先确认依赖清单并勾选“允许下载依赖”`)
       }
+      const target = generatedPluginPath(api.dataDir, name, deps)
+      const targetDir = path.dirname(target)
+      // 已加载的同名插件不能覆盖；先让用户在插件页卸载
+      const loaded = ctx.plugins.list().find((plugin) => {
+        const source = ctx.plugins.sourcePath(plugin.id)
+        if (!source) return false
+        return dependencyCount > 0
+          ? path.resolve(source).startsWith(path.resolve(targetDir) + path.sep)
+          : path.resolve(source) === path.resolve(target)
+      })
+      if (loaded) throw new Error('同名插件已安装，请先在插件页卸载后再安装')
+      // 清理上一次失败留下的残留，再写本次文件
+      cleanupGeneratedPlugin(api.dataDir, name, deps)
       const file = saveGeneratedPlugin(api.dataDir, name, String(code), deps)
       try {
         if (dependencyCount > 0) await installPluginDependencies(file)
         await ctx.plugins.installExternal(file)
       } catch (error) {
-        throw new Error('插件安装失败：' + (error instanceof Error ? error.message : String(error)))
+        // 失败回滚：如果插件已被部分注册则卸载，再删除本次生成的插件目录/文件
+        try {
+          for (const plugin of ctx.plugins.list()) {
+            const source = ctx.plugins.sourcePath(plugin.id)
+            if (!source) continue
+            const resolved = path.resolve(source)
+            if (resolved === path.resolve(target) || (dependencyCount > 0 && resolved.startsWith(path.resolve(targetDir) + path.sep))) {
+              await ctx.plugins.uninstallExternal(plugin.id)
+            }
+          }
+        } catch {
+          /* 回滚失败不掩盖原始错误 */
+        }
+        cleanupGeneratedPlugin(api.dataDir, name, deps)
+        throw new Error('插件安装失败（已清理本次生成的插件文件）：' + (error instanceof Error ? error.message : String(error)))
       }
       return { path: file, id: 'external:' + String(name).replace(/[^a-zA-Z0-9_-]/g, '-') }
     },    'ai/rules/dry-run': async ({ suggestion }) => {

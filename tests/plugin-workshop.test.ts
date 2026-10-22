@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { saveGeneratedPlugin, validatePluginCode } from '../packages/host/src/plugin-workshop.ts'
+import {
+  cleanupGeneratedPlugin,
+  generatedPluginPath,
+  saveGeneratedPlugin,
+  validatePluginCode,
+} from '../packages/host/src/plugin-workshop.ts'
 
 const GOOD = `
 export default {
@@ -55,6 +60,22 @@ describe('AI 插件工坊校验', () => {
       )
       expect(pkg.dependencies).toEqual({ 'fast-glob': '^3.3.2' })
       expect(pkg.type).toBe('module')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('失败回滚/卸载可以清理生成的插件文件或依赖目录', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'cc-workshop-clean-'))
+    try {
+      const single = saveGeneratedPlugin(dir, 'one', 'export default { name: "one", setup() {} }')
+      expect(generatedPluginPath(dir, 'one')).toBe(single)
+      cleanupGeneratedPlugin(dir, 'one')
+      expect(() => readFileSync(single, 'utf8')).toThrow()
+
+      const depFile = saveGeneratedPlugin(dir, 'two', 'export default { name: "two", setup() {} }', { 'is-number': '^7.0.0' })
+      cleanupGeneratedPlugin(dir, 'two', { 'is-number': '^7.0.0' })
+      expect(() => readFileSync(depFile, 'utf8')).toThrow()
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

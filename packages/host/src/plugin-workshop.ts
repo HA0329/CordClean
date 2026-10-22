@@ -86,44 +86,78 @@ export async function validatePluginCode(code: string, dependencies: Record<stri
   return { ok: errors.length === 0, errors, warnings }
 }
 
-/**
- * 把生成的插件写到数据目录。
- * 零依赖：`generated-plugins/<name>.mjs`（保持旧行为）。
- * 有依赖：`generated-plugins/<name>/plugin.mjs` + package.json，依赖安装到同目录 node_modules。
- */
+/** 工坊插件最终路径（零依赖单文件；有依赖为目录内 plugin.mjs） */
+export function generatedPluginPath(
+  dataDir: string,
+  name: string,
+  dependencies: Record<string, string> = {},
+): string {
+  const safe = String(name || 'ai-plugin').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 40) || 'ai-plugin'
+  const baseDir = path.join(dataDir, 'generated-plugins')
+  return Object.keys(dependencies).length
+    ? path.join(baseDir, safe, 'plugin.mjs')
+    : path.join(baseDir, `${safe}.mjs`)
+}
+
+/** 删除本次生成的插件文件/目录（失败回滚与卸载清理用） */
+export function cleanupGeneratedPlugin(
+  dataDir: string,
+  name: string,
+  dependencies: Record<string, string> = {},
+): void {
+  const file = generatedPluginPath(dataDir, name, dependencies)
+  try {
+    if (Object.keys(dependencies).length) rmSync(path.dirname(file), { recursive: true, force: true })
+    else rmSync(file, { force: true })
+  } catch {
+    /* 清理失败不应掩盖原始安装错误 */
+  }
+}
+
+/** 启动时清理上一次运行留下的工坊插件目录（外部插件本来就不是持久加载的） */
+export function cleanupGeneratedPlugins(dataDir: string): void {
+  try {
+    rmSync(path.join(dataDir, 'generated-plugins'), { recursive: true, force: true })
+  } catch {
+    /* 启动清理失败不影响主流程 */
+  }
+}
+
+/** 判断路径是否是工坊生成的插件文件/目录（避免误删用户手工安装的外部插件） */
+export function isGeneratedPluginPath(dataDir: string, target: string): boolean {
+  const base = path.resolve(path.join(dataDir, 'generated-plugins'))
+  const resolved = path.resolve(target)
+  return resolved === base || resolved.startsWith(base + path.sep)
+}
+
+/** 把生成的插件写到数据目录；有依赖时写独立目录，零依赖保持单文件 */
 export function saveGeneratedPlugin(
   dataDir: string,
   name: string,
   code: string,
   dependencies: Record<string, string> = {},
 ): string {
-  const safe = String(name || 'ai-plugin').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 40) || 'ai-plugin'
-  const baseDir = path.join(dataDir, 'generated-plugins')
-  mkdirSync(baseDir, { recursive: true })
-  if (!Object.keys(dependencies).length) {
-    const file = path.join(baseDir, `${safe}.mjs`)
-    writeFileSync(file, code, 'utf8')
-    return file
-  }
-  const dir = path.join(baseDir, safe)
+  const file = generatedPluginPath(dataDir, name, dependencies)
+  const dir = path.dirname(file)
   mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, 'plugin.mjs')
   writeFileSync(file, code, 'utf8')
-  writeFileSync(
-    path.join(dir, 'package.json'),
-    JSON.stringify(
-      {
-        name: 'cordclean-workshop-' + safe,
-        version: '0.0.0',
-        private: true,
-        type: 'module',
-        dependencies,
-      },
-      null,
-      2,
-    ) + '\n',
-    'utf8',
-  )
+  if (Object.keys(dependencies).length) {
+    writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify(
+        {
+          name: 'cordclean-workshop-' + path.basename(dir),
+          version: '0.0.0',
+          private: true,
+          type: 'module',
+          dependencies,
+        },
+        null,
+        2,
+      ) + '\n',
+      'utf8',
+    )
+  }
   return file
 }
 
