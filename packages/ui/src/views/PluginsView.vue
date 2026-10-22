@@ -111,13 +111,19 @@ async function reload(plugin: PluginRuntime) {
 async function uninstall(plugin: PluginRuntime) {
   try {
     if (plugin.id.startsWith('external:')) {
+      await ElMessageBox.confirm(
+        `卸载并删除「${plugin.name}」？这会删除工坊生成的插件文件与依赖目录，无法恢复；如果只是暂时不用，请关闭开关。`,
+        '卸载并删除',
+        { type: 'warning', confirmButtonText: '卸载并删除', cancelButtonText: '取消' },
+      )
       await uninstallPlugin(plugin.id)
-      ElMessage.success(plugin.name + ' 已卸载，工坊生成的插件文件与依赖目录已清理')
+      ElMessage.success(plugin.name + ' 已卸载并删除工坊文件/依赖')
       return
     }
     await setPluginEnabled(plugin.id, false)
-    ElMessage.success(plugin.name + ' 已卸载：任务与辖区已释放（内置插件可随时重新安装）')
+    ElMessage.success(plugin.name + ' 已停用：任务与辖区已释放，可随时重新启用')
   } catch (error) {
+    if (error === 'cancel' || error === 'close') return
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
@@ -125,7 +131,7 @@ async function uninstall(plugin: PluginRuntime) {
 async function install(plugin: PluginRuntime) {
   try {
     await setPluginEnabled(plugin.id, true)
-    ElMessage.success(plugin.name + ' 已安装并启用')
+    ElMessage.success(plugin.name + ' 已启用')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
@@ -307,8 +313,9 @@ function categoryName(id: string) {
           <el-button size="small" @click="openSource(plugin)">源码</el-button>
           <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" type="primary" plain @click="runPluginTasks(plugin)">扫描此插件</el-button>
           <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" @click="addPluginToScheduler(plugin)">加入定时任务</el-button>
-          <el-button v-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">卸载</el-button>
-          <el-button v-else size="small" type="primary" plain @click="install(plugin)">安装</el-button>
+          <el-button v-if="!plugin.enabled" size="small" type="primary" plain @click="install(plugin)">启用</el-button>
+          <el-button v-if="plugin.source === 'external'" size="small" type="danger" plain @click="uninstall(plugin)">卸载并删除</el-button>
+          <el-button v-else-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">停用</el-button>
           <span class="cc-faint" style="margin-left: auto">{{ plugin.configurable ? '支持配置' : '无配置项' }}</span>
         </div>
       </div>
