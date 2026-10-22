@@ -14,6 +14,7 @@ export const kind = 'widget'
 export const description = 'P1 通用插件测试'
 export const contributes = {
   overviewCards: [{ id: 'hello', title: 'Hello P1', type: 'text', fallback: 'fallback' }],
+  pages: [{ id: 'page', title: 'P1 页面', mode: 'iframe', html: '<h1>ok</h1>' }],
 }
 
 export function apply(ctx) {
@@ -42,6 +43,7 @@ describe('P1 通用插件：原生 Cordis 插件与 UI 贡献', () => {
       const entry = contributions.find((item) => item.pluginId === result.id)
       expect(entry?.kind).toBe('widget')
       expect(entry?.contributions.overviewCards?.[0]).toMatchObject({ id: 'hello', title: 'Hello P1' })
+      expect(entry?.contributions.pages?.[0]?.title).toBe('P1 页面')
       await expect(app.ctx.ui.resolveValue(result.id, 'hello')).resolves.toEqual({ value: 42 })
     } finally {
       await app.dispose()
@@ -73,4 +75,6 @@ describe('P1 通用插件：原生 Cordis 插件与 UI 贡献', () => {
     }
   })
 })
+
+
 

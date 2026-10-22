@@ -32,8 +32,13 @@ export interface UiPageContribution {
   icon?: string
   /** declarative=宿主固定组件；iframe=插件资源页面 */
   mode: 'declarative' | 'iframe'
-  /** iframe 模式下由宿主从插件目录安全解析的入口文件 */
+  /** iframe 模式下由宿主从插件目录安全解析的入口文件（预留） */
   entry?: string
+  /**
+   * iframe 模式的自包含 HTML。宿主用 sandbox="allow-scripts" 的 data URL 加载，
+   * 不注入主渲染进程；页内脚本通过 postMessage 与宿主通信。
+   */
+  html?: string
 }
 
 export interface UiStatusItemContribution {

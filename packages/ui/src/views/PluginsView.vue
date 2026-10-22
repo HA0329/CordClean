@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CATEGORIES, RISK_META } from '@cordclean/shared'
-import type { PluginRuntime } from '@cordclean/shared'
+import type { PluginRuntime, UiContributionEntry, UiPageContribution } from '@cordclean/shared'
 import {
   loadPluginDefaults,
   refreshPlugins,
   fetchLastScan,
+  fetchUiContributions,
   reloadPlugin,
   pluginSource,
   openEditor,
@@ -17,6 +18,7 @@ import {
   uninstallPlugin,
   savePluginConfig,
   setPluginEnabled,
+  resolvePluginUi,
   startScan,
   state,
 } from '../api/store.ts'
@@ -34,6 +36,78 @@ const installOpen = ref(false)
 const installPath = ref('')
 const installing = ref(false)
 const allowCustomClean = ref(false)
+
+// 通用插件页面（P1.5）：声明式/iframe 贡献，iframe 用 sandbox 隔离
+const uiEntries = ref<UiContributionEntry[]>([])
+const pageOpen = ref(false)
+const pageTitle = ref('插件页面')
+const pagePluginId = ref('')
+const pageHtml = ref('')
+const pageSrc = computed(() =>
+  pageHtml.value ? 'data:text/html;charset=utf-8,' + encodeURIComponent(pageHtml.value) : '',
+)
+const pageFrame = ref<HTMLIFrameElement>()
+
+function pagesFor(plugin: PluginRuntime): UiPageContribution[] {
+  return uiEntries.value.find((entry) => entry.pluginId === plugin.id)?.contributions.pages ?? []
+}
+
+function openPluginPage(plugin: PluginRuntime): void {
+  const page = pagesFor(plugin)[0]
+  if (!page) return
+  pageTitle.value = page.title
+  pagePluginId.value = plugin.id
+  pageHtml.value = page.html ?? ''
+  pageOpen.value = true
+}
+
+async function loadUiContributions(): Promise<void> {
+  try {
+    uiEntries.value = await fetchUiContributions()
+  } catch {
+    uiEntries.value = []
+  }
+}
+
+function onPageMessage(event: MessageEvent): void {
+  const frame = pageFrame.value
+  if (!frame || event.source !== frame.contentWindow) return
+  const data = event.data as
+    | { type?: string; id?: string; method?: string; resolverId?: string; params?: Record<string, unknown> }
+    | undefined
+  if (!data || data.type !== 'cordclean/plugin-page' || data.method !== 'resolve') return
+  const requestId = String(data.id ?? '')
+  const resolverId = String(data.resolverId ?? '')
+  if (!resolverId) return
+  void resolvePluginUi(pagePluginId.value, resolverId, data.params)
+    .then((value) => {
+      frame.contentWindow?.postMessage({ type: 'cordclean/plugin-page-result', id: requestId, ok: true, value }, '*')
+    })
+    .catch((error: unknown) => {
+      frame.contentWindow?.postMessage(
+        {
+          type: 'cordclean/plugin-page-result',
+          id: requestId,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        '*',
+      )
+    })
+}
+
+watch(
+  () => state.plugins.map((plugin: PluginRuntime) => `${plugin.id}:${plugin.enabled}`).join('|'),
+  () => {
+    void loadUiContributions()
+    if (pageOpen.value) pageOpen.value = false
+  },
+)
+onMounted(() => {
+  void loadUiContributions()
+  window.addEventListener('message', onPageMessage)
+})
+onUnmounted(() => window.removeEventListener('message', onPageMessage))
 
 async function doInstall() {
   if (!installPath.value.trim()) return
@@ -312,6 +386,7 @@ function categoryName(id: string) {
             <el-button size="small" :disabled="!plugin.enabled" @click="openConfig(plugin)">配置</el-button>
             <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" type="primary" plain @click="runPluginTasks(plugin)">扫描此插件</el-button>
             <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" @click="addPluginToScheduler(plugin)">加入定时任务</el-button>
+            <el-button v-if="pagesFor(plugin).length" size="small" type="primary" plain @click="openPluginPage(plugin)">插件页面</el-button>
             <el-button v-if="!plugin.enabled" size="small" type="primary" plain @click="install(plugin)">启用</el-button>
             <el-button v-if="plugin.source === 'external'" size="small" type="danger" plain @click="uninstall(plugin)">卸载并删除</el-button>
             <el-button v-else-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">停用</el-button>
@@ -381,6 +456,20 @@ function categoryName(id: string) {
       <template #footer>
         <el-button @click="editing = null">取消</el-button>
         <el-button type="primary" :loading="saving" @click="saveConfig">保存并重载</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="pageOpen" :title="pageTitle" width="860px" destroy-on-close>
+      <iframe
+        v-if="pageSrc"
+        ref="pageFrame"
+        class="plugin-page-frame"
+        sandbox="allow-scripts"
+        :src="pageSrc"
+      />
+      <p v-else class="cc-faint">该插件页面没有提供自包含 HTML。</p>
+      <template #footer>
+        <el-button @click="pageOpen = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -498,6 +587,14 @@ function categoryName(id: string) {
 
 .plugin-action-group .cc-faint {
   margin-left: 2px;
+}
+
+.plugin-page-frame {
+  width: 100%;
+  height: min(68vh, 600px);
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  background: #fff;
 }
 
 .plugin-spacer {

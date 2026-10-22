@@ -70,7 +70,7 @@ interface PluginUiContributions {
 - [x] `ui/contributions`、`ui/resolve`、`plugins/install-native` RPC
 - [x] 概览页渲染插件声明式卡片（`packages/ui/src/components/PluginOverviewCards.vue`）
 - [x] AI 工坊生成原生 Cordis 通用插件（kind/inject/contributes/apply + 依赖）
-- [ ] 插件页面/iframe 沙箱（P1.5）
+- [x] 插件 iframe 页面：sandbox + postMessage resolve 桥（P1.5）
 - [ ] 主动生命周期/通知/窗口能力（后续阶段）
 
 ### 概览卡片渲染
@@ -89,10 +89,39 @@ interface PluginUiContributions {
 - UI 安装时显示插件类型，安装后提示“重启自动加载”；
 - 真实 Electron 自检：AI 生成 widget 插件 → 安装 → 概览渲染 `AI 卡片 / ok`，0 JS 异常。
 
+### iframe 插件页面
+
+插件可贡献自包含 HTML 页面：
+
+```js
+export const contributes = {
+  pages: [{
+    id: 'my-page',
+    title: '我的页面',
+    mode: 'iframe',
+    html: '<!doctype html><html><body><button id="b">取数据</button><pre id="out"></pre>'
+      + '<script>const id=1; parent.postMessage({type:"cordclean/plugin-page",id,method:"resolve",resolverId:"my-data"},"*");</script>'
+      + '</body></html>',
+  }],
+}
+```
+
+- 宿主用 `sandbox="allow-scripts"` 的 **data URL iframe** 加载，不给 same-origin，页面不能访问主界面 DOM/存储；
+- 页面请求：
+  ```js
+  parent.postMessage({ type: 'cordclean/plugin-page', id, method: 'resolve', resolverId, params }, '*')
+  ```
+- 宿主响应：
+  ```js
+  { type: 'cordclean/plugin-page-result', id, ok: true, value } // 或 ok:false,error
+  ```
+- 插件页按钮在插件卡片出现为「插件页面」，打开弹窗沙箱运行；
+- 页面 HTML 属于插件可信代码，安装前仍需审阅。
+
 ## 5. 安全边界
 
 原生外部插件拥有完整 Node 权限，这是“和 DeepSeek Harness 一样的可信插件模型”：
 
 - 安装前必须展示来源/权限/代码审阅；
-- UI 贡献只接受声明式结构，iframe 页面后续用 sandbox；
+- 声明式卡片只接受固定组件结构；自定义页面走 sandbox iframe（无 same-origin、无宿主 DOM 访问）；
 - 不把“外部插件”误当作安全沙箱；真正的权限隔离需要进程级沙箱，不在 P1。
