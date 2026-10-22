@@ -24,6 +24,7 @@ import { QuarantineService } from './domains/safety/quarantine.ts'
 import { RulesService } from './domains/rules/rules.ts'
 import { SettingsService } from './domains/kernel/settings.ts'
 import { SystemService } from './domains/engine/system.ts'
+import { UiContributionService } from './domains/kernel/ui.ts'
 
 export const APP_NAME = 'CordClean'
 export const APP_VERSION = '0.3.5'
@@ -81,6 +82,7 @@ export async function createApp(options: AppOptions = {}): Promise<App> {
   await ctx.plugin(CompensateService)
   await ctx.plugin(ExecutorService)
   await ctx.plugin(CleanerService)
+  await ctx.plugin(UiContributionService)
   await ctx.plugin(PluginManagerService, { manifest: options.manifest ?? BUILTIN_MANIFEST })
 
   if (options.loadPlugins !== false) {

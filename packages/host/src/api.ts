@@ -237,6 +237,12 @@ export function createHandlers(api: ApiContext): HandlerMap {
       await ctx.plugins.disable(id)
     },
     'plugins/install': ({ path, allowCustomClean }) => ctx.plugins.installExternal(path, { allowCustomClean: allowCustomClean === true }),
+    'plugins/install-native': async ({ path }) => {
+      if (typeof ctx.plugins.installNativePlugin !== 'function') throw new Error('当前插件管理器不支持原生外部插件')
+      return ctx.plugins.installNativePlugin(path)
+    },
+    'ui/contributions': () => ctx.ui.list(),
+    'ui/resolve': ({ pluginId, id, params }) => ctx.ui.resolveValue(pluginId, id, params),
     'plugins/uninstall': async ({ id }) => {
       const source = ctx.plugins.sourcePath(id)
       await ctx.plugins.uninstallExternal(id)

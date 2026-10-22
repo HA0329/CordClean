@@ -110,7 +110,7 @@ export function defaultConfigOf(plugin: any): Record<string, any> {
 }
 
 export class PluginManagerService extends Service implements PluginManagerLike {
-  static inject = ['cleaner', 'settings']
+  static inject = ['cleaner', 'settings', 'ui']
 
   private records = new Map<string, RuntimeRecord>()
 
@@ -145,7 +145,9 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     const settings = this.ctx.settings.get()
     const dataDir = path.dirname(this.ctx.settings.file)
     for (const [id, stored] of Object.entries(settings.plugins ?? {})) {
-      if (!id.startsWith('external:') || !stored || stored.enabled === false) continue
+      if (!id.startsWith('external:') || !stored) continue
+      const isNative = (stored as any).externalType === 'native'
+      if (!isNative && stored.enabled === false) continue
       if (this.records.has(id)) continue
       const name = id.slice('external:'.length)
       const safe = name.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 40) || 'ai-plugin'
@@ -160,7 +162,8 @@ export class PluginManagerService extends Service implements PluginManagerLike {
         continue
       }
       try {
-        await this.installExternal(file)
+        if (isNative) await this.installNativePlugin(file, { enable: stored.enabled !== false })
+        else await this.installExternal(file)
       } catch (error) {
         this.ctx.logger?.warn?.(`外部插件 ${id} 自动加载失败：%s`, error instanceof Error ? error.message : String(error))
       }
@@ -235,6 +238,14 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       record.status = (fiber.state as unknown as number) === FIBER_STATE_ACTIVE ? 'active' : 'stopped'
       const registered = new Set(this.ctx.cleaner.list().map((task) => task.id))
       record.taskIds = [...registered].filter((taskId) => !before.has(taskId))
+      // 原生通用插件可在模块上声明 UI 贡献；每次启用都重新登记，禁用时由 disable 清理
+      if ((record as any).externalType === 'native' && (plugin as any).contributes && this.ctx.ui) {
+        ;(record as any).uiDispose = this.ctx.ui.register(
+          id,
+          (plugin as any).contributes,
+          (plugin as any).kind,
+        )
+      }
     } catch (error) {
       record.status = 'error'
       record.error = errorMessage(error)
@@ -251,6 +262,53 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     }
     this.persist(record, true)
     this.emitChanged()
+  }
+
+  /**
+   * 安装「原生 Cordis 插件」（P1）：外部插件不再只能是 cleaner worker，
+   * 而是像内置插件一样通过 ctx.plugin() 获得完整上下文（服务/事件/UI/RPC）。
+   * 这是可信代码模型：安装确认后即执行，和 DeepSeek Harness 的插件模型一致。
+   */
+  async installNativePlugin(filePath: string, options: { enable?: boolean } = {}): Promise<{ id: string }> {
+    const abs = path.resolve(filePath)
+    if (!existsSync(abs)) throw new Error('插件文件不存在：' + abs)
+    const namespace = await import(pathToFileURL(abs).href)
+    const plugin: any = namespace.default ?? namespace
+    if (!plugin || (typeof plugin.apply !== 'function' && typeof plugin.setup !== 'function' && typeof plugin !== 'function')) {
+      throw new Error('原生插件必须导出 Cordis 插件（apply(ctx) 函数或含 apply 的对象）')
+    }
+    const name = String(plugin.name ?? namespace.name ?? path.basename(abs, path.extname(abs)))
+    const id = 'external:' + name
+    if (this.records.has(id)) throw new Error('同名插件已加载：' + id)
+    const stored = this.ctx.settings.get().plugins[id]
+    const entry: PluginManifestEntry = {
+      id,
+      name,
+      description: String(plugin.description ?? '外部原生插件'),
+      category: (plugin.category as CategoryId) ?? 'apps',
+      version: String(plugin.version ?? '0.0.0'),
+      defaultEnabled: true,
+      load: async () => ({ default: plugin }),
+    }
+    const record: RuntimeRecord = {
+      entry,
+      module: plugin,
+      status: 'stopped',
+      config: stored?.config ?? {},
+      taskIds: [],
+    }
+    ;(record as any).externalPath = abs
+    ;(record as any).externalType = 'native'
+    if (plugin.capabilities) (record as any).capabilities = plugin.capabilities
+    this.records.set(id, record)
+    if (options.enable === false) {
+      this.persist(record, false)
+      this.emitChanged()
+    } else {
+      await this.enable(id)
+      this.emitChanged()
+    }
+    return { id }
   }
 
   /**
@@ -409,6 +467,13 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   async disable(id: string): Promise<void> {
     const record = this.records.get(id)
     if (!record) throw new Error(`插件不存在：${id}`)
+    const uiDispose = (record as any).uiDispose as (() => void) | undefined
+    if (uiDispose) {
+      try {
+        uiDispose()
+      } catch {}
+      ;(record as any).uiDispose = undefined
+    }
     const fiber = record.fiber
     record.fiber = undefined
     record.status = 'stopped'
@@ -503,12 +568,14 @@ export class PluginManagerService extends Service implements PluginManagerLike {
 
   private persist(record: RuntimeRecord, enabled: boolean): void {
     const externalPath = (record as any).externalPath as string | undefined
+    const externalType = (record as any).externalType as 'native' | 'worker' | undefined
     this.ctx.settings.patch({
       plugins: {
         [record.entry.id]: {
           enabled,
           config: record.config,
           ...(externalPath ? { externalPath } : {}),
+          ...(externalType ? { externalType } : {}),
         },
       },
     })

@@ -20,6 +20,7 @@ import type {
   AiModelInfo,
   AiProbeResult,
   AiRuntimeStatus,
+  UiContributionEntry,
 } from './index.ts'
 import type { CleanProgressEvent, ScanProgressEvent, TaskDescriptor } from './task.ts'
 
@@ -110,6 +111,9 @@ export interface ApiMap {
   'scheduler/run': { params: { planId?: string }; result: { ok: true } }
   'scheduler/revoke': { params: { planId?: string }; result: { ok: true } }
   'plugins/install': { params: { path: string; allowCustomClean?: boolean }; result: void }
+  'plugins/install-native': { params: { path: string }; result: { id: string } }
+  'ui/contributions': { params: void; result: UiContributionEntry[] }
+  'ui/resolve': { params: { pluginId: string; id: string; params?: Record<string, unknown> }; result: unknown }
   'plugins/uninstall': { params: { id: string }; result: void }
   'plugins/list': { params: void; result: PluginRuntime[] }
   'plugins/enable': { params: { id: string }; result: void }

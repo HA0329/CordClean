@@ -341,6 +341,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [架构设计](docs/architecture.md) —— 分层结构、Cordis 用法、清理引擎与安全模型，论文第 3、4 章可直接引用
 - [威胁模型与信任边界](docs/threat-model.md) —— 本地服务鉴权、插件信任模型、已知残余风险
 - [插件开发规范](docs/plugin-authoring.md)
+- [通用插件框架（P1 实施记录）](docs/generic-plugin-framework.md) —— 原生 Cordis 外部插件、`ctx.ui` 贡献、通用插件契约的当前进度
 - [插件怎么用：被动插件、主动运行与持久化](docs/plugin-usage.md) —— 安装后如何扫描、如何加入定时任务、为什么没有后台常驻插件
 - [AI 模型与接口兼容策略](docs/ai-model-compatibility.md) —— 官方模型 ID/版本对照、别名迁移、`/models` 元数据、未来接口变化应对清单
 - [扫描结果选择设计](docs/scan-selection-design.md) —— 分组/推荐/风险分层/批量选择/详情说明

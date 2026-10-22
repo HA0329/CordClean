@@ -111,7 +111,7 @@ export interface Settings {
     excludes: string[]
   }
   /** 插件配置（enabled + 插件自有配置） */
-  plugins: Record<string, { enabled?: boolean; config?: Record<string, any>; externalPath?: string }>
+  plugins: Record<string, { enabled?: boolean; config?: Record<string, any>; externalPath?: string; externalType?: 'native' | 'worker' }>
   /** 界面设置 */
   /** 定时任务运行状态（lastRuns 按计划持久化） */
   scheduler: {
@@ -263,6 +263,8 @@ export interface PluginManagerLike {
   sourcePath(id: string): string | undefined
   /** 安装本地插件文件（.mjs/.js），会话内有效 */
   installExternal(filePath: string, options?: { allowCustomClean?: boolean }): Promise<void>
+  /** 安装原生 Cordis 插件（通用插件，完整 ctx） */
+  installNativePlugin?(filePath: string, options?: { enable?: boolean }): Promise<{ id: string }>
   /** 卸载外部插件（内置插件只能停用） */
   uninstallExternal(id: string): Promise<void>
   updateConfig(id: string, config: Record<string, any>): Promise<void>
@@ -341,6 +343,8 @@ declare module 'cordis' {
 declare module 'cordis' {
   interface Context {
     cleaner: CleanerLike
+    /** 通用插件 UI 贡献注册表 */
+    ui: import('./plugin-api.ts').UiContributionApi
     /** 规则注册表：插件登记清理规则，卸载时自动注销 */
     rules: RulesLike
     /** 规则评估器：可为每条候选给出建议与风险（可替换实现） */

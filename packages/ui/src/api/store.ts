@@ -22,6 +22,7 @@ import type {
   Settings,
   SystemInfo,
   TaskDescriptor,
+  UiContributionEntry,
 } from '@cordclean/shared'
 import { createTransport, type ApiTransport } from './client.ts'
 
@@ -285,6 +286,27 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
 export async function installPlugin(filePath: string, allowCustomClean = false): Promise<void> {
   await requireTransport().request('plugins/install', { path: filePath, allowCustomClean })
   await refreshPlugins()
+}
+
+/** 安装原生 Cordis 通用插件（P1；完整 ctx，与内置插件同权） */
+export async function installNativePlugin(filePath: string): Promise<{ id: string }> {
+  const result = await requireTransport().request('plugins/install-native', { path: filePath })
+  await refreshPlugins()
+  return result
+}
+
+/** 读取插件贡献的 UI 声明（概览卡片/页面/状态项/命令） */
+export async function fetchUiContributions(): Promise<UiContributionEntry[]> {
+  return requireTransport().request('ui/contributions', undefined)
+}
+
+/** 调用插件声明的数据解析器（声明式卡片用） */
+export async function resolvePluginUi(
+  pluginId: string,
+  id: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  return requireTransport().request('ui/resolve', { pluginId, id, params })
 }
 
 export async function uninstallPlugin(id: string): Promise<void> {
