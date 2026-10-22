@@ -229,7 +229,7 @@ export class AiService extends Service implements AiLike {
 
   /** AI 插件工坊：生成单文件 Cordis 插件草稿 */
   /** AI 插件工坊：生成单文件 Cordis 插件草稿（生成后先过静态契约，失败自动带错误重试） */
-  async draftPlugin(requirement: string): Promise<{ name: string; code: string; notes: string }> {
+  async draftPlugin(requirement: string): Promise<{ name: string; code: string; notes: string; dependencies: Record<string, string> }> {
     const key = this.requireKey()
     const base = this.rawConfig
     let lastError = '生成失败'
@@ -255,6 +255,9 @@ export class AiService extends Service implements AiLike {
       }
       const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments
       const code = toolArgs && typeof toolArgs.code === 'string' ? toolArgs.code.trim() : extractPluginCode(parsed.text)
+      const dependencies = normalizeDependencies(
+        toolArgs?.dependencies ?? extractDependenciesFromText(parsed.text),
+      )
       if (!code) {
         lastError = '模型没有返回有效的插件代码'
         feedback = '\n\n上一次没有返回有效代码。请输出完整单文件 ESM 源码。'
@@ -262,13 +265,13 @@ export class AiService extends Service implements AiLike {
       }
       // 与安装端共用同一套契约检查：错误的 import / defineCleanerPlugin / 危险 API
       // 在这里就拦下来，不把“能生成但装不上”的草稿交给用户。
-      const check = checkPluginSource(code)
+      const check = checkPluginSource(code, { dependencies })
       if (!check.ok) {
         lastError = check.errors.slice(0, 2).join('；')
         feedback =
           '\n\n上一次生成的插件代码未通过静态契约检查：\n- ' +
           check.errors.join('\n- ') +
-          '\n请修正后重新输出完整代码：外部插件必须零依赖，不要 import 框架包，直接 export default 普通对象。'
+          '\n请修正后重新输出完整代码：外部插件不要 import 框架包；第三方包必须在 dependencies 中声明；直接 export default 普通对象。'
         this.ctx.logger.info('插件草稿未通过契约检查，自动重试：%s', check.errors[0])
         continue
       }
@@ -280,7 +283,7 @@ export class AiService extends Service implements AiLike {
         continue
       }
       const matched = code.match(/name:\s*['"]([a-zA-Z0-9_-]+)['"]/)
-      return { name: matched?.[1] ?? 'ai-plugin', code, notes: parsed.text.slice(0, 200) }
+      return { name: matched?.[1] ?? 'ai-plugin', code, notes: parsed.text.slice(0, 200), dependencies }
     }
     throw new AiError(lastError, 'INVALID_RESPONSE')
   }
@@ -675,6 +678,30 @@ export function extractPluginCode(text: string): string {
   return raw
 }
 
+/** 把模型输出的 dependencies 统一整理成 { 包名: 版本 }，非字符串项直接丢弃 */
+export function normalizeDependencies(input: unknown): Record<string, string> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+  const deps: Record<string, string> = {}
+  for (const [name, version] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof version !== 'string') continue
+    const key = String(name).trim()
+    if (key) deps[key] = version.trim()
+  }
+  return deps
+}
+
+function extractDependenciesFromText(text: string): Record<string, string> {
+  const fenced = text.match(/```(?:json|js|javascript|mjs)?\s*([\s\S]*?)```/i)
+  const raw = (fenced ? fenced[1] : text).trim()
+  if (!raw.startsWith('{')) return {}
+  try {
+    const data = JSON.parse(raw)
+    return normalizeDependencies(data?.dependencies)
+  } catch {
+    return {}
+  }
+}
+
 /** 与运行时同一个解析器做语法检查（异步，不阻塞主线程） */
 function checkPluginSyntax(text: string): Promise<string | null> {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'cordclean-ai-plugin-'))
@@ -724,25 +751,32 @@ function checkPluginSyntax(text: string): Promise<string | null> {
 }
 const PLUGIN_TOOL = {
   name: 'emit_plugin',
-  description: '输出一个完整可运行的单文件外部清理插件源码',
+  description: '输出一个完整可运行的外部清理插件源码与 npm 依赖声明',
   parameters: {
     type: 'object',
     properties: {
       name: { type: 'string', description: 'kebab-case 插件名' },
-      code: { type: 'string', description: '完整单文件 ESM 源码，必须是 export default 普通对象（禁止 import 框架包）' },
+      code: { type: 'string', description: '完整单文件 ESM 源码，必须是 export default 普通对象（禁止 import 框架包；第三方包必须在 dependencies 声明）' },
       notes: { type: 'string', description: '简要说明' },
+      dependencies: {
+        type: 'object',
+        description: 'npm 依赖（包名 → semver），无依赖时输出 {}；最多 8 个',
+        additionalProperties: { type: 'string' },
+      },
     },
     required: ['name', 'code'],
   },
 }
 
 const PLUGIN_SYSTEM_PROMPT = [
-  '你是 Cordis 外部清理插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "code": "完整 ESM 源码", "notes": "简要说明" }。',
-  '外部插件是单文件、零依赖 ESM：禁止 import @cordisjs/*、@cordclean/* 或任何第三方包，也不要使用 defineCleanerPlugin；只允许 import node:fs / node:fs/promises / node:path / node:os / node:url / node:util / node:crypto。',
+  '你是 Cordis 外部清理插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "code": "完整 ESM 源码", "notes": "简要说明", "dependencies": {"包名":"版本"} }。',
+  'dependencies 为空对象 {} 表示零依赖；需要第三方能力时声明 npm 包（最多 8 个），版本必须是 semver（如 "^3.3.2"），安装时由用户确认并下载。禁止 file:/git/URL/路径规格；优先纯 JS 包，避免需要本地编译的原生模块。',
+  '代码可以 import 已声明的第三方包；也允许 import node:fs / node:fs/promises / node:path / node:os / node:url / node:util / node:crypto。禁止 import @cordisjs/*、@cordclean/* 或未在 dependencies 声明的包，也不要使用 defineCleanerPlugin。',
   'code 必须直接默认导出普通对象，形如：export default { name: "kebab-case", version: "1.0.0", description: "说明", capabilities: { fsRoots: ["%TEMP%"] }, Config(raw) { return { ... } }, setup(ctx, config) { ctx.cleaner.define({ id: "task-id", name: "任务名", category: "apps", risk: "safe", defaultSelected: false, targets: ["%TEMP%\\\\子目录"], scan(scan) { /* 读目录并 scan.emit */ } }) } }。',
   'capabilities.fsRoots 和 targets 必须使用绝对路径或允许的模板：%TEMP%、%USERPROFILE%、%LOCALAPPDATA%、%APPDATA%、%WINDIR%；安装时会自动展开。代码里用 ctx.system.env.get("TEMP") 等取实际路径，不要硬编码用户名。',
-  'scan 里用 fs.readdirSync / fs.statSync（或 promises 版）读取目标目录，向 scan.emit({ path: 绝对路径, kind: "file" | "folder", size: 字节数 }) 输出候选；只输出候选，不要删除、不要修改文件。',
-  '禁止：child_process、process.exit、fs.rm / rmSync / unlink / rmdir、直接删除文件、网络请求、process.env 读取密钥。删除一律交给内核（只 emit 候选）。',
+  'scan 里用 fs 或已声明依赖读取目标目录，向 scan.emit({ path: 绝对路径, kind: "file" | "folder", size: 字节数 }) 输出候选；只输出候选，不要删除、不要修改文件。',
+  '禁止：child_process、process.exit、fs.rm / rmSync / unlink / rmdir、直接删除文件、网络请求、在插件里执行 npm install、process.env 读取密钥。删除一律交给内核（只 emit 候选）。',
+  '示例：用 glob 匹配文件时写 "dependencies": {"fast-glob": "^3.3.2"}，代码里 import fg from "fast-glob"；用 yauzl 读 zip 时声明 "^3.1.0"。',
   '用 ctx.logger 记录关键日志；除了 JSON 外不要输出解释性文字。',
 ].join('\n')
 const PLUGIN_USER_PREFIX = '需求：'

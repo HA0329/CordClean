@@ -83,5 +83,32 @@ export default { name: 'bad', setup() { fs.rmSync('C:/tmp') } }
     expect(result.ok).toBe(false)
     expect(result.errors.join(' ')).toMatch(/删除|rmSync/)
   })
+
+  it('声明依赖后允许 import 对应 npm 包，未声明则拒绝', () => {
+    const code = `import fg from 'fast-glob'
+export default {
+  name: 'glob-plugin',
+  capabilities: { fsRoots: ['%TEMP%'] },
+  setup(ctx) {
+    ctx.cleaner.define({ id: 'glob-task', name: 'Glob', category: 'apps', risk: 'safe', scan(scan) { scan.emit({ path: 'C:/Temp/a', kind: 'file', size: 1 }) } })
+  },
+}
+`
+    const declared = checkPluginSource(code, { dependencies: { 'fast-glob': '^3.3.2' } })
+    expect(declared.ok).toBe(true)
+    expect(declared.errors).toEqual([])
+
+    const undeclared = checkPluginSource(code)
+    expect(undeclared.ok).toBe(false)
+    expect(undeclared.errors.join(' ')).toContain('fast-glob')
+    expect(undeclared.errors.join(' ')).toContain('dependencies')
+  })
+
+  it('拒绝 file/git/URL 依赖规格、未锁定版本与超量依赖', () => {
+    expect(checkPluginSource('export default { name: "x", setup() {} }', { dependencies: { evil: 'file:../evil' } }).ok).toBe(false)
+    expect(checkPluginSource('export default { name: "x", setup() {} }', { dependencies: { evil: 'latest' } }).ok).toBe(false)
+    const tooMany = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`pkg-${index}`, '^1.0.0']))
+    expect(checkPluginSource('export default { name: "x", setup() {} }', { dependencies: tooMany }).ok).toBe(false)
+  })
 })
 

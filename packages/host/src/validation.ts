@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+/** 插件工坊依赖声明：包名 → semver；具体合法性由 shared 静态校验再检查 */
+const pluginDependencies = z.record(z.string().min(1).max(100), z.string().min(1).max(40)).optional()
+
 /** 关键 RPC 的入参 schema；未列出的方法只要求 params 是对象 */
 const schemas: Record<string, z.ZodTypeAny> = {
   'settings/patch': z.object({ patch: z.record(z.string(), z.unknown()) }).strict(),
@@ -45,8 +48,15 @@ const schemas: Record<string, z.ZodTypeAny> = {
     .optional(),
   'ai/rules/dry-run': z.object({ suggestion: z.record(z.string(), z.unknown()) }).strict(),
   'ai/plugin/draft': z.object({ requirement: z.string().min(1).max(2000) }).strict(),
-  'ai/plugin/validate': z.object({ code: z.string().min(1).max(200_000) }).strict(),
-  'ai/plugin/install': z.object({ name: z.string().min(1).max(80), code: z.string().min(1).max(200_000) }).strict(),
+  'ai/plugin/validate': z.object({ code: z.string().min(1).max(200_000), dependencies: pluginDependencies }).strict(),
+  'ai/plugin/install': z
+    .object({
+      name: z.string().min(1).max(80),
+      code: z.string().min(1).max(200_000),
+      dependencies: pluginDependencies,
+      acknowledgeDependencies: z.boolean().optional(),
+    })
+    .strict(),
   'scheduler/authorize': z
     .object({
       planId: z.string().min(1).optional(),

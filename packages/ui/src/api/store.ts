@@ -406,16 +406,29 @@ export async function fetchEgress(limit = 10) {
 }
 
 /** 采纳 AI 建议的规则：经统一入库管线写入并热重载规则包 */
-export async function draftAiPlugin(requirement: string): Promise<{ name: string; code: string; notes: string }> {
+export async function draftAiPlugin(requirement: string): Promise<{ name: string; code: string; notes: string; dependencies: Record<string, string> }> {
   return requireTransport().request('ai/plugin/draft', { requirement })
 }
 
-export async function validateAiPlugin(code: string): Promise<{ ok: boolean; errors: string[]; warnings: string[] }> {
-  return requireTransport().request('ai/plugin/validate', { code })
+export async function validateAiPlugin(
+  code: string,
+  dependencies: Record<string, string> = {},
+): Promise<{ ok: boolean; errors: string[]; warnings: string[] }> {
+  return requireTransport().request('ai/plugin/validate', { code, dependencies })
 }
 
-export async function installAiPlugin(name: string, code: string): Promise<{ path: string; id: string }> {
-  const result = await requireTransport().request('ai/plugin/install', { name, code })
+export async function installAiPlugin(
+  name: string,
+  code: string,
+  dependencies: Record<string, string> = {},
+  acknowledgeDependencies = false,
+): Promise<{ path: string; id: string }> {
+  const result = await requireTransport().request('ai/plugin/install', {
+    name,
+    code,
+    dependencies,
+    acknowledgeDependencies,
+  })
   await refreshPlugins()
   return result
 }

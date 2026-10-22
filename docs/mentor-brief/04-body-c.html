@@ -6,7 +6,7 @@
       <div class="sec-kicker"><span class="sec-num">09</span><span>Interface</span></div>
       <h2 class="sec-title">界面演示：六个页面，一套内核</h2>
       <p class="sec-lede">
-        截图来自 v0.2.9 真机运行（Windows 11 · Electron 外壳）。界面数据流单向：RPC 请求 → store → 视图，
+        截图来自 v0.3.0 真机运行（Windows 11 · Electron 外壳）。界面数据流单向：RPC 请求 → store → 视图，
         进度靠事件推送更新，不做轮询。点击任意截图可放大查看。
       </p>
     </div>
@@ -62,7 +62,7 @@
           <tr><td><b>第 3 章 需求分析</b></td><td>功能需求、非功能需求、用例</td><td>11 个插件 / 38 个任务清单；安全性与性能指标</td></tr>
           <tr><td><b>第 4 章 系统设计</b></td><td>分层架构、插件机制、引擎、安全模型</td><td>本页 02–05；<code>architecture.md</code> §5、§12（补偿链七步）</td></tr>
           <tr><td><b>第 5 章 系统实现</b></td><td>内核、引擎、插件、界面、外壳</td><td>源码 <code>packages/core</code>、<code>packages/plugins/*</code>、<code>packages/ui</code>；插件开发规范</td></tr>
-          <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 性能 / 缺陷改进</td><td>357 个测试、<code>docs/defect-log.md</code>（29 个缺陷）、<code>docs/benchmark.md</code></td></tr>
+          <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 性能 / 缺陷改进</td><td>360 个测试、<code>docs/defect-log.md</code>（29 个缺陷）、<code>docs/benchmark.md</code></td></tr>
           <tr><td><b>第 7 章 总结与展望</b></td><td>局限、后续工作</td><td>本页「局限与后续」；<code>architecture.md</code> §13 工程折中</td></tr>
         </tbody>
       </table>
@@ -166,7 +166,7 @@
           <div class="tl-item">
             <div class="tl-time">4:15 – 5:00</div>
             <div class="tl-title">安全链与测试：证明而不是宣称</div>
-            <div class="tl-desc">七步链动画 + 357 个测试 + 29 个缺陷（尤其 D-01 越界删除）收尾。</div>
+            <div class="tl-desc">七步链动画 + 360 个测试 + 29 个缺陷（尤其 D-01 越界删除）收尾。</div>
           </div>
         </div>
       </div>
@@ -206,7 +206,7 @@
           <details>
             <summary><span class="q">Q5</span>这个题的工作量够吗？<span class="plus">+</span></summary>
             <div class="qa-body">
-              <p>可量化：源码约 1.93 万行、测试 0.63 万行、脚本 0.57 万行；151 次提交；11 个插件、38 个任务、271 条规则；13 份文档、29 条缺陷记录；357 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
+              <p>可量化：源码约 1.93 万行、测试 0.63 万行、脚本 0.57 万行；151 次提交；11 个插件、38 个任务、271 条规则；13 份文档、29 条缺陷记录；360 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
             </div>
           </details>
           <details>
@@ -244,11 +244,11 @@
     <div>
       <h4>CordClean · 模块化电脑清理工具</h4>
       <p>本科毕业设计项目说明（导师版） · 基于 Cordis 插件框架 · MIT License</p>
-      <p class="footer-tag">版本 <b>v0.2.9</b> · 页面生成于 2026-10 · 单文件离线 HTML</p>
+      <p class="footer-tag">版本 <b>v0.3.0</b> · 页面生成于 2026-10 · 单文件离线 HTML</p>
     </div>
     <div style="text-align:right">
       <p class="footer-tag">数据来源：<b>docs/benchmark.md</b> · <b>docs/rules-report.md</b> · 自动化测试实测</p>
-      <p class="footer-tag">截图：v0.2.9 真机运行（Electron 外壳）</p>
+      <p class="footer-tag">截图：v0.3.0 真机运行（Electron 外壳）</p>
       <p class="footer-tag">按 Ctrl+P 可导出 A4 PDF；深色模式在右上角切换</p>
     </div>
   </div>

@@ -280,12 +280,20 @@ export interface PluginManagerLike {
  * 因此厂商调整参数（如新增推理等级、新增接口形态）时，
  * 用户改配置即可适配，不需要重新编译插件。
  */
+/** AI 插件工坊生成的草稿（dependencies 为 npm 包名 → semver） */
+export interface AiPluginDraft {
+  name: string
+  code: string
+  notes: string
+  dependencies: Record<string, string>
+}
+
 export interface AiLike {
   analyze(options?: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] }): Promise<AiAnalysis>
   /** 取消当前分析 */
   cancelAnalyze?(): void
-  /** 生成单文件插件草稿（工坊用） */
-  draftPlugin?(requirement: string): Promise<{ name: string; code: string; notes: string }>
+  /** 生成单文件插件草稿（工坊用；dependencies 空对象表示零依赖） */
+  draftPlugin?(requirement: string): Promise<AiPluginDraft>
   last(): AiAnalysis | undefined
   configured(): boolean
   /** 拉取可用模型列表（失败时返回内置兜底列表） */

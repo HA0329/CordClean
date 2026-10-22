@@ -186,14 +186,20 @@ import {
 
 ### 6.1 AI 插件工坊生成的外部插件契约
 
-AI 工坊生成的是**单文件、零依赖**外部插件，和内置插件包不同：
+AI 工坊生成的是**单文件外部插件**，和内置插件包不同；它可以声明 npm 依赖：
 
-- 不能 `import '@cordclean/shared'`、`@cordisjs/*` 或任何第三方包（生成目录解析不到，安装会报 `ERR_MODULE_NOT_FOUND`）；
-- 不能使用 `defineCleanerPlugin`，直接 `export default { name, version, description, capabilities, Config, setup }`；
-- 只允许 `node:fs` / `node:fs/promises` / `node:path` / `node:os` / `node:url` / `node:util` / `node:crypto`；
+- 不依赖第三方包时：`generated-plugins/<name>.mjs`，只允许 `node:fs` / `node:fs/promises` / `node:path` / `node:os` / `node:url` / `node:util` / `node:crypto`；
+- 需要第三方能力时，生成结果带 `dependencies: { 包名: "semver" }`：
+  - 安装目录为 `generated-plugins/<name>/`（`plugin.mjs` + `package.json` + `node_modules`），Node 的 ESM 解析可直接找到依赖；
+  - **必须由用户确认依赖清单后才会下载**；安装时禁用 lifecycle scripts（`--ignore-scripts`）；
+  - 只允许 npm 包名 + semver，禁止 `file:` / `git` / URL / 路径规格，最多 8 个；
+- 不能使用 `defineCleanerPlugin`（框架内部 helper 解析不到），直接 `export default { name, version, description, capabilities, Config, setup }`；
+- 不能 `import '@cordclean/shared'`、`@cordisjs/*` 或未在 `dependencies` 声明的包；第三方包按包名匹配，支持子路径 import；
 - `capabilities.fsRoots` 与 `targets` 支持 `%TEMP%`、`%USERPROFILE%`、`%LOCALAPPDATA%`、`%APPDATA%`、`%WINDIR%` 模板，
   安装时展开为绝对路径；代码里用 `ctx.system.env.get('TEMP')` 取实际路径；
 - 静态检查不通过时工坊会带着错误自动重试生成；最终安装前还会在 worker 中真实加载一次。
+
+> 安全提醒：第三方 npm 包与插件拥有相同的完整 Node 权限；禁用安装脚本只能阻止安装期脚本，不能阻止包代码在 import 时执行。请只安装你信任的依赖，见 [威胁模型](threat-model.md) §3.2。
 
 校验规则在 `packages/shared/src/plugin-code.ts`，生成端、安装端、测试共用同一套。
 

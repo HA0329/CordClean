@@ -404,10 +404,12 @@ async function addSuggestedRoots() {
 
 const workshopOpen = ref(false)
 const workshopRequirement = ref('')
-const workshopDraft = ref<{ name: string; code: string; notes: string } | null>(null)
+const workshopDraft = ref<{ name: string; code: string; notes: string; dependencies: Record<string, string> } | null>(null)
 const workshopValidation = ref<{ ok: boolean; errors: string[]; warnings: string[] } | null>(null)
 const workshopReviewed = ref(false)
+const workshopDependenciesAccepted = ref(false)
 const workshopBusy = ref(false)
+const workshopInstalling = ref(false)
 const workshopError = ref('')
 let workshopRequest = 0
 let workshopValidateTimer: ReturnType<typeof setTimeout> | null = null
@@ -425,11 +427,12 @@ async function generateWorkshopDraft() {
   workshopDraft.value = null
   workshopValidation.value = null
   workshopReviewed.value = false
+  workshopDependenciesAccepted.value = false
   try {
     const draft = await draftAiPlugin(workshopRequirement.value.trim())
     if (requestId !== workshopRequest) return
     workshopDraft.value = draft
-    workshopValidation.value = await validateAiPlugin(draft.code)
+    workshopValidation.value = await validateAiPlugin(draft.code, draft.dependencies ?? {})
     workshopReviewed.value = false
   } catch (error) {
     if (requestId === workshopRequest) workshopError.value = error instanceof Error ? error.message : String(error)
@@ -453,23 +456,31 @@ function scheduleRevalidateWorkshopDraft() {
 
 async function revalidateWorkshopDraft() {
   if (!workshopDraft.value) return
-  workshopValidation.value = await validateAiPlugin(workshopDraft.value.code)
+  workshopValidation.value = await validateAiPlugin(workshopDraft.value.code, workshopDraft.value.dependencies ?? {})
 }
 
 async function installWorkshopDraft() {
+  if (workshopInstalling.value) return
   if (!workshopDraft.value || !workshopValidation.value?.ok || !workshopReviewed.value) return
+  const dependencies = workshopDraft.value.dependencies ?? {}
+  const hasDependencies = Object.keys(dependencies).length > 0
+  if (hasDependencies && !workshopDependenciesAccepted.value) return
+  workshopInstalling.value = true
   try {
-    const result = await installAiPlugin(workshopDraft.value.name, workshopDraft.value.code)
+    const result = await installAiPlugin(workshopDraft.value.name, workshopDraft.value.code, dependencies, workshopDependenciesAccepted.value)
     workshopOpen.value = false
     workshopDraft.value = null
     workshopValidation.value = null
     workshopReviewed.value = false
+    workshopDependenciesAccepted.value = false
     workshopRequirement.value = ''
     // 安装后刷新插件列表，用户能立刻在「插件」页看到新插件与任务
     await refreshPlugins()
     ElMessage.success('已安装并启用：' + result.id + '（本次运行有效，可在插件页查看）')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    workshopInstalling.value = false
   }
 }
 
@@ -763,7 +774,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <!-- AI 插件工坊：不依赖分析结果，进页面即可使用 -->
       <div class="cc-card">
         <div class="cc-card-title"><h3>🛠️ AI 插件工坊</h3><span class="cc-faint">无需先分析：生成单文件插件 → 校验 → 你阅读代码后安装</span></div>
-        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。生成的是零依赖单文件插件（不依赖框架包），会先自动校验，不通过的代码不会进入安装步骤。</p>
+        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。生成的是单文件插件，可声明 npm 第三方依赖（安装前需你确认，下载时禁用 lifecycle scripts）；不通过的代码不会进入安装步骤。</p>
         <el-input v-model="workshopRequirement" type="textarea" :rows="2" placeholder="例如：写一个插件，清理 D 盘下超过 30 天的 .log 文件" />
         <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" :disabled="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
       </div>
@@ -915,6 +926,13 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
           <p v-else class="cc-hint">✓ 语法与契约校验通过</p>
           <p v-if="workshopValidation.warnings.length" class="cc-faint">提示：{{ workshopValidation.warnings.join('；') }}</p>
         </div>
+        <div v-if="workshopDraft.dependencies && Object.keys(workshopDraft.dependencies).length" style="margin: 10px 0; padding: 10px; border: 1px solid var(--cc-border); border-radius: 8px">
+          <p class="cc-hint">该插件声明了第三方依赖，安装时会下载到插件目录的 node_modules（已禁用 lifecycle scripts）：</p>
+          <ul style="margin: 6px 0; padding-left: 20px">
+            <li v-for="(version, name) in workshopDraft.dependencies" :key="name"><code>{{ name }}</code> · {{ version }}</li>
+          </ul>
+          <el-checkbox v-model="workshopDependenciesAccepted">我确认下载并运行这些第三方依赖（它们拥有与插件相同的完整 Node 权限）</el-checkbox>
+        </div>
         <el-input v-model="workshopDraft.code" type="textarea" :rows="18" class="cc-mono" spellcheck="false" @input="scheduleRevalidateWorkshopDraft" />
         <el-checkbox v-model="workshopReviewed" style="margin-top: 8px">我已阅读上述代码，理解它会以完整权限运行</el-checkbox>
       </template>
@@ -925,7 +943,12 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <div v-else-if="workshopError" class="error-text" style="padding: 24px 12px">生成失败：{{ workshopError }}</div>
       <template #footer>
         <el-button @click="workshopOpen = false">取消</el-button>
-        <el-button type="primary" :disabled="!workshopDraft || !workshopValidation?.ok || !workshopReviewed" @click="installWorkshopDraft">安装并启用</el-button>
+        <el-button
+          type="primary"
+          :loading="workshopInstalling"
+          :disabled="workshopInstalling || !workshopDraft || !workshopValidation?.ok || !workshopReviewed || (workshopDraft && Object.keys(workshopDraft.dependencies ?? {}).length > 0 && !workshopDependenciesAccepted)"
+          @click="installWorkshopDraft"
+        >{{ workshopInstalling ? '正在安装依赖…' : '安装并启用' }}</el-button>
       </template>
     </el-dialog>
 

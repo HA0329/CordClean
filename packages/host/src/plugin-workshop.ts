@@ -1,18 +1,20 @@
 /**
- * AI 插件工坊的落盘与校验。
+ * AI 插件工坊的落盘、校验与依赖安装。
  *
  * 安全立场：
  * - Node 里没有真正的沙箱，插件一旦加载就是全权限，所以这里**只做静态检查**，
- *   最终必须由用户阅读代码后手动点「安装」；
+ *   最终必须由用户阅读代码、确认依赖后手动点「安装」；
  * - 生成的插件禁止直接删除文件 / 起子进程 / 退出进程：命中即拒绝；
+ * - 依赖只允许用户在界面确认后安装，安装时禁用 lifecycle scripts；
  * - 语法用 `node --check` 验证（与运行时同一个解析器）；
- * - 文件写到 <dataDir>/generated-plugins/，不污染仓库，也不覆盖用户文件。
+ * - 零依赖插件写单文件；声明依赖的插件写独立目录（package.json + plugin.mjs + node_modules），
+ *   让 Node 的 ESM 解析能正常工作。
  */
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { checkPluginSource } from '@cordclean/shared'
+import { checkPluginSource, validatePluginDependencies } from '@cordclean/shared'
 
 export interface PluginValidation {
   ok: boolean
@@ -70,10 +72,10 @@ function checkSyntax(text: string): Promise<string | null> {
   })
 }
 
-export async function validatePluginCode(code: string): Promise<PluginValidation> {
+export async function validatePluginCode(code: string, dependencies: Record<string, string> = {}): Promise<PluginValidation> {
   const text = String(code ?? '')
   // 与生成端共用同一套契约检查，避免「生成能过、安装加载失败」
-  const base = checkPluginSource(text)
+  const base = checkPluginSource(text, { dependencies })
   const errors = [...base.errors]
   const warnings = [...base.warnings]
   if (!text.trim()) return { ok: false, errors: errors.length ? errors : ['代码为空'], warnings }
@@ -84,12 +86,136 @@ export async function validatePluginCode(code: string): Promise<PluginValidation
   return { ok: errors.length === 0, errors, warnings }
 }
 
-/** 把生成的插件写到数据目录；返回绝对路径 */
-export function saveGeneratedPlugin(dataDir: string, name: string, code: string): string {
+/**
+ * 把生成的插件写到数据目录。
+ * 零依赖：`generated-plugins/<name>.mjs`（保持旧行为）。
+ * 有依赖：`generated-plugins/<name>/plugin.mjs` + package.json，依赖安装到同目录 node_modules。
+ */
+export function saveGeneratedPlugin(
+  dataDir: string,
+  name: string,
+  code: string,
+  dependencies: Record<string, string> = {},
+): string {
   const safe = String(name || 'ai-plugin').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 40) || 'ai-plugin'
-  const dir = path.join(dataDir, 'generated-plugins')
+  const baseDir = path.join(dataDir, 'generated-plugins')
+  mkdirSync(baseDir, { recursive: true })
+  if (!Object.keys(dependencies).length) {
+    const file = path.join(baseDir, `${safe}.mjs`)
+    writeFileSync(file, code, 'utf8')
+    return file
+  }
+  const dir = path.join(baseDir, safe)
   mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, `${safe}.mjs`)
+  const file = path.join(dir, 'plugin.mjs')
   writeFileSync(file, code, 'utf8')
+  writeFileSync(
+    path.join(dir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'cordclean-workshop-' + safe,
+        version: '0.0.0',
+        private: true,
+        type: 'module',
+        dependencies,
+      },
+      null,
+      2,
+    ) + '\n',
+    'utf8',
+  )
   return file
+}
+
+interface CommandResult {
+  ok: boolean
+  output: string
+}
+
+/** 在插件目录执行包管理器安装（禁用 lifecycle scripts）；不联网失败时给出可读错误 */
+function runInstallCommand(command: string, args: string[], cwd: string, timeoutMs = 180_000): Promise<CommandResult> {
+  return new Promise((resolve) => {
+    let output = ''
+    let settled = false
+    // Windows 上 npm/pnpm 是 .cmd，需要经 cmd.exe 解析；命令与参数都是固定值，
+    // 依赖名/版本来自已校验的 package.json，不拼接用户输入到命令行。
+    const spawnCommand = process.platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : command
+    const spawnArgs = process.platform === 'win32' ? ['/d', '/s', '/c', [command, ...args].join(' ')] : args
+    const child = spawn(spawnCommand, spawnArgs, {
+      cwd,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        CI: '1',
+        npm_config_ignore_scripts: 'true',
+        npm_config_audit: 'false',
+        npm_config_fund: 'false',
+        npm_config_loglevel: 'error',
+      },
+    })
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      try {
+        child.kill()
+      } catch {}
+      resolve({ ok: false, output: output + '\n依赖安装超时（180 秒）' })
+    }, timeoutMs)
+    child.stdout?.on('data', (chunk) => {
+      output += String(chunk)
+      if (output.length > 20_000) output = output.slice(-20_000)
+    })
+    child.stderr?.on('data', (chunk) => {
+      output += String(chunk)
+      if (output.length > 20_000) output = output.slice(-20_000)
+    })
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({ ok: false, output: '无法启动 ' + command + '：' + error.message })
+    })
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({ ok: code === 0, output })
+    })
+  })
+}
+
+export interface DependencyInstallResult {
+  manager: 'npm' | 'pnpm'
+  output: string
+}
+
+/**
+ * 安装插件声明的 npm 依赖。
+ * 只用固定命令与固定参数，依赖名/版本来自已校验的 package.json，不拼接用户输入到命令行。
+ */
+export async function installPluginDependencies(pluginFile: string): Promise<DependencyInstallResult> {
+  const dir = path.dirname(pluginFile)
+  const pkgFile = path.join(dir, 'package.json')
+  if (!existsSync(pkgFile)) return { manager: 'npm', output: '' }
+  const pkg = JSON.parse(readFileSync(pkgFile, 'utf8')) as { dependencies?: Record<string, string> }
+  const dependencyErrors = validatePluginDependencies(pkg.dependencies ?? {})
+  if (dependencyErrors.length) throw new Error('依赖声明不合法：' + dependencyErrors.join('；'))
+  const args = ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--omit=dev', '--loglevel=error']
+  const attempts: Array<{ manager: 'npm' | 'pnpm'; command: string; args: string[] }> = [
+    { manager: 'npm', command: 'npm', args },
+    { manager: 'pnpm', command: 'pnpm', args: ['install', '--ignore-scripts', '--prod', '--reporter=silent'] },
+  ]
+  const failures: string[] = []
+  for (const attempt of attempts) {
+    const result = await runInstallCommand(attempt.command, attempt.args, dir)
+    if (result.ok) {
+      if (!existsSync(path.join(dir, 'node_modules'))) {
+        failures.push(`${attempt.manager} 退出码为 0 但没有生成 node_modules`)
+        continue
+      }
+      return { manager: attempt.manager, output: result.output.slice(-4000) }
+    }
+    failures.push(`${attempt.manager}：${result.output.trim().slice(-800) || '未知错误'}`)
+  }
+  throw new Error('依赖安装失败（已禁用 lifecycle scripts）：' + failures.join(' | '))
 }

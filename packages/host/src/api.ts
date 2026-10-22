@@ -24,7 +24,7 @@ import type {
   ApiResult,
 } from '@cordclean/shared'
 import { dlog, exportDiagnostics, initDiagnostics, logDirPath, recentLogs } from './diagnostics.ts'
-import { saveGeneratedPlugin, validatePluginCode } from './plugin-workshop.ts'
+import { saveGeneratedPlugin, validatePluginCode, installPluginDependencies } from './plugin-workshop.ts'
 import { RpcError } from '@cordclean/shared'
 
 /** 外壳能力适配器（不同运行环境的系统交互） */
@@ -282,12 +282,22 @@ export function createHandlers(api: ApiContext): HandlerMap {
       if (!ctx.ai?.draftPlugin) throw new Error('AI 插件未启用或版本过旧')
       return ctx.ai.draftPlugin(String(requirement ?? ''))
     },
-    'ai/plugin/validate': ({ code }) => validatePluginCode(String(code ?? '')),
-    'ai/plugin/install': async ({ name, code }) => {
-      const checked = await validatePluginCode(String(code ?? ''))
+    'ai/plugin/validate': ({ code, dependencies }) => validatePluginCode(String(code ?? ''), dependencies ?? {}),
+    'ai/plugin/install': async ({ name, code, dependencies, acknowledgeDependencies }) => {
+      const deps = dependencies ?? {}
+      const checked = await validatePluginCode(String(code ?? ''), deps)
       if (!checked.ok) throw new Error(checked.errors[0] ?? '校验未通过')
-      const file = saveGeneratedPlugin(api.dataDir, name, String(code))
-      await ctx.plugins.installExternal(file)
+      const dependencyCount = Object.keys(deps).length
+      if (dependencyCount > 0 && acknowledgeDependencies !== true) {
+        throw new Error(`该插件声明了 ${dependencyCount} 个第三方依赖，需要先确认依赖清单并勾选“允许下载依赖”`)
+      }
+      const file = saveGeneratedPlugin(api.dataDir, name, String(code), deps)
+      try {
+        if (dependencyCount > 0) await installPluginDependencies(file)
+        await ctx.plugins.installExternal(file)
+      } catch (error) {
+        throw new Error('插件安装失败：' + (error instanceof Error ? error.message : String(error)))
+      }
       return { path: file, id: 'external:' + String(name).replace(/[^a-zA-Z0-9_-]/g, '-') }
     },    'ai/rules/dry-run': async ({ suggestion }) => {
       // 只读演练：不写规则库、不删除，只报告会命中什么

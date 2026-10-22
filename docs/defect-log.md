@@ -3,7 +3,7 @@
 > 本文档记录「主动自测」阶段发现并修复的问题，可作为论文第 6 章「系统测试」中
 > 「测试发现的问题与改进」小节，也可用于答辩时说明工程严谨性。
 >
-> 测试方式：357 个自动化用例（48 个文件）+ 现有插件自测脚本 + 11 个真实插件扫描审计 + Electron 端到端点检 + 性能基准。
+> 测试方式：360 个自动化用例（48 个文件）+ 现有插件自测脚本 + 11 个真实插件扫描审计 + Electron 端到端点检 + 性能基准。
 > **所有会删除文件的测试都在临时沙箱中进行，未触碰真实用户数据。**
 >
 > 编号约定：D-01~D-17 为自测阶段（含 AI 接口联调）发现的问题；D-18~D-29 为批次1 安全与正确性加固新增；D-30~D-34 为 v0.2.2 根据用户反馈修复的 AI 顾问页问题。
@@ -62,6 +62,8 @@
 | D-40 | 🟠 中（体验/正确性） | 生成插件时界面像卡住、无反馈；草稿语法错误也照样进入审阅 | 已修复 |
 
 | D-41 | 🔴 高（可用性） | Electron 桌面版生成插件时语法检查固定 10 秒超时，导致自动重试也全部失败 | 已修复 |
+
+| D-42 | 🟡 中（能力限制） | AI 插件工坊只能生成零依赖插件，无法使用 npm 生态实现复杂清理能力 | 已增强 |
 
 ## 详细说明
 
@@ -192,7 +194,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **效果**：单次校验 166 µs → **10.4 µs**（走代理约 20 µs）；
 扫描吞吐 4526 → **33 551 文件/秒**（4000 个文件 0.12 s，修复当时的基准环境）；
-删除吞吐 2331 → **6616 文件/秒**（批次1 后基准环境重跑为 2 178 文件/秒，扫描 26 770 文件/秒，见 docs/benchmark.md）。回归：当前全量 357 个用例通过。
+删除吞吐 2331 → **6616 文件/秒**（批次1 后基准环境重跑为 2 178 文件/秒，扫描 26 770 文件/秒，见 docs/benchmark.md）。回归：当前全量 360 个用例通过。
 
 ### D-11 路径写法绕过（尾点与 8.3 短名）
 
@@ -388,7 +390,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **现象**：按 DeepSeek 官方文档核对后发现：请求 ID 应是 `deepseek-flash`（实际由 DeepSeek-V4.1-Flash-1017 提供服务），`deepseek-v4-flash` 等旧 ID 仍被接受但已退役；项目里用户配置的 3000 tokens 会被内部静默抬到 32768；界面只显示模型 ID、看不到底层版本。
 **修复**：扩展官方别名表（chat/reasoner/coder/v4-flash/v4-flash-vision-exp → flash，未知名称保留）；以 `/models` 的 `name` / `max_output_tokens` / 上下文/模态作为显示与能力依据；分析请求严格按「用户值 min 模型上限」收敛，不再偷抬；界面显示「当前模型版本 + 上下文」并支持手动模型名；新增 [AI 模型与接口兼容策略](ai-model-compatibility.md) 记录官方依据与未来变更清单。
-**验证**：`tests/ai-model-metadata.test.ts`（/models 能力收敛到 2000、自定义模型名原样发送）；`tests/ai-config-defaults.test.ts`（默认 flash + 旧官方 ID 迁移）；全量 48 文件 / 357 用例通过。
+**验证**：`tests/ai-model-metadata.test.ts`（/models 能力收敛到 2000、自定义模型名原样发送）；`tests/ai-config-defaults.test.ts`（默认 flash + 旧官方 ID 迁移）；全量 48 文件 / 360 用例通过。
 
 ### D-37 定时任务无法自定义名称
 
@@ -415,7 +417,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - 生成流程先跑契约检查，失败时把错误回传给模型自动重试（最多 3 次），不把坏草稿交给用户；
 - 安装端展开 `%TEMP%/%USERPROFILE%/%LOCALAPPDATA%/%APPDATA%/%WINDIR%`，再做绝对路径/辖区校验；
 - 安装成功后刷新插件列表；新增真实安装测试（草稿写入文件 → worker 加载 → 任务注册）。
-**验证**：`tests/plugin-workshop-contract.test.ts`（4 个契约用例）、`tests/ai-plugin-workshop.test.ts`（首次坏草稿自动重试 → 最终代码真实安装并注册任务）；全量 48 文件 / 357 用例通过。
+**验证**：`tests/plugin-workshop-contract.test.ts`（4 个契约用例）、`tests/ai-plugin-workshop.test.ts`（首次坏草稿自动重试 → 最终代码真实安装并注册任务）；全量 48 文件 / 360 用例通过。
 
 ### D-40 插件工坊生成无反馈、语法错误草稿未被拦截
 
@@ -430,7 +432,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - 宿主校验改为异步 `spawn`，不再阻塞主线程；
 - 代码编辑校验防抖 400ms，并立即把旧校验结果置空、取消“已阅读”勾选，避免用旧结果误装；
 - 语法错误信息保留具体行/列与原因，不再只有空泛的「语法错误：」。
-**验证**：`tests/ai-plugin-workshop.test.ts` 首次返回语法不完整草稿，断言自动重试后得到可安装代码；`tests/plugin-workshop.test.ts` 覆盖语法错误；全量 48 文件 / 357 用例通过，typecheck/build 通过。
+**验证**：`tests/ai-plugin-workshop.test.ts` 首次返回语法不完整草稿，断言自动重试后得到可安装代码；`tests/plugin-workshop.test.ts` 覆盖语法错误；全量 48 文件 / 360 用例通过，typecheck/build 通过。
 
 ### D-41 Electron 下 `node --check` 误把 electron.exe 当 Node 启动
 
@@ -438,6 +440,18 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 **根因**：Electron 主进程里 `process.execPath` 是 `electron.exe`。直接 `spawn(process.execPath, ['--check', file])` 会启动一个 Electron 应用窗口，而不是执行 Node 的 `--check`，于是子进程一直不退出，10 秒后被杀。
 **修复**：宿主与 AI 插件的语法检查子进程都设置 `ELECTRON_RUN_AS_NODE=1`，让 electron.exe 以纯 Node 模式运行 `--check`；超时/异常分支同时清理临时文件。
 **验证**：真实 Electron 自检（mock AI 返回合规插件）中，生成后弹窗显示「✓ 语法与契约校验通过」，`hasTimeout=false`，0 JS 异常；Node 测试环境不受影响。
+
+### D-42 插件工坊依赖能力过窄（增强）
+
+**现象**：工坊生成的插件被限制为单文件零依赖，只能使用 Node 内置模块，无法实现 zip/tar 分析、复杂 glob 匹配等能力。
+**方案选择**：用户明确选择「按需安装任意 npm 依赖」，而不是预置依赖库。
+**实现**：
+- 草稿格式增加 `dependencies: { 包名: "semver" }`，tool schema/提示词同步；第三方包必须在 dependencies 声明，未声明 import 会被静态校验拒绝；
+- 安装目录改为 `generated-plugins/<name>/`（`plugin.mjs` + `package.json` + `node_modules`），Node ESM 可直接解析；零依赖仍保持单文件；
+- 界面展示依赖清单与风险确认，未勾选「允许下载依赖」不允许安装；宿主 RPC 也要求 `acknowledgeDependencies=true`；
+- 宿主在插件目录执行 `npm install --ignore-scripts`（失败回落 pnpm），禁用 lifecycle scripts，最多 8 个依赖，只允许 npm 包名 + semver，禁止 file/git/URL；
+- 安装依赖期间按钮 loading，防重复点击；依赖安装失败给出可读错误。
+**验证**：依赖声明/白名单校验测试；真实 smoke：安装 `is-number@7` 到临时插件目录 → `ExternalPluginProxy` 真实加载并注册任务成功；全量 48 文件 / 360 用例通过。
 
 ## 未修复但已知的限制
 

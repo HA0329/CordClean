@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.2.9`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；48 个测试文件 / 357 个用例。
+当前版本 `0.3.0`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；48 个测试文件 / 360 个用例。
 
 ## 快速开始
 
@@ -34,7 +34,7 @@ pnpm start:desktop    # Electron 桌面应用
 | 扫描结果选择 v2 | 千条级结果按「分类 → 任务」聚合；安全项智能推荐，谨慎/高风险项显式确认；支持风险/大小/任务筛选、三态整组勾选、逐项明细 + 详情说明 + 打开位置、受保护只读视图、清理确认摘要 |
 | 双外壳 | 同一内核与界面，可运行在浏览器（HTTP + WebSocket）或 Electron（IPC）中 |
 | AI 顾问插件 | 把脱敏的本机画像交给 DeepSeek 等 OpenAI 兼容接口，产出结构化清理建议 |
-| AI 插件工坊 | 生成零依赖单文件外部插件；生成后静态契约校验 + 失败自动重试，安装前在 worker 真实加载；仍需人工阅读代码后确认 |
+| AI 插件工坊 | 生成单文件外部插件；可声明 npm 依赖（用户确认后下载，禁用 lifecycle scripts）；生成后静态契约校验 + 失败自动重试，安装前在 worker 真实加载；仍需人工阅读代码后确认 |
 | 可观测 | 扫描/清理进度事件、结构化日志、清理历史、失败归因 |
 
 ## 2. 技术栈
@@ -44,7 +44,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 55 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（357 个用例 / 48 个文件）
+- **测试**：Vitest（360 个用例 / 48 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -95,7 +95,7 @@ pnpm start:desktop    # Electron 桌面应用
 │   ├── host/                 # 传输层：RPC 方法 + WebSocket/HTTP 宿主
 │   ├── ui/                   # 界面：Vue 3 单页应用
 │   └── plugins/              # 11 个清理插件（每个是一个独立包）
-├── tests/                    # Vitest 测试（48 个文件 / 357 用例）
+├── tests/                    # Vitest 测试（48 个文件 / 360 用例）
 ├── bench/                    # 性能基准脚本
 ├── scripts/                  # 构建、冒烟测试、插件自测、Mock LLM、E2E
 └── docs/                     # 架构、威胁模型、插件规范、论文素材
@@ -260,7 +260,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 357 个用例 / 48 个文件
+pnpm test          # 360 个用例 / 48 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）
@@ -344,7 +344,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [AI 模型与接口兼容策略](docs/ai-model-compatibility.md) —— 官方模型 ID/版本对照、别名迁移、`/models` 元数据、未来接口变化应对清单
 - [扫描结果选择设计](docs/scan-selection-design.md) —— 分组/推荐/风险分层/批量选择/详情说明
 - [市面清理工具选择交互调研](docs/research/scan-selection-ux.md) —— 11 个产品的横向对比与可借鉴模式
-- [v2 选择体验验收报告](docs/verification/scan-selection-verify.md) —— 验收时的 289 条单测、真实 E2E、3000 条数据的语义与性能验收（历史快照；当前全量 357 条单测）
+- [v2 选择体验验收报告](docs/verification/scan-selection-verify.md) —— 验收时的 289 条单测、真实 E2E、3000 条数据的语义与性能验收（历史快照；当前全量 360 条单测）
 - [测试设计](docs/test-plan.md) —— 测试分层、命令与已知缺口
 - [规则库审计报告](docs/rules-report.md)
 - [依赖与升级策略](docs/dependency-policy.md) —— 版本锁定、已清理依赖、答辩后升级清单

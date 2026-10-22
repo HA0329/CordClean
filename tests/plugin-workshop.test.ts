@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { validatePluginCode } from '../packages/host/src/plugin-workshop.ts'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { saveGeneratedPlugin, validatePluginCode } from '../packages/host/src/plugin-workshop.ts'
 
 const GOOD = `
 export default {
@@ -40,6 +43,21 @@ describe('AI 插件工坊校验', () => {
     const result = await validatePluginCode('export default {')
     expect(result.ok).toBe(false)
     expect(result.errors.some((item) => item.includes('语法错误'))).toBe(true)
+  })
+
+  it('有依赖时写入独立插件目录与 package.json', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'cc-workshop-pkg-'))
+    try {
+      const file = saveGeneratedPlugin(dir, 'dep-plugin', 'export default { name: "dep-plugin", setup() {} }', { 'fast-glob': '^3.3.2' })
+      expect(file.endsWith(path.join('dep-plugin', 'plugin.mjs'))).toBe(true)
+      const pkg = JSON.parse(
+        readFileSync(path.join(dir, 'generated-plugins', 'dep-plugin', 'package.json'), 'utf8'),
+      )
+      expect(pkg.dependencies).toEqual({ 'fast-glob': '^3.3.2' })
+      expect(pkg.type).toBe('module')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
