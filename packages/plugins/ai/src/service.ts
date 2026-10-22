@@ -684,12 +684,20 @@ function checkPluginSyntax(text: string): Promise<string | null> {
     let stderr = ''
     let stdout = ''
     let settled = false
-    const child = spawn(process.execPath, ['--check', file], { windowsHide: true })
+    const child = spawn(process.execPath, ['--check', file], {
+      windowsHide: true,
+      // Electron 主进程里 process.execPath 是 electron.exe；不设这个变量会启动
+      // Electron 窗口而不是 Node 语法检查，表现为一直超时。
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    })
     const timer = setTimeout(() => {
       if (settled) return
       settled = true
       try {
         child.kill()
+      } catch {}
+      try {
+        rmSync(dir, { recursive: true, force: true })
       } catch {}
       resolve('语法检查超时（10 秒）')
     }, 10_000)

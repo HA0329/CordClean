@@ -29,12 +29,20 @@ function checkSyntax(text: string): Promise<string | null> {
     let stderr = ''
     let stdout = ''
     let settled = false
-    const child = spawn(process.execPath, ['--check', file], { windowsHide: true })
+    const child = spawn(process.execPath, ['--check', file], {
+      windowsHide: true,
+      // Electron 主进程里 process.execPath 是 electron.exe；不设这个变量会启动一个
+      // 完整的 Electron 窗口而不是执行 Node 的 --check，最终表现为 10 秒超时。
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    })
     const timer = setTimeout(() => {
       if (settled) return
       settled = true
       try {
         child.kill()
+      } catch {}
+      try {
+        rmSync(dir, { recursive: true, force: true })
       } catch {}
       resolve('语法检查超时（10 秒）')
     }, 10_000)

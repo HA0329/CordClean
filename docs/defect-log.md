@@ -61,6 +61,8 @@
 
 | D-40 | 🟠 中（体验/正确性） | 生成插件时界面像卡住、无反馈；草稿语法错误也照样进入审阅 | 已修复 |
 
+| D-41 | 🔴 高（可用性） | Electron 桌面版生成插件时语法检查固定 10 秒超时，导致自动重试也全部失败 | 已修复 |
+
 ## 详细说明
 
 ### D-01 联接点穿越导致越界删除（高）
@@ -429,6 +431,13 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - 代码编辑校验防抖 400ms，并立即把旧校验结果置空、取消“已阅读”勾选，避免用旧结果误装；
 - 语法错误信息保留具体行/列与原因，不再只有空泛的「语法错误：」。
 **验证**：`tests/ai-plugin-workshop.test.ts` 首次返回语法不完整草稿，断言自动重试后得到可安装代码；`tests/plugin-workshop.test.ts` 覆盖语法错误；全量 48 文件 / 357 用例通过，typecheck/build 通过。
+
+### D-41 Electron 下 `node --check` 误把 electron.exe 当 Node 启动
+
+**现象**：桌面版插件工坊生成时日志连续出现「语法检查超时（10 秒）」，三次自动重试全部失败，弹窗只剩生成失败。
+**根因**：Electron 主进程里 `process.execPath` 是 `electron.exe`。直接 `spawn(process.execPath, ['--check', file])` 会启动一个 Electron 应用窗口，而不是执行 Node 的 `--check`，于是子进程一直不退出，10 秒后被杀。
+**修复**：宿主与 AI 插件的语法检查子进程都设置 `ELECTRON_RUN_AS_NODE=1`，让 electron.exe 以纯 Node 模式运行 `--check`；超时/异常分支同时清理临时文件。
+**验证**：真实 Electron 自检（mock AI 返回合规插件）中，生成后弹窗显示「✓ 语法与契约校验通过」，`hasTimeout=false`，0 JS 异常；Node 测试环境不受影响。
 
 ## 未修复但已知的限制
 
