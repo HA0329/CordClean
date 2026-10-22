@@ -58,9 +58,12 @@ export type HandlerMap = { [M in ApiMethod]: (params: ApiParams<M>) => Promise<A
 /** 构造 RPC 处理方法表 */
 export function createHandlers(api: ApiContext): HandlerMap {
   initDiagnostics(api.dataDir)
-  // 外部插件不是持久加载的：上次运行留下的工坊插件目录会在启动时清理，
-  // 避免安装失败/退出后残留 node_modules 占空间。
-  cleanupGeneratedPlugins(api.dataDir)
+  // 外部插件不是跨进程持久加载的旧行为已修复：settings 里记录了 externalPath，
+  // 启动加载后只清理真正没有持久化记录的工坊残留。
+  const persistedExternalPaths = Object.values(api.ctx.settings.get().plugins ?? {})
+    .map((item) => item?.externalPath)
+    .filter((item): item is string => typeof item === 'string' && item.length > 0)
+  cleanupGeneratedPlugins(api.dataDir, persistedExternalPaths)
   const UNDO_FILE = path.join(api.dataDir, '.undo', 'last-clean.json')
   const saveUndo = (report: any): void => {
     if (report.dryRun || !Array.isArray(report.undo) || !report.undo.length) return

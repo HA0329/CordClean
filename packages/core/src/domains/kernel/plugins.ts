@@ -136,6 +136,35 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       if (!enabled) continue
       await this.enable(id)
     }
+    // 外部插件（含 AI 工坊生成的插件）在进程内安装，settings 里保存了路径；
+    // 启动时按路径重新加载，让“装一次以后一直能用”成立。
+    await this.loadPersistedExternalPlugins()
+  }
+
+  private async loadPersistedExternalPlugins(): Promise<void> {
+    const settings = this.ctx.settings.get()
+    const dataDir = path.dirname(this.ctx.settings.file)
+    for (const [id, stored] of Object.entries(settings.plugins ?? {})) {
+      if (!id.startsWith('external:') || !stored || stored.enabled === false) continue
+      if (this.records.has(id)) continue
+      const name = id.slice('external:'.length)
+      const safe = name.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 40) || 'ai-plugin'
+      const candidates = [
+        stored.externalPath,
+        path.join(dataDir, 'generated-plugins', `${safe}.mjs`),
+        path.join(dataDir, 'generated-plugins', safe, 'plugin.mjs'),
+      ].filter((item): item is string => typeof item === 'string' && item.length > 0)
+      const file = candidates.find((candidate) => existsSync(candidate))
+      if (!file) {
+        this.ctx.logger?.warn?.(`外部插件 ${id} 的源文件已不存在，跳过自动加载`)
+        continue
+      }
+      try {
+        await this.installExternal(file)
+      } catch (error) {
+        this.ctx.logger?.warn?.(`外部插件 ${id} 自动加载失败：%s`, error instanceof Error ? error.message : String(error))
+      }
+    }
   }
 
   private emitChanged(): void {
@@ -154,7 +183,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
         name: record.entry.name,
         description: record.entry.description,
         category: record.entry.category,
-        source: 'builtin',
+        source: record.entry.id.startsWith('external:') ? 'external' : 'builtin',
         version: record.entry.version ?? descriptor?.version ?? '0.1.0',
         taskCount: tasks.length,
         status: record.status,
@@ -226,7 +255,8 @@ export class PluginManagerService extends Service implements PluginManagerLike {
 
   /**
    * 安装本地插件：import 任意本地 .mjs/.js 模块，校验其导出后挂到运行时。
-   * 说明：仅本次运行有效（不复制用户文件、不修改安装包）。
+   * 路径会写入 settings.plugins[id].externalPath，下次启动自动重新加载；
+   * 文件由宿主写入用户数据目录，不在本方法内复制或删除。
    */
   async installExternal(filePath: string, options: { allowCustomClean?: boolean } = {}): Promise<void> {
     const abs = path.resolve(filePath)
@@ -337,7 +367,18 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       defaultEnabled: true,
       load: async () => ({ default: synthetic }),
     }
-    this.records.set(id, { entry, module: synthetic, status: 'stopped', config: {}, taskIds: [], externalPath: abs, capabilities, externalProxy: proxyRef } as any)
+    const storedConfig = this.ctx.settings.get().plugins[id]?.config
+    if (storedConfig && Object.keys(storedConfig).length) {
+      try {
+        await proxy.configure(storedConfig)
+      } catch (error) {
+        this.ctx.logger?.warn?.(
+          `外部插件 ${id} 应用已保存配置失败，将使用默认配置：%s`,
+          error instanceof Error ? error.message : String(error),
+        )
+      }
+    }
+    this.records.set(id, { entry, module: synthetic, status: 'stopped', config: storedConfig ?? {}, taskIds: [], externalPath: abs, capabilities, externalProxy: proxyRef } as any)
     await this.enable(id)
     this.emitChanged()
   }
@@ -350,6 +391,8 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     await this.disable(id)
     if (proxy) await proxy.dispose()
     this.records.delete(id)
+    // 清掉持久化记录，避免下次启动再次尝试加载；文件由宿主 API 负责删除
+    this.ctx.settings.patch({ plugins: { [id]: { enabled: false, config: {}, externalPath: '' } } })
     this.emitChanged()
   }
 
@@ -459,9 +502,14 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   }
 
   private persist(record: RuntimeRecord, enabled: boolean): void {
+    const externalPath = (record as any).externalPath as string | undefined
     this.ctx.settings.patch({
       plugins: {
-        [record.entry.id]: { enabled, config: record.config },
+        [record.entry.id]: {
+          enabled,
+          config: record.config,
+          ...(externalPath ? { externalPath } : {}),
+        },
       },
     })
   }

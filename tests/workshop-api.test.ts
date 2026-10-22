@@ -107,6 +107,35 @@ describe('插件工坊安装 API 与残留清理', () => {
     }
   })
 
+  it('安装后重启仍能自动加载（持久化 externalPath）', async () => {
+    const { app, dataDir, handlers } = await makeHandlers('persist')
+    let file = ''
+    try {
+      const installed = await handlers['ai/plugin/install']({ name: 'workshop-e2e', code: NO_DEPS_CODE })
+      file = installed.path
+      expect(existsSync(file)).toBe(true)
+    } finally {
+      await app.dispose()
+    }
+    const app2 = await createApp({ dataDir, logger: false, manifest: [] as any })
+    try {
+      const plugin = app2.ctx.plugins.list().find((item) => item.id === 'external:workshop-e2e')
+      expect(plugin?.enabled).toBe(true)
+      expect(app2.ctx.cleaner.list().some((task) => task.id === 'workshop-e2e-task')).toBe(true)
+      // 启动清理不能把已持久化的插件文件删掉
+      createHandlers({
+        ctx: app2.ctx,
+        dataDir,
+        version: 'test',
+        bootMs: 0,
+        shell: { electron: false, async openPath() {}, async openDataDir() {} },
+      })
+      expect(existsSync(file)).toBe(true)
+    } finally {
+      await app2.dispose()
+    }
+  })
+
   it('启动时清理上一次运行留下的 generated-plugins', async () => {
     const { app, dataDir } = await makeHandlers('startup-clean')
     await app.dispose()

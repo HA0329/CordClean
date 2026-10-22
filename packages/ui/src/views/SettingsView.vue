@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   authorizeScheduler,
@@ -119,6 +119,26 @@ watch(
   },
   { deep: true, immediate: true },
 )
+
+// 从插件页“加入定时任务”跳转过来时，把该插件的任务预选进当前计划
+function applyPendingSchedulerTasks() {
+  try {
+    const raw = localStorage.getItem('cordclean.scheduler.pendingTasks')
+    if (!raw) return
+    localStorage.removeItem('cordclean.scheduler.pendingTasks')
+    const ids = JSON.parse(raw)
+    if (!Array.isArray(ids)) return
+    const valid = ids.filter((id): id is string => typeof id === 'string' && state.tasks.some((task) => task.id === id))
+    if (!valid.length) return
+    schedule.taskIds = [...new Set([...schedule.taskIds, ...valid])]
+    ElMessage.success(`已加入 ${valid.length} 个插件任务，点「保存」后生效`)
+  } catch {
+    /* 忽略损坏的本地草稿 */
+  }
+}
+onMounted(() => {
+  void nextTick(applyPendingSchedulerTasks)
+})
 
 async function saveSchedule() {
   if (!schedulerPlugin.value) {

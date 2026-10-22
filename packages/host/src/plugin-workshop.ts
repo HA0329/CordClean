@@ -11,7 +11,7 @@
  *   让 Node 的 ESM 解析能正常工作。
  */
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { checkPluginSource, validatePluginDependencies } from '@cordclean/shared'
@@ -114,10 +114,18 @@ export function cleanupGeneratedPlugin(
   }
 }
 
-/** 启动时清理上一次运行留下的工坊插件目录（外部插件本来就不是持久加载的） */
-export function cleanupGeneratedPlugins(dataDir: string): void {
+/** 启动时清理上一次运行留下的工坊插件目录；持久化的插件路径要保留 */
+export function cleanupGeneratedPlugins(dataDir: string, keepPaths: string[] = []): void {
+  const base = path.resolve(path.join(dataDir, 'generated-plugins'))
   try {
-    rmSync(path.join(dataDir, 'generated-plugins'), { recursive: true, force: true })
+    if (!existsSync(base)) return
+    const keep = keepPaths.filter(Boolean).map((item) => path.resolve(item))
+    for (const child of readdirSync(base)) {
+      const childPath = path.join(base, child)
+      const shouldKeep = keep.some((item) => item === childPath || item.startsWith(childPath + path.sep))
+      if (!shouldKeep) rmSync(childPath, { recursive: true, force: true })
+    }
+    if (readdirSync(base).length === 0) rmSync(base, { recursive: true, force: true })
   } catch {
     /* 启动清理失败不影响主流程 */
   }

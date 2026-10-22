@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CATEGORIES, RISK_META } from '@cordclean/shared'
 import type { PluginRuntime } from '@cordclean/shared'
@@ -17,6 +17,7 @@ import {
   uninstallPlugin,
   savePluginConfig,
   setPluginEnabled,
+  startScan,
   state,
 } from '../api/store.ts'
 
@@ -128,6 +129,35 @@ async function install(plugin: PluginRuntime) {
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
+}
+
+/** 外部/工坊插件：只扫描该插件的任务，然后跳到清理页查看结果 */
+async function runPluginTasks(plugin: PluginRuntime) {
+  const taskIds = plugin.tasks.map((task) => task.id)
+  if (!taskIds.length) {
+    ElMessage.warning('该插件没有注册清理任务')
+    return
+  }
+  state.page = 'clean'
+  await nextTick()
+  try {
+    await startScan(taskIds)
+    ElMessage.success(`已扫描「${plugin.name}」的 ${taskIds.length} 个任务，结果在清理页`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+/** 外部/工坊插件：把任务范围预选到设置里的定时任务，用户保存后生效 */
+function addPluginToScheduler(plugin: PluginRuntime) {
+  const taskIds = plugin.tasks.map((task) => task.id)
+  if (!taskIds.length) {
+    ElMessage.warning('该插件没有注册清理任务')
+    return
+  }
+  localStorage.setItem('cordclean.scheduler.pendingTasks', JSON.stringify(taskIds))
+  state.page = 'settings'
+  ElMessage.info('已切换到定时任务：确认任务范围并保存后生效')
 }
 
 async function authorizeAutoClean(plugin: PluginRuntime) {
@@ -252,6 +282,7 @@ function categoryName(id: string) {
         </div>
         <div class="plugin-meta">
           <span class="cc-pill">{{ categoryName(plugin.category) }}</span>
+          <span v-if="plugin.source === 'external'" class="cc-pill">工坊 / 外部</span>
           <span class="cc-pill" :class="`status-${plugin.status}`">{{ plugin.status === 'active' ? '运行中' : plugin.status === 'error' ? '异常' : plugin.status === 'loading' ? '加载中' : '已停止' }}</span>
           <span class="cc-pill">{{ plugin.taskCount }} 个任务</span>
           <el-button v-if="plugin.id === 'rule-pack'" size="small" @click="ruleOpen = true">规则命中</el-button>
@@ -274,6 +305,8 @@ function categoryName(id: string) {
           <el-button size="small" :disabled="!plugin.enabled" @click="openConfig(plugin)">配置</el-button>
           <el-button size="small" @click="reload(plugin)">热重载</el-button>
           <el-button size="small" @click="openSource(plugin)">源码</el-button>
+          <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" type="primary" plain @click="runPluginTasks(plugin)">扫描此插件</el-button>
+          <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" @click="addPluginToScheduler(plugin)">加入定时任务</el-button>
           <el-button v-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">卸载</el-button>
           <el-button v-else size="small" type="primary" plain @click="install(plugin)">安装</el-button>
           <span class="cc-faint" style="margin-left: auto">{{ plugin.configurable ? '支持配置' : '无配置项' }}</span>

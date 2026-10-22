@@ -111,7 +111,7 @@ export interface Settings {
     excludes: string[]
   }
   /** 插件配置（enabled + 插件自有配置） */
-  plugins: Record<string, { enabled?: boolean; config?: Record<string, any> }>
+  plugins: Record<string, { enabled?: boolean; config?: Record<string, any>; externalPath?: string }>
   /** 界面设置 */
   /** 定时任务运行状态（lastRuns 按计划持久化） */
   scheduler: {
