@@ -15,6 +15,7 @@ import {
   fetchEgress,
   probeAi,
   refreshAiStatus,
+  refreshPlugins,
   saveAiConfig,
   dryRunAiRule,
   draftAiPlugin,
@@ -437,7 +438,13 @@ async function installWorkshopDraft() {
   try {
     const result = await installAiPlugin(workshopDraft.value.name, workshopDraft.value.code)
     workshopOpen.value = false
-    ElMessage.success('已安装并启用：' + result.id + '（本次运行有效）')
+    workshopDraft.value = null
+    workshopValidation.value = null
+    workshopReviewed.value = false
+    workshopRequirement.value = ''
+    // 安装后刷新插件列表，用户能立刻在「插件」页看到新插件与任务
+    await refreshPlugins()
+    ElMessage.success('已安装并启用：' + result.id + '（本次运行有效，可在插件页查看）')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
@@ -733,7 +740,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <!-- AI 插件工坊：不依赖分析结果，进页面即可使用 -->
       <div class="cc-card">
         <div class="cc-card-title"><h3>🛠️ AI 插件工坊</h3><span class="cc-faint">无需先分析：生成单文件插件 → 校验 → 你阅读代码后安装</span></div>
-        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。</p>
+        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。生成的是零依赖单文件插件（不依赖框架包），会先自动校验，不通过的代码不会进入安装步骤。</p>
         <el-input v-model="workshopRequirement" type="textarea" :rows="2" placeholder="例如：写一个插件，清理 D 盘下超过 30 天的 .log 文件" />
         <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
       </div>

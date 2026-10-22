@@ -12,13 +12,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-
-const FORBIDDEN: Array<{ pattern: RegExp; message: string }> = [
-  { pattern: /child_process/, message: '禁止使用 child_process（不能起子进程）' },
-  { pattern: /process\.exit/, message: '禁止调用 process.exit' },
-  { pattern: /fs\.(rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\b/, message: '禁止直接删除文件，删除必须交给内核' },
-  { pattern: /from ['"]node:http['"]|from ['"]axios['"]/, message: '禁止插件内发起网络请求' },
-]
+import { checkPluginSource } from '@cordclean/shared'
 
 export interface PluginValidation {
   ok: boolean
@@ -27,18 +21,12 @@ export interface PluginValidation {
 }
 
 export function validatePluginCode(code: string): PluginValidation {
-  const errors: string[] = []
-  const warnings: string[] = []
   const text = String(code ?? '')
-  if (!text.trim()) return { ok: false, errors: ['代码为空'], warnings }
-
-  if (!/defineCleanerPlugin/.test(text)) errors.push('缺少 defineCleanerPlugin（必须使用项目插件契约）')
-  if (!/export\s+default/.test(text)) errors.push('缺少 export default')
-  for (const rule of FORBIDDEN) {
-    if (rule.pattern.test(text)) errors.push(rule.message)
-  }
-  if (!/ctx\.cleaner\.define\s*\(/.test(text)) warnings.push('没有找到 ctx.cleaner.define(...)，插件可能不会注册清理任务')
-  if (!/inject\s*:/.test(text)) warnings.push('建议显式声明 inject（如 ["cleaner"]）')
+  // 与生成端共用同一套契约检查，避免「生成能过、安装加载失败」
+  const base = checkPluginSource(text)
+  const errors = [...base.errors]
+  const warnings = [...base.warnings]
+  if (!text.trim()) return { ok: false, errors: errors.length ? errors : ['代码为空'], warnings }
 
   // 语法检查：与运行时同一个解析器
   let dir = ''

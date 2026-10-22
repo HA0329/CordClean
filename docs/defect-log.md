@@ -3,7 +3,7 @@
 > 本文档记录「主动自测」阶段发现并修复的问题，可作为论文第 6 章「系统测试」中
 > 「测试发现的问题与改进」小节，也可用于答辩时说明工程严谨性。
 >
-> 测试方式：352 个自动化用例（46 个文件）+ 现有插件自测脚本 + 11 个真实插件扫描审计 + Electron 端到端点检 + 性能基准。
+> 测试方式：357 个自动化用例（48 个文件）+ 现有插件自测脚本 + 11 个真实插件扫描审计 + Electron 端到端点检 + 性能基准。
 > **所有会删除文件的测试都在临时沙箱中进行，未触碰真实用户数据。**
 >
 > 编号约定：D-01~D-17 为自测阶段（含 AI 接口联调）发现的问题；D-18~D-29 为批次1 安全与正确性加固新增；D-30~D-34 为 v0.2.2 根据用户反馈修复的 AI 顾问页问题。
@@ -56,6 +56,8 @@
 | D-37 | 🟢 低（可用性） | 定时任务只能使用固定/自动名称，用户无法给任务起自定义名字 | 已修复 |
 
 | D-38 | 🟠 中（正确性/体验） | 分组点「明细 →」钻取后切回分组，只剩被钻取的那一组，其余组消失 | 已修复 |
+
+| D-39 | 🟠 中（真实性） | AI 插件工坊把含 `@cordisjs/plugin-cleaner` 幻觉 import 的草稿判为“校验通过”，安装时 ERR_MODULE_NOT_FOUND | 已修复 |
 
 ## 详细说明
 
@@ -186,7 +188,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **效果**：单次校验 166 µs → **10.4 µs**（走代理约 20 µs）；
 扫描吞吐 4526 → **33 551 文件/秒**（4000 个文件 0.12 s，修复当时的基准环境）；
-删除吞吐 2331 → **6616 文件/秒**（批次1 后基准环境重跑为 2 178 文件/秒，扫描 26 770 文件/秒，见 docs/benchmark.md）。回归：当前全量 352 个用例通过。
+删除吞吐 2331 → **6616 文件/秒**（批次1 后基准环境重跑为 2 178 文件/秒，扫描 26 770 文件/秒，见 docs/benchmark.md）。回归：当前全量 357 个用例通过。
 
 ### D-11 路径写法绕过（尾点与 8.3 短名）
 
@@ -382,7 +384,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **现象**：按 DeepSeek 官方文档核对后发现：请求 ID 应是 `deepseek-flash`（实际由 DeepSeek-V4.1-Flash-1017 提供服务），`deepseek-v4-flash` 等旧 ID 仍被接受但已退役；项目里用户配置的 3000 tokens 会被内部静默抬到 32768；界面只显示模型 ID、看不到底层版本。
 **修复**：扩展官方别名表（chat/reasoner/coder/v4-flash/v4-flash-vision-exp → flash，未知名称保留）；以 `/models` 的 `name` / `max_output_tokens` / 上下文/模态作为显示与能力依据；分析请求严格按「用户值 min 模型上限」收敛，不再偷抬；界面显示「当前模型版本 + 上下文」并支持手动模型名；新增 [AI 模型与接口兼容策略](ai-model-compatibility.md) 记录官方依据与未来变更清单。
-**验证**：`tests/ai-model-metadata.test.ts`（/models 能力收敛到 2000、自定义模型名原样发送）；`tests/ai-config-defaults.test.ts`（默认 flash + 旧官方 ID 迁移）；全量 46 文件 / 352 用例通过。
+**验证**：`tests/ai-model-metadata.test.ts`（/models 能力收敛到 2000、自定义模型名原样发送）；`tests/ai-config-defaults.test.ts`（默认 flash + 旧官方 ID 迁移）；全量 48 文件 / 357 用例通过。
 
 ### D-37 定时任务无法自定义名称
 
@@ -396,6 +398,20 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 **根因**：`showTaskItems()` 为了只展示该任务明细，把全局共享的 `taskFilter` 改成了该任务；切回分组时这个筛选仍然存在，`categoryGroups` 只聚合该任务，导致只剩一组。
 **修复**：新增「钻取筛选」状态 `autoTaskFilter`，记录钻取前的用户筛选；切回分组时只撤销钻取自动加的任务筛选并恢复原筛选，用户手动设置的其他筛选不会被破坏。明细页仍保留任务筛选显示，方便返回。
 **验证**：`scripts/e2e-ui.mjs` 新增回归步骤「分组→明细→分组：N 组保持一致」，真实扫描 8 组往返后仍为 8 组；全量 E2E 0 JS 异常。
+
+### D-39 AI 插件工坊“校验通过但装不上”
+
+**现象**：工坊生成的插件写了 `import { defineCleanerPlugin } from '@cordisjs/plugin-cleaner'`，界面显示「语法与契约校验通过」，点安装却报 `ERR_MODULE_NOT_FOUND`；该 import 在生成文件所在目录根本不存在。
+**根因**：
+- 生成提示词要求使用 `defineCleanerPlugin` + 框架包 import，但外部插件是单文件零依赖，从 `<dataDir>/generated-plugins` 加载时解析不到框架包；
+- 安装前校验只看语法、`defineCleanerPlugin` 关键字和危险 API，未检查 import 是否可解析，因此“假通过”。
+**修复**：
+- 新增共享静态契约 `packages/shared/src/plugin-code.ts`：外部插件禁止 import 框架/第三方/相对路径，禁止 `defineCleanerPlugin`，必须 `export default` 普通对象、含 `name`/`setup`；生成端、安装端、测试共用；
+- 重写工坊提示词与 tool schema：明确零依赖普通对象契约、允许的 Node 内置模块、`%TEMP%` 等路径模板；
+- 生成流程先跑契约检查，失败时把错误回传给模型自动重试（最多 3 次），不把坏草稿交给用户；
+- 安装端展开 `%TEMP%/%USERPROFILE%/%LOCALAPPDATA%/%APPDATA%/%WINDIR%`，再做绝对路径/辖区校验；
+- 安装成功后刷新插件列表；新增真实安装测试（草稿写入文件 → worker 加载 → 任务注册）。
+**验证**：`tests/plugin-workshop-contract.test.ts`（4 个契约用例）、`tests/ai-plugin-workshop.test.ts`（首次坏草稿自动重试 → 最终代码真实安装并注册任务）；全量 48 文件 / 357 用例通过。
 
 ## 未修复但已知的限制
 

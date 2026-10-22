@@ -2,18 +2,24 @@ import { describe, expect, it } from 'vitest'
 import { validatePluginCode } from '../packages/host/src/plugin-workshop.ts'
 
 const GOOD = `
-import { defineCleanerPlugin } from '@cordclean/shared'
-export default defineCleanerPlugin({
+export default {
   name: 'demo-plugin',
   version: '1.0.0',
-  inject: ['cleaner'],
-  setup(ctx) {
+  description: '演示插件',
+  capabilities: { fsRoots: ['%TEMP%'] },
+  Config(raw) {
+    return { dir: String(raw.dir ?? '') }
+  },
+  setup(ctx, config) {
+    const base = String(config.dir || ctx.system.env.get('TEMP') || '')
     ctx.cleaner.define({
       id: 'demo', name: 'Demo', category: 'system', risk: 'safe', icon: 'x',
-      defaultSelected: true, targets: [], scan() {},
+      defaultSelected: true, targets: [base], scan(scan) {
+        scan.emit({ path: base, kind: 'folder', size: 0 })
+      },
     })
   },
-})
+}
 `
 
 describe('AI 插件工坊校验', () => {

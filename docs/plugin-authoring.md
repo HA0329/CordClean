@@ -184,6 +184,19 @@ import {
    且不会获得清空白名单（`addClearRoot`），`targets` 必须落在能力声明的 `fsRoots` 内。
    安全边界与残余风险见 [威胁模型](threat-model.md)。
 
+### 6.1 AI 插件工坊生成的外部插件契约
+
+AI 工坊生成的是**单文件、零依赖**外部插件，和内置插件包不同：
+
+- 不能 `import '@cordclean/shared'`、`@cordisjs/*` 或任何第三方包（生成目录解析不到，安装会报 `ERR_MODULE_NOT_FOUND`）；
+- 不能使用 `defineCleanerPlugin`，直接 `export default { name, version, description, capabilities, Config, setup }`；
+- 只允许 `node:fs` / `node:fs/promises` / `node:path` / `node:os` / `node:url` / `node:util` / `node:crypto`；
+- `capabilities.fsRoots` 与 `targets` 支持 `%TEMP%`、`%USERPROFILE%`、`%LOCALAPPDATA%`、`%APPDATA%`、`%WINDIR%` 模板，
+  安装时展开为绝对路径；代码里用 `ctx.system.env.get('TEMP')` 取实际路径；
+- 静态检查不通过时工坊会带着错误自动重试生成；最终安装前还会在 worker 中真实加载一次。
+
+校验规则在 `packages/shared/src/plugin-code.ts`，生成端、安装端、测试共用同一套。
+
 ## 8. 自测方式
 
 新建 `scripts/check-<id>.ts`：

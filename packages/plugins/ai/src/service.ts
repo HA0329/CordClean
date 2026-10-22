@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { folderSize } from '@cordclean/utils'
 import { RULE_TARGET_TYPES, SUPPORTED_RULE_TYPES } from '@cordclean/shared'
+import { checkPluginSource } from '@cordclean/shared'
 import type { AiRuleSuggestion } from '@cordclean/shared'
 /**
  * AI 服务实现：把「本机画像」变成「清理建议」。
@@ -225,17 +226,17 @@ export class AiService extends Service implements AiLike {
   }
 
   /** AI 插件工坊：生成单文件 Cordis 插件草稿 */
-  /** AI 插件工坊：生成单文件 Cordis 插件草稿（代码优先，失败自动重试一次） */
+  /** AI 插件工坊：生成单文件 Cordis 插件草稿（生成后先过静态契约，失败自动带错误重试） */
   async draftPlugin(requirement: string): Promise<{ name: string; code: string; notes: string }> {
     const key = this.requireKey()
     const base = this.rawConfig
     let lastError = '生成失败'
+    let feedback = ''
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       const maxTokens = Math.min(131_072, Math.max(32_768, base.maxTokens) * (attempt ? 2 : 1))
       const config = { ...base, maxTokens }
-      const suffix = attempt ? '\n\n上一次输出为空或被截断。请直接输出完整、可运行的 ```js 代码块，不要省略、不要 JSON 包装。' : ''
-      const request = buildRequest(config, key, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX + requirement + suffix, [PLUGIN_TOOL])
+      const request = buildRequest(config, key, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX + requirement + feedback, [PLUGIN_TOOL])
       this.gate('plugin-draft', request.url, request.body)
       const result = await requestJson(request.url, {
         headers: request.headers,
@@ -246,16 +247,31 @@ export class AiService extends Service implements AiLike {
       const parsed = parseResponse(config, result.payload)
       if (parsed.truncated) {
         lastError = `输出被截断（${parsed.finish ?? 'length'}）`
+        feedback = '\n\n上一次输出被截断。请直接输出完整、可运行的代码，不要省略、不要 JSON 包装。'
         this.ctx.logger.info('插件草稿被截断，自动扩容重试')
         continue
       }
       const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments
       const code = toolArgs && typeof toolArgs.code === 'string' ? toolArgs.code.trim() : extractPluginCode(parsed.text)
-      if (code && /defineCleanerPlugin/.test(code)) {
-        const matched = code.match(/name:\s*['"]([a-zA-Z0-9_-]+)['"]/)
-        return { name: matched?.[1] ?? 'ai-plugin', code, notes: parsed.text.slice(0, 200) }
+      if (!code) {
+        lastError = '模型没有返回有效的插件代码'
+        feedback = '\n\n上一次没有返回有效代码。请输出完整单文件 ESM 源码。'
+        continue
       }
-      lastError = '模型没有返回有效的插件代码'
+      // 与安装端共用同一套契约检查：错误的 import / defineCleanerPlugin / 危险 API
+      // 在这里就拦下来，不把“能生成但装不上”的草稿交给用户。
+      const check = checkPluginSource(code)
+      if (!check.ok) {
+        lastError = check.errors.slice(0, 2).join('；')
+        feedback =
+          '\n\n上一次生成的插件代码未通过静态契约检查：\n- ' +
+          check.errors.join('\n- ') +
+          '\n请修正后重新输出完整代码：外部插件必须零依赖，不要 import 框架包，直接 export default 普通对象。'
+        this.ctx.logger.info('插件草稿未通过契约检查，自动重试：%s', check.errors[0])
+        continue
+      }
+      const matched = code.match(/name:\s*['"]([a-zA-Z0-9_-]+)['"]/)
+      return { name: matched?.[1] ?? 'ai-plugin', code, notes: parsed.text.slice(0, 200) }
     }
     throw new AiError(lastError, 'INVALID_RESPONSE')
   }
@@ -651,12 +667,12 @@ export function extractPluginCode(text: string): string {
 }
 const PLUGIN_TOOL = {
   name: 'emit_plugin',
-  description: '输出一个完整可运行的单文件 Cordis 插件源码',
+  description: '输出一个完整可运行的单文件外部清理插件源码',
   parameters: {
     type: 'object',
     properties: {
       name: { type: 'string', description: 'kebab-case 插件名' },
-      code: { type: 'string', description: '完整 ESM 源码，必须包含 defineCleanerPlugin 与 export default' },
+      code: { type: 'string', description: '完整单文件 ESM 源码，必须是 export default 普通对象（禁止 import 框架包）' },
       notes: { type: 'string', description: '简要说明' },
     },
     required: ['name', 'code'],
@@ -664,11 +680,13 @@ const PLUGIN_TOOL = {
 }
 
 const PLUGIN_SYSTEM_PROMPT = [
-  '你是 Cordis 插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "code": "完整 ESM 源码", "notes": "简要说明" }。',
-  'code 必须是单文件 .mjs，默认导出 defineCleanerPlugin({ name, version, description, inject: ["cleaner"], setup(ctx, config) {...} })。',
-  '插件用 ctx.cleaner.define({ id, name, category, risk, icon, defaultSelected, targets, scan(scan){ scan.emit({path,kind,size}) } }) 注册清理任务。',
-  '禁止：child_process、process.exit、fs.rm/rmSync/unlink/rmdir、直接删除文件、网络请求、读取环境变量中的密钥。删除一律交给内核（只 emit 候选）。',
-  '路径必须来自 config 或已知的 %ENV% 模板；不要硬编码 C:\\Users 下的用户名；用 ctx.logger 记录关键日志。',
+  '你是 Cordis 外部清理插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "code": "完整 ESM 源码", "notes": "简要说明" }。',
+  '外部插件是单文件、零依赖 ESM：禁止 import @cordisjs/*、@cordclean/* 或任何第三方包，也不要使用 defineCleanerPlugin；只允许 import node:fs / node:fs/promises / node:path / node:os / node:url / node:util / node:crypto。',
+  'code 必须直接默认导出普通对象，形如：export default { name: "kebab-case", version: "1.0.0", description: "说明", capabilities: { fsRoots: ["%TEMP%"] }, Config(raw) { return { ... } }, setup(ctx, config) { ctx.cleaner.define({ id: "task-id", name: "任务名", category: "apps", risk: "safe", defaultSelected: false, targets: ["%TEMP%\\\\子目录"], scan(scan) { /* 读目录并 scan.emit */ } }) } }。',
+  'capabilities.fsRoots 和 targets 必须使用绝对路径或允许的模板：%TEMP%、%USERPROFILE%、%LOCALAPPDATA%、%APPDATA%、%WINDIR%；安装时会自动展开。代码里用 ctx.system.env.get("TEMP") 等取实际路径，不要硬编码用户名。',
+  'scan 里用 fs.readdirSync / fs.statSync（或 promises 版）读取目标目录，向 scan.emit({ path: 绝对路径, kind: "file" | "folder", size: 字节数 }) 输出候选；只输出候选，不要删除、不要修改文件。',
+  '禁止：child_process、process.exit、fs.rm / rmSync / unlink / rmdir、直接删除文件、网络请求、process.env 读取密钥。删除一律交给内核（只 emit 候选）。',
+  '用 ctx.logger 记录关键日志；除了 JSON 外不要输出解释性文字。',
 ].join('\n')
 const PLUGIN_USER_PREFIX = '需求：'
 

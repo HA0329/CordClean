@@ -233,23 +233,42 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     if (!existsSync(abs)) throw new Error('插件文件不存在：' + abs)
     const code = await readFile(abs, 'utf8')
     const { proxy, info } = await ExternalPluginProxy.create(abs)
+    // 外部插件生成器往往不知道当前用户的绝对路径，允许用 %TEMP%/%USERPROFILE% 等模板，
+    // 安装时用真实环境展开，再做绝对路径与辖区校验。
+    const env = process.env
+    const expandPath = (value: unknown): string =>
+      String(value ?? '').replace(/%([^%]+)%/g, (_, name: string) => {
+        const key = String(name)
+        const found = env[key] ?? env[key.toUpperCase()]
+        return typeof found === 'string' && found.trim() ? found : `%${name}%`
+      })
+    const expandedInfo = {
+      ...info,
+      capabilities: info.capabilities
+        ? { ...info.capabilities, fsRoots: (info.capabilities.fsRoots ?? []).map((root) => expandPath(root)) }
+        : info.capabilities,
+      tasks: info.tasks.map((task) => ({
+        ...task,
+        targets: (task.targets ?? []).map((target) => expandPath(target)),
+      })),
+    }
     let capabilities: PluginCapabilities
     try {
-      capabilities = validateCapabilities({ capabilities: info.capabilities }, code, options.allowCustomClean === true)
+      capabilities = validateCapabilities({ capabilities: expandedInfo.capabilities }, code, options.allowCustomClean === true)
     } catch (error) {
       await proxy.dispose()
       throw error
     }
-    const id = 'external:' + (info.name || path.basename(abs, path.extname(abs)))
+    const id = 'external:' + (expandedInfo.name || path.basename(abs, path.extname(abs)))
     if (this.records.has(id)) {
       await proxy.dispose()
       throw new Error('同名插件已加载：' + id)
     }
     const proxyRef = proxy
     const synthetic: any = {
-      name: info.name,
-      version: info.version ?? '0.0.0',
-      description: info.description ?? '外部插件（worker 隔离）',
+      name: expandedInfo.name,
+      version: expandedInfo.version ?? '0.0.0',
+      description: expandedInfo.description ?? '外部插件（worker 隔离）',
       capabilities,
       inject: ['cleaner', 'pathPolicy'],
       apply(ctx: any) {
@@ -265,7 +284,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
           }
           rootDisposers.length = 0
         })
-        for (const task of info.tasks) {
+        for (const task of expandedInfo.tasks) {
           const targets = (task.targets ?? []).filter(
             (target: unknown): target is string => typeof target === 'string' && target.trim().length > 0,
           )
@@ -278,7 +297,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
           })
           if (invalidTarget !== undefined) {
             ctx.logger?.warn?.(
-              `外部插件 ${info.name || id} 的任务 ${task.id || '(未命名)'} 已跳过：目标 ${invalidTarget} 不是绝对路径或不在能力声明的 fsRoots 内`,
+              `外部插件 ${expandedInfo.name || id} 的任务 ${task.id || '(未命名)'} 已跳过：目标 ${invalidTarget} 不是绝对路径或不在能力声明的 fsRoots 内`,
             )
             continue
           }
@@ -311,10 +330,10 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     }
     const entry: PluginManifestEntry = {
       id,
-      name: info.name || id,
-      description: info.description ?? '外部插件（worker 隔离）',
+      name: expandedInfo.name || id,
+      description: expandedInfo.description ?? '外部插件（worker 隔离）',
       category: 'apps',
-      version: info.version ?? '0.0.0',
+      version: expandedInfo.version ?? '0.0.0',
       defaultEnabled: true,
       load: async () => ({ default: synthetic }),
     }
