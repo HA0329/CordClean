@@ -57,13 +57,16 @@ const schemas: Record<string, z.ZodTypeAny> = {
     .optional(),
   'ai/rules/dry-run': z.object({ suggestion: z.record(z.string(), z.unknown()) }).strict(),
   'ai/plugin/draft': z.object({ requirement: z.string().min(1).max(2000) }).strict(),
-  'ai/plugin/validate': z.object({ code: z.string().min(1).max(200_000), dependencies: pluginDependencies }).strict(),
+  'ai/plugin/validate': z
+    .object({ code: z.string().min(1).max(200_000), dependencies: pluginDependencies, native: z.boolean().optional() })
+    .strict(),
   'ai/plugin/install': z
     .object({
       name: z.string().min(1).max(80),
       code: z.string().min(1).max(200_000),
       dependencies: pluginDependencies,
       acknowledgeDependencies: z.boolean().optional(),
+      native: z.boolean().optional(),
     })
     .strict(),
   'scheduler/authorize': z

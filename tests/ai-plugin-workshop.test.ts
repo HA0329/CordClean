@@ -14,50 +14,43 @@ let chatRequests = 0
 const GOOD_CODE = `import fs from 'node:fs'
 import path from 'node:path'
 
-export default {
-  name: 'workshop-demo',
-  version: '1.0.0',
-  description: '演示：清理 %TEMP% 下的临时文件',
-  capabilities: { fsRoots: ['%TEMP%'] },
-  Config(raw) {
-    return { maxFiles: Number(raw.maxFiles ?? 20) }
-  },
-  setup(ctx, config) {
-    const base = String(ctx.system.env.get('TEMP') || '')
-    ctx.cleaner.define({
-      id: 'workshop-demo-task',
-      name: '演示清理任务',
-      category: 'apps',
-      risk: 'safe',
-      defaultSelected: false,
-      targets: [base],
-      scan(scan) {
-        for (const name of fs.readdirSync(base)) {
-          const full = path.join(base, name)
-          try {
-            const stat = fs.statSync(full)
-            if (stat.isFile()) scan.emit({ path: full, kind: 'file', size: stat.size })
-          } catch {}
-        }
-      },
-    })
-  },
+export const name = 'workshop-demo'
+export const kind = 'cleaner'
+export const inject = ['cleaner', 'system']
+
+export function apply(ctx) {
+  const base = String(ctx.system.env.get('TEMP') || '')
+  ctx.cleaner.define({
+    id: 'workshop-demo-task',
+    name: '演示清理任务',
+    category: 'apps',
+    risk: 'safe',
+    defaultSelected: false,
+    targets: [base],
+    scan(scan) {
+      for (const name of fs.readdirSync(base)) {
+        const full = path.join(base, name)
+        try {
+          const stat = fs.statSync(full)
+          if (stat.isFile()) scan.emit({ path: full, kind: 'file', size: stat.size })
+        } catch {}
+      }
+    },
+  })
 }
 `
 
-const BAD_CODE = `export default {
-  name: 'bad-draft',
-  version: '1.0.0',
-  capabilities: { fsRoots: ['%TEMP%'] },
-  setup(ctx) {
-    ctx.cleaner.define({
-      id: 'bad-task',
-      name: '坏草稿',
-      category: 'apps',
-      risk: 'safe',
-      scan(scan) { scan.emit({ path: 'C:/temp/x.tmp', kind: 'file', size: 1 }) },
-    })
-  // 故意缺少 setup 和对象的闭合括号，用来验证语法检查会触发自动重试
+const BAD_CODE = `export const name = 'bad-draft'
+export const kind = 'cleaner'
+export const inject = ['cleaner']
+export function apply(ctx) {
+  ctx.cleaner.define({
+    id: 'bad-task',
+    name: '坏草稿',
+    category: 'apps',
+    risk: 'safe',
+    scan(scan) { scan.emit({ path: 'C:/temp/x.tmp', kind: 'file', size: 1 }) },
+  // 故意缺少 apply 的闭合括号，用来验证语法检查会触发自动重试
 `
 
 beforeAll(async () => {
@@ -74,8 +67,8 @@ beforeAll(async () => {
       chatRequests++
       // 第一次故意返回 AI 常见的错误草稿，第二次返回合规草稿，验证工坊会自动带错误重试
       const content = chatRequests === 1
-        ? JSON.stringify({ name: 'bad-draft', code: BAD_CODE, notes: 'bad' })
-        : JSON.stringify({ name: 'workshop-demo', code: GOOD_CODE, notes: 'ok' })
+        ? JSON.stringify({ name: 'bad-draft', kind: 'cleaner', code: BAD_CODE, notes: 'bad' })
+        : JSON.stringify({ name: 'workshop-demo', kind: 'cleaner', code: GOOD_CODE, notes: 'ok' })
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }))
     })
@@ -115,17 +108,19 @@ describe('AI 插件工坊生成链路', () => {
       if (!ai?.draftPlugin) throw new Error('AI 插件未就绪')
       const draft = await ai.draftPlugin('写一个清理临时文件的插件')
       expect(chatRequests).toBeGreaterThanOrEqual(2)
-      expect(draft.code).toContain('export default {')
+      expect(draft.code).toContain('export function apply(')
       expect(draft.code).not.toContain('@cordisjs')
       expect(draft.code).not.toContain('defineCleanerPlugin')
-      expect(draft.code).toContain('capabilities')
+      expect(draft.code).toContain('inject')
       expect(draft.code).toContain('scan(scan)')
       expect(draft.name).toBe('workshop-demo')
+      expect(draft.mode).toBe('native')
+      expect(draft.kind).toBe('cleaner')
 
-      // 真实性验证：草稿不只“看起来对”，而是能被外部插件加载器真正安装
+      // 真实性验证：草稿不只“看起来对”，而是能被原生 Cordis 插件加载器真正安装
       const file = path.join(sandbox.root, 'workshop-demo.mjs')
       writeFileSync(file, draft.code, 'utf8')
-      await app.ctx.plugins.installExternal(file)
+      await app.ctx.plugins.installNativePlugin!(file)
       const installed = app.ctx.plugins.list().find((item) => item.id === 'external:workshop-demo')
       expect(installed?.enabled).toBe(true)
       expect(app.ctx.cleaner.list().some((task) => task.id === 'workshop-demo-task')).toBe(true)

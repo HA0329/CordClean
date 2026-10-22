@@ -404,7 +404,14 @@ async function addSuggestedRoots() {
 
 const workshopOpen = ref(false)
 const workshopRequirement = ref('')
-const workshopDraft = ref<{ name: string; code: string; notes: string; dependencies: Record<string, string> } | null>(null)
+const workshopDraft = ref<{
+  name: string
+  code: string
+  notes: string
+  dependencies: Record<string, string>
+  mode?: 'native' | 'worker'
+  kind?: string
+} | null>(null)
 const workshopValidation = ref<{ ok: boolean; errors: string[]; warnings: string[] } | null>(null)
 const workshopReviewed = ref(false)
 const workshopDependenciesAccepted = ref(false)
@@ -432,7 +439,11 @@ async function generateWorkshopDraft() {
     const draft = await draftAiPlugin(workshopRequirement.value.trim())
     if (requestId !== workshopRequest) return
     workshopDraft.value = draft
-    workshopValidation.value = await validateAiPlugin(draft.code, draft.dependencies ?? {})
+    workshopValidation.value = await validateAiPlugin(
+      draft.code,
+      draft.dependencies ?? {},
+      draft.mode === 'native',
+    )
     workshopReviewed.value = false
   } catch (error) {
     if (requestId === workshopRequest) workshopError.value = error instanceof Error ? error.message : String(error)
@@ -456,7 +467,11 @@ function scheduleRevalidateWorkshopDraft() {
 
 async function revalidateWorkshopDraft() {
   if (!workshopDraft.value) return
-  workshopValidation.value = await validateAiPlugin(workshopDraft.value.code, workshopDraft.value.dependencies ?? {})
+  workshopValidation.value = await validateAiPlugin(
+    workshopDraft.value.code,
+    workshopDraft.value.dependencies ?? {},
+    workshopDraft.value.mode === 'native',
+  )
 }
 
 async function installWorkshopDraft() {
@@ -467,7 +482,13 @@ async function installWorkshopDraft() {
   if (hasDependencies && !workshopDependenciesAccepted.value) return
   workshopInstalling.value = true
   try {
-    const result = await installAiPlugin(workshopDraft.value.name, workshopDraft.value.code, dependencies, workshopDependenciesAccepted.value)
+    const result = await installAiPlugin(
+      workshopDraft.value.name,
+      workshopDraft.value.code,
+      dependencies,
+      workshopDependenciesAccepted.value,
+      workshopDraft.value.mode === 'native',
+    )
     workshopOpen.value = false
     workshopDraft.value = null
     workshopValidation.value = null
@@ -476,7 +497,7 @@ async function installWorkshopDraft() {
     workshopRequirement.value = ''
     // 安装后刷新插件列表，用户能立刻在「插件」页看到新插件与任务
     await refreshPlugins()
-    ElMessage.success('已安装并启用：' + result.id + '（本次运行有效，可在插件页查看）')
+    ElMessage.success('已安装并启用：' + result.id + '（重启后自动加载，可在插件页查看）')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   } finally {
@@ -921,6 +942,10 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
     <el-dialog v-model="workshopOpen" title="插件草稿审阅" width="900px">
       <template v-if="workshopDraft">
         <p class="cc-hint">名称：{{ workshopDraft.name }} · {{ workshopDraft.notes }}</p>
+        <p class="cc-hint">
+          类型：<code>{{ workshopDraft.kind ?? 'cleaner' }}</code> · 原生 Cordis 通用插件
+          <span class="cc-faint">（完整权限，安装前请审阅代码）</span>
+        </p>
         <div v-if="workshopValidation">
           <p v-if="workshopValidation.errors.length" class="error-text">校验未通过：{{ workshopValidation.errors.join('；') }}</p>
           <p v-else class="cc-hint">✓ 语法与契约校验通过</p>

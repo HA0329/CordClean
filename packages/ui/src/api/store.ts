@@ -8,6 +8,7 @@ import { computed, reactive } from 'vue'
 import type {
   AiAnalysis,
   AiModelInfo,
+  AiPluginDraft,
   AiProbeResult,
   AiRuntimeStatus,
   AppInfo,
@@ -428,15 +429,16 @@ export async function fetchEgress(limit = 10) {
 }
 
 /** 采纳 AI 建议的规则：经统一入库管线写入并热重载规则包 */
-export async function draftAiPlugin(requirement: string): Promise<{ name: string; code: string; notes: string; dependencies: Record<string, string> }> {
+export async function draftAiPlugin(requirement: string): Promise<AiPluginDraft> {
   return requireTransport().request('ai/plugin/draft', { requirement })
 }
 
 export async function validateAiPlugin(
   code: string,
   dependencies: Record<string, string> = {},
+  native = false,
 ): Promise<{ ok: boolean; errors: string[]; warnings: string[] }> {
-  return requireTransport().request('ai/plugin/validate', { code, dependencies })
+  return requireTransport().request('ai/plugin/validate', { code, dependencies, native })
 }
 
 export async function installAiPlugin(
@@ -444,12 +446,14 @@ export async function installAiPlugin(
   code: string,
   dependencies: Record<string, string> = {},
   acknowledgeDependencies = false,
+  native = false,
 ): Promise<{ path: string; id: string }> {
   const result = await requireTransport().request('ai/plugin/install', {
     name,
     code,
     dependencies,
     acknowledgeDependencies,
+    native,
   })
   await refreshPlugins()
   return result

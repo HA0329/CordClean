@@ -143,9 +143,12 @@ export interface ApiMap {
   'ai/models': { params: { refresh?: boolean }; result: { source: 'remote' | 'fallback'; models: AiModelInfo[] } }
   'ai/probe': { params: void; result: AiProbeResult }
   'ai/plugin/draft': { params: { requirement: string }; result: AiPluginDraft }
-  'ai/plugin/validate': { params: { code: string; dependencies?: Record<string, string> }; result: { ok: boolean; errors: string[]; warnings: string[] } }
+  'ai/plugin/validate': {
+    params: { code: string; dependencies?: Record<string, string>; native?: boolean }
+    result: { ok: boolean; errors: string[]; warnings: string[] }
+  }
   'ai/plugin/install': {
-    params: { name: string; code: string; dependencies?: Record<string, string>; acknowledgeDependencies?: boolean }
+    params: { name: string; code: string; dependencies?: Record<string, string>; acknowledgeDependencies?: boolean; native?: boolean }
     result: { path: string; id: string }
   }
   'ai/rules/dry-run': {

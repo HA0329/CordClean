@@ -315,10 +315,12 @@ export function createHandlers(api: ApiContext): HandlerMap {
       if (!ctx.ai?.draftPlugin) throw new Error('AI 插件未启用或版本过旧')
       return ctx.ai.draftPlugin(String(requirement ?? ''))
     },
-    'ai/plugin/validate': ({ code, dependencies }) => validatePluginCode(String(code ?? ''), dependencies ?? {}),
-    'ai/plugin/install': async ({ name, code, dependencies, acknowledgeDependencies }) => {
+    'ai/plugin/validate': ({ code, dependencies, native }) =>
+      validatePluginCode(String(code ?? ''), dependencies ?? {}, native === true ? 'native' : 'worker'),
+    'ai/plugin/install': async ({ name, code, dependencies, acknowledgeDependencies, native }) => {
       const deps = dependencies ?? {}
-      const checked = await validatePluginCode(String(code ?? ''), deps)
+      const mode = native === true ? 'native' : 'worker'
+      const checked = await validatePluginCode(String(code ?? ''), deps, mode)
       if (!checked.ok) throw new Error(checked.errors[0] ?? '校验未通过')
       const dependencyCount = Object.keys(deps).length
       if (dependencyCount > 0 && acknowledgeDependencies !== true) {
@@ -338,9 +340,16 @@ export function createHandlers(api: ApiContext): HandlerMap {
       // 清理上一次失败留下的残留，再写本次文件
       cleanupGeneratedPlugin(api.dataDir, name, deps)
       const file = saveGeneratedPlugin(api.dataDir, name, String(code), deps)
+      let installedId = 'external:' + String(name).replace(/[^a-zA-Z0-9_-]/g, '-')
       try {
         if (dependencyCount > 0) await installPluginDependencies(file)
-        await ctx.plugins.installExternal(file)
+        if (mode === 'native') {
+          if (typeof ctx.plugins.installNativePlugin !== 'function') throw new Error('当前插件管理器不支持原生插件')
+          const result = await ctx.plugins.installNativePlugin(file)
+          installedId = result.id
+        } else {
+          await ctx.plugins.installExternal(file)
+        }
       } catch (error) {
         // 失败回滚：如果插件已被部分注册则卸载，再删除本次生成的插件目录/文件
         try {
@@ -358,7 +367,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
         cleanupGeneratedPlugin(api.dataDir, name, deps)
         throw new Error('插件安装失败（已清理本次生成的插件文件）：' + (error instanceof Error ? error.message : String(error)))
       }
-      return { path: file, id: 'external:' + String(name).replace(/[^a-zA-Z0-9_-]/g, '-') }
+      return { path: file, id: installedId }
     },    'ai/rules/dry-run': async ({ suggestion }) => {
       // 只读演练：不写规则库、不删除，只报告会命中什么
       const env = ctx.system.env

@@ -17,6 +17,11 @@ export interface PluginCodeCheck {
 export interface PluginCodeOptions {
   /** 声明依赖：包名 → 版本范围（semver） */
   dependencies?: Record<string, string>
+  /**
+   * worker = 旧式零依赖 cleaner 外部插件；
+   * native = 原生 Cordis 通用插件（apply(ctx)，P1 起 AI 工坊默认）。
+   */
+  mode?: 'worker' | 'native'
 }
 
 export type PluginDependencyMap = Record<string, string>
@@ -102,28 +107,45 @@ export function checkPluginSource(code: string, options: PluginCodeOptions = {})
   const warnings: string[] = []
   const text = String(code ?? '')
   const dependencies = options.dependencies ?? {}
+  const mode = options.mode ?? 'worker'
 
   if (!text.trim()) return { ok: false, errors: ['代码为空'], warnings }
 
   errors.push(...validatePluginDependencies(dependencies))
 
-  if (!/export\s+default\b/.test(text)) {
-    errors.push('缺少 export default（外部插件必须默认导出一个插件对象）')
-  }
-  if (!/\bsetup\s*\(/.test(text)) {
-    errors.push('缺少 setup(ctx, config)（外部插件必须提供 setup 函数）')
-  }
-  if (!/\bname\s*:/.test(text)) {
-    errors.push('缺少 name（插件必须有 kebab-case 名称）')
-  }
-  if (options.dependencies && Object.keys(dependencies).length === 0) {
-    warnings.push('dependencies 为空对象；如果不需要第三方包，可以省略该字段')
+  if (mode === 'native') {
+    // 原生 Cordis 插件契约：apply(ctx) / 命名导出 name；可直接使用 ctx 服务
+    if (!/export\s+(?:async\s+)?function\s+apply\s*\(/.test(text) && !(/export\s+default\b/.test(text) && /\bapply\s*\(/.test(text))) {
+      errors.push('缺少 apply(ctx)（原生 Cordis 插件必须导出 apply 函数）')
+    }
+    if (!/export\s+const\s+name\s*=/.test(text) && !/\bname\s*:/.test(text)) {
+      errors.push('缺少 name（请使用 export const name = "kebab-case"）')
+    }
+    if (/\bsetup\s*\(/.test(text)) {
+      warnings.push('原生 Cordis 插件应使用 apply(ctx)，setup 是旧式 worker 插件字段')
+    }
+    if (/\bctx\.ui\b/.test(text) && !/export\s+const\s+inject\s*=\s*\[[^\]]*['"]ui['"]/.test(text)) {
+      warnings.push('使用了 ctx.ui，请在插件中声明 export const inject = ["ui"]')
+    }
+  } else {
+    if (!/export\s+default\b/.test(text)) {
+      errors.push('缺少 export default（外部插件必须默认导出一个插件对象）')
+    }
+    if (!/\bsetup\s*\(/.test(text)) {
+      errors.push('缺少 setup(ctx, config)（外部插件必须提供 setup 函数）')
+    }
+    if (!/\bname\s*:/.test(text)) {
+      errors.push('缺少 name（插件必须有 kebab-case 名称）')
+    }
+    if (options.dependencies && Object.keys(dependencies).length === 0) {
+      warnings.push('dependencies 为空对象；如果不需要第三方包，可以省略该字段')
+    }
   }
 
-  // 外部插件契约：直接导出对象，不能使用项目内部 helper
+  // 外部插件契约：直接导出对象/模块，不能使用项目内部 helper
   if (/\bdefineCleanerPlugin\b/.test(text)) {
     errors.push(
-      '外部插件不能使用 defineCleanerPlugin（该 helper 来自 @cordclean/shared，生成文件无法解析）；请直接 export default { name, version, capabilities, Config, setup }',
+      '外部插件不能使用 defineCleanerPlugin（该 helper 来自 @cordclean/shared，生成文件无法解析）；原生插件直接 export function apply(ctx)，worker 插件直接 export default { name, capabilities, Config, setup }',
     )
   }
 
@@ -151,17 +173,19 @@ export function checkPluginSource(code: string, options: PluginCodeOptions = {})
     if (rule.pattern.test(text)) errors.push(rule.message)
   }
 
-  if (!/\bcapabilities\s*:/.test(text)) {
-    warnings.push('建议在插件对象中声明 capabilities.fsRoots（支持 %TEMP% 等模板），否则目标路径无法通过辖区校验')
-  }
-  if (!/\b(ctx|scanCtx)\.cleaner\.define\s*\(/.test(text) && !/\bctx\.cleaner\.define\s*\(/.test(text)) {
-    warnings.push('没有找到 ctx.cleaner.define(...)，插件可能不会注册清理任务')
+  if (mode === 'worker') {
+    if (!/\bcapabilities\s*:/.test(text)) {
+      warnings.push('建议在插件对象中声明 capabilities.fsRoots（支持 %TEMP% 等模板），否则目标路径无法通过辖区校验')
+    }
+    if (!/\b(ctx|scanCtx)\.cleaner\.define\s*\(/.test(text) && !/\bctx\.cleaner\.define\s*\(/.test(text)) {
+      warnings.push('没有找到 ctx.cleaner.define(...)，插件可能不会注册清理任务')
+    }
+    if (!/\bscan\s*\(/.test(text)) {
+      warnings.push('没有找到 scan(...)，插件不会产生可清理项')
+    }
   }
   if (/\bprocess\.env\b/.test(text)) {
     warnings.push('建议用 ctx.system.env.get(...) 读取环境变量，而不是 process.env')
-  }
-  if (!/\bscan\s*\(/.test(text)) {
-    warnings.push('没有找到 scan(...)，插件不会产生可清理项')
   }
   for (const dep of Object.keys(dependencies)) {
     const imported = importSpecifiers(text).some((specifier) => dependencyPackageName(specifier) === dep)

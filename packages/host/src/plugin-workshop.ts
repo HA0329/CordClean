@@ -72,10 +72,14 @@ function checkSyntax(text: string): Promise<string | null> {
   })
 }
 
-export async function validatePluginCode(code: string, dependencies: Record<string, string> = {}): Promise<PluginValidation> {
+export async function validatePluginCode(
+  code: string,
+  dependencies: Record<string, string> = {},
+  mode: 'worker' | 'native' = 'worker',
+): Promise<PluginValidation> {
   const text = String(code ?? '')
   // 与生成端共用同一套契约检查，避免「生成能过、安装加载失败」
-  const base = checkPluginSource(text, { dependencies })
+  const base = checkPluginSource(text, { dependencies, mode })
   const errors = [...base.errors]
   const warnings = [...base.warnings]
   if (!text.trim()) return { ok: false, errors: errors.length ? errors : ['代码为空'], warnings }

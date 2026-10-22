@@ -110,5 +110,32 @@ export default {
     const tooMany = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`pkg-${index}`, '^1.0.0']))
     expect(checkPluginSource('export default { name: "x", setup() {} }', { dependencies: tooMany }).ok).toBe(false)
   })
+
+  it('原生 Cordis 模式接受 apply(ctx) + inject + 声明式 UI 贡献', async () => {
+    const native = `export const name = 'native-demo'
+export const kind = 'widget'
+export const inject = ['ui']
+export const contributes = { overviewCards: [{ id: 'demo', title: '演示', type: 'text' }] }
+export function apply(ctx) {
+  ctx.effect(() => ctx.ui.resolve('native-demo', 'demo', () => ({ text: 'ok' })))
+}
+`
+    const result = checkPluginSource(native, { mode: 'native' })
+    expect(result.ok).toBe(true)
+    expect(result.warnings.join(' ')).not.toContain('注入')
+    expect((await validatePluginCode(native, {}, 'native')).ok).toBe(true)
+  })
+
+  it('原生模式拒绝缺少 apply 的旧式对象插件', async () => {
+    const old = `export default {
+  name: 'old-style',
+  setup(ctx) { ctx.cleaner.define({ id: 'x', name: 'X', category: 'apps', risk: 'safe', scan() {} }) },
+}
+`
+    const result = checkPluginSource(old, { mode: 'native' })
+    expect(result.ok).toBe(false)
+    expect(result.errors.join(' ')).toContain('apply')
+    expect((await validatePluginCode(old, {}, 'native')).ok).toBe(false)
+  })
 })
 

@@ -136,6 +136,34 @@ describe('插件工坊安装 API 与残留清理', () => {
     }
   })
 
+  it('AI 工坊安装原生通用插件并注册声明式 UI 贡献', async () => {
+    const { app, handlers } = await makeHandlers('native-ai')
+    try {
+      const code = `export const name = 'native-widget'
+export const kind = 'widget'
+export const inject = ['ui']
+export const contributes = { overviewCards: [{ id: 'hello', title: 'AI 卡片', type: 'text' }] }
+export function apply(ctx) {
+  ctx.effect(() => ctx.ui.resolve('native-widget', 'hello', () => ({ text: 'ok' })))
+}
+`
+      const result = await handlers['ai/plugin/install']({
+        name: 'native-widget',
+        code,
+        native: true,
+      } as any)
+      expect(result.id).toBe('external:native-widget')
+      const plugin = app.ctx.plugins.list().find((item) => item.id === result.id)
+      expect(plugin?.enabled).toBe(true)
+      const contribution = app.ctx.ui.list().find((item) => item.pluginId === result.id)
+      expect(contribution?.contributions.overviewCards?.[0]?.title).toBe('AI 卡片')
+      await app.ctx.plugins.uninstallExternal(result.id)
+      expect(app.ctx.ui.list().some((item) => item.pluginId === result.id)).toBe(false)
+    } finally {
+      await app.dispose()
+    }
+  })
+
   it('启动时清理上一次运行留下的 generated-plugins', async () => {
     const { app, dataDir } = await makeHandlers('startup-clean')
     await app.dispose()

@@ -62,15 +62,15 @@ interface PluginUiContributions {
 - 禁用保留文件和记录，启用时重新注册贡献；
 - 卸载删除记录（工坊生成的文件由宿主一并清理）。
 
-## 4. 当前进度（P1.1 + P1.3）
+## 4. 当前进度（P1.1 + P1.3 + P1.4）
 
 - [x] 通用插件类型/UI 贡献类型（`packages/shared/src/plugin-api.ts`）
 - [x] `ctx.ui` 贡献注册服务（`packages/core/src/domains/kernel/ui.ts`）
 - [x] 原生外部 Cordis 插件加载、持久化、启停/卸载
 - [x] `ui/contributions`、`ui/resolve`、`plugins/install-native` RPC
 - [x] 概览页渲染插件声明式卡片（`packages/ui/src/components/PluginOverviewCards.vue`）
+- [x] AI 工坊生成原生 Cordis 通用插件（kind/inject/contributes/apply + 依赖）
 - [ ] 插件页面/iframe 沙箱（P1.5）
-- [ ] AI 工坊生成通用插件包（P1.4）
 - [ ] 主动生命周期/通知/窗口能力（后续阶段）
 
 ### 概览卡片渲染
@@ -80,6 +80,14 @@ interface PluginUiContributions {
 - 每张卡片按 `refreshMs`（最小 1 秒）定时刷新，最多 12 张；
 - 插件禁用/卸载后，贡献与刷新自动停止；
 - 真实 Electron 自检：测试插件声明 `P1 卡片` + resolve 返回 123，概览正确渲染，0 JS 异常。
+
+### AI 工坊生成通用插件
+
+- `draftPlugin` 改用原生契约：`export const name/kind/inject/contributes` + `export function apply(ctx)`；
+- 生成端与安装端共用 `checkPluginSource(..., { mode: 'native' })` 校验；
+- `ai/plugin/install` 增加 `native` 模式，保存后走 `installNativePlugin`；
+- UI 安装时显示插件类型，安装后提示“重启自动加载”；
+- 真实 Electron 自检：AI 生成 widget 插件 → 安装 → 概览渲染 `AI 卡片 / ok`，0 JS 异常。
 
 ## 5. 安全边界
 

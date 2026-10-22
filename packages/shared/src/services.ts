@@ -7,6 +7,7 @@
  * 插件看到的是能力契约，不是具体实现。
  */
 import type { Context } from 'cordis'
+import type { PluginKind } from './plugin-api.ts'
 import type { CleanRule, RuleCategory, RuleIssue, RuleValidationReport } from './rules.ts'
 import type {
   AiAnalysis,
@@ -288,6 +289,10 @@ export interface AiPluginDraft {
   code: string
   notes: string
   dependencies: Record<string, string>
+  /** 原生 Cordis 通用插件（P1 起默认）；worker 仅兼容旧式 cleaner */
+  mode: 'native' | 'worker'
+  /** 插件类型，默认 cleaner */
+  kind?: PluginKind
 }
 
 export interface AiLike {
