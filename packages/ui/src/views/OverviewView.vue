@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { formatBytes, formatDuration, formatTime } from '@cordclean/shared'
+import PluginOverviewCards from '../components/PluginOverviewCards.vue'
 import { openDataDir, refreshSystem, startScan, state } from '../api/store.ts'
 
 const system = computed(() => state.system)
@@ -64,6 +65,8 @@ async function refresh() {
         <div class="cc-stat-sub">{{ memoryPercent }}% · 共 {{ formatBytes(system?.memoryTotal ?? 0) }}</div>
       </div>
     </div>
+
+    <PluginOverviewCards />
 
     <div class="cc-grid cc-grid-2">
       <div class="cc-card">

@@ -62,16 +62,24 @@ interface PluginUiContributions {
 - 禁用保留文件和记录，启用时重新注册贡献；
 - 卸载删除记录（工坊生成的文件由宿主一并清理）。
 
-## 4. 当前进度（P1.1）
+## 4. 当前进度（P1.1 + P1.3）
 
 - [x] 通用插件类型/UI 贡献类型（`packages/shared/src/plugin-api.ts`）
 - [x] `ctx.ui` 贡献注册服务（`packages/core/src/domains/kernel/ui.ts`）
 - [x] 原生外部 Cordis 插件加载、持久化、启停/卸载
 - [x] `ui/contributions`、`ui/resolve`、`plugins/install-native` RPC
-- [ ] UI 概览渲染贡献卡片（P1.2）
-- [ ] 插件页面/iframe 沙箱（P1.3）
+- [x] 概览页渲染插件声明式卡片（`packages/ui/src/components/PluginOverviewCards.vue`）
+- [ ] 插件页面/iframe 沙箱（P1.5）
 - [ ] AI 工坊生成通用插件包（P1.4）
 - [ ] 主动生命周期/通知/窗口能力（后续阶段）
+
+### 概览卡片渲染
+
+- `OverviewView` 引入 `PluginOverviewCards`，从 `ui/contributions` 拉取卡片，从 `ui/resolve` 拉数据；
+- 支持 metric / text / list / progress 四种类型；
+- 每张卡片按 `refreshMs`（最小 1 秒）定时刷新，最多 12 张；
+- 插件禁用/卸载后，贡献与刷新自动停止；
+- 真实 Electron 自检：测试插件声明 `P1 卡片` + resolve 返回 123，概览正确渲染，0 JS 异常。
 
 ## 5. 安全边界
 
