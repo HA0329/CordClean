@@ -790,7 +790,7 @@ const PLUGIN_TOOL = {
       name: { type: 'string', description: 'kebab-case 插件名' },
       kind: {
         type: 'string',
-        enum: ['cleaner', 'widget', 'active'],
+        enum: ['cleaner', 'widget', 'active', 'desktop'],
         description: '插件类型：cleaner 清理任务 / widget 声明式 UI 卡片 / active 后台生命周期',
       },
       code: {
@@ -809,13 +809,15 @@ const PLUGIN_TOOL = {
 }
 
 const PLUGIN_SYSTEM_PROMPT = [
-  '你是 Cordis 通用插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "kind": "cleaner|widget|active", "code": "完整 ESM 源码", "notes": "简要说明", "dependencies": {"包名":"版本"} }。',
-  'code 是原生 Cordis 插件，必须是完整单文件 ESM：export const name = "kebab-case"; export const kind = "cleaner|widget|active"; 按需 export const inject = ["ui"] / ["cleaner"]; export function apply(ctx) { ... }。不要使用 export default 普通对象，也不要使用 setup()。',
-  '插件按需声明 inject：用 ctx.ui 必须 inject 包含 "ui"；注册清理任务必须 inject 包含 "cleaner"。可用的宿主能力包括 ctx.cleaner、ctx.ui、ctx.logger、ctx.settings、ctx.system、ctx.pathPolicy；不要访问未声明的服务。',
+  '你是 Cordis 通用插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "kind": "cleaner|widget|active|desktop", "code": "完整 ESM 源码", "notes": "简要说明", "dependencies": {"包名":"版本"} }。',
+  'code 是原生 Cordis 插件，必须是完整单文件 ESM：export const name = "kebab-case"; export const kind = "cleaner|widget|active|desktop"; 按需 export const inject = ["ui"] / ["cleaner"] / ["window"]; export function apply(ctx) { ... }。不要使用 export default 普通对象，也不要使用 setup()。',
+  '插件按需声明 inject：用 ctx.ui 必须 inject 包含 "ui"；注册清理任务必须 inject 包含 "cleaner"；桌面窗口/托盘必须 inject 包含 "window"。可用能力包括 ctx.cleaner、ctx.ui、ctx.window、ctx.logger、ctx.settings、ctx.system、ctx.pathPolicy；不要访问未声明的服务。',
   'cleaner 类型：在 apply 中 ctx.cleaner.define({ id, name, category, risk, defaultSelected:false, targets:[...], scan(scan){ ... } })。scan 只读取目录并 scan.emit({ path, kind:"file"|"folder", size })，不要删除/修改文件。',
   'widget 类型：export const contributes = { overviewCards: [{ id, title, type:"metric|text|list|progress", resolve:"数据ID", refreshMs }] }；在 apply 中用 ctx.effect(() => ctx.ui.resolve(name, "数据ID", async () => ({ value: ... }))) 提供数据。宿主只渲染声明式卡片，禁止操作 DOM。',
+  '也可以贡献 statusItems（状态栏）与 commands（插件页按钮）：statusItems 用 resolve 提供文本；commands 用 ctx.ui.command(name, rpcID, handler) 注册处理函数，按钮点击时调用。',
   '如确实需要自定义页面，可在 contributes.pages 中提供 mode:"iframe" 的自包含 HTML；页面内不能访问宿主 DOM，只能通过 postMessage 的 cordclean/plugin-page 协议请求 resolve 数据。',
-  'active 类型：在 apply 中用 ctx.effect(() => { const timer = setInterval(...); return () => clearInterval(timer) }) 注册后台逻辑；通过 ctx.on/ctx.emit 订阅事件。不要自己创建窗口、托盘或渲染进程。',
+  'active 类型：在 apply 中用 ctx.effect(() => { const timer = setInterval(...); return () => clearInterval(timer) }) 注册后台逻辑，并用 ctx.ui.emit(name, 事件名, 数据) 主动刷新界面、ctx.ui.notify(name, { title, message, level }) 弹通知；通过 ctx.on/ctx.emit 订阅事件。',
+  'desktop 类型：用 ctx.window.open(name, { id, html, width, height, transparent, alwaysOnTop, clickThrough }) 打开独立悬浮窗口（仅 Electron 桌面壳可用）；用 ctx.window.createTray(name, { tooltip, items, onSelect }) 创建托盘。窗口 HTML 是自包含的，不能用 Node/宿主 DOM。',
   'dependencies 为空对象 {} 表示零依赖；需要第三方能力时声明 npm 包（最多 8 个），版本必须是 semver（如 "^3.3.2"），安装时由用户确认并下载。禁止 file:/git/URL/路径规格；优先纯 JS 包，避免需要本地编译的原生模块。',
   '代码可以 import 已声明的第三方包；也允许 import node:fs / node:fs/promises / node:path / node:os / node:url / node:util / node:crypto。禁止 import @cordisjs/*、@cordclean/* 或未在 dependencies 声明的包，也不要使用 defineCleanerPlugin。',
   '禁止：child_process、process.exit、fs.rm / rmSync / unlink / rmdir、直接删除文件、网络请求、在插件里执行 npm install、process.env 读取密钥。删除一律交给内核（只 emit 候选）。',

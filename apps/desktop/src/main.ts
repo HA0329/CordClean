@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron'
 import { createApp, defaultDataDir } from '@cordclean/core'
 import { createHandlers, type ShellAdapter } from '@cordclean/host'
+import { createElectronWindowBackend } from './window-backend.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../../..')
@@ -65,6 +66,7 @@ async function createKernel() {
     dataDir,
     logLevel: (process.env.CORDCLEAN_LOG as any) ?? 'info',
     logForward: true,
+    windowBackend: createElectronWindowBackend(),
   })
   disposeApp = () => instance.dispose()
 
@@ -94,6 +96,8 @@ async function createKernel() {
     ['cleaner/clean-progress', 'clean/progress'],
     ['cleaner/clean-done', 'clean/done'],
     ['plugins/changed', 'plugins/changed'],
+    ['plugin/ui-event', 'plugin/ui-event'],
+    ['plugin/notify', 'plugin/notify'],
     ['history/changed', 'history/changed'],
     // AI 流式增量必须转发，否则桌面外壳要等分析结束才有输出（看起来“不是流式”）
     ['ai/stream', 'ai/stream'],

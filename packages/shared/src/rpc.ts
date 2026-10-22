@@ -72,6 +72,8 @@ export type ServerEventMap = {
   'clean/done': CleanReport
   'plugins/changed': Record<string, never>
   'history/changed': Record<string, never>
+  'plugin/ui-event': import('./plugin-api.ts').PluginUiEvent
+  'plugin/notify': import('./plugin-api.ts').PluginNotifyEvent
   'ai/stream': { kind: 'delta' | 'done'; text?: string; reasoning?: string }
   'scheduler/scan': { at: number; items?: number; bytes?: number; elapsedMs?: number; errors?: number; error?: string; blocked?: boolean; reason?: string; autoCleaned?: boolean; cleaned?: number; freedBytes?: number; recycledBytes?: number; mode?: string }
   log: { level: string; message: string; time: number; name?: string }
@@ -114,6 +116,7 @@ export interface ApiMap {
   'plugins/install-native': { params: { path: string }; result: { id: string } }
   'ui/contributions': { params: void; result: UiContributionEntry[] }
   'ui/resolve': { params: { pluginId: string; id: string; params?: Record<string, unknown> }; result: unknown }
+  'ui/command': { params: { pluginId: string; id: string; params?: Record<string, unknown> }; result: unknown }
   'plugins/uninstall': { params: { id: string }; result: void }
   'plugins/list': { params: void; result: PluginRuntime[] }
   'plugins/enable': { params: { id: string }; result: void }

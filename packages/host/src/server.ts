@@ -62,6 +62,8 @@ const EVENT_BRIDGE: Array<[any, ServerEvent]> = [
   ['cleaner/clean-progress', 'clean/progress'],
   ['cleaner/clean-done', 'clean/done'],
   ['plugins/changed', 'plugins/changed'],
+  ['plugin/ui-event', 'plugin/ui-event'],
+  ['plugin/notify', 'plugin/notify'],
   ['history/changed', 'history/changed'],
   ['scheduler/scan', 'scheduler/scan'],
   ['ai/stream', 'ai/stream'],

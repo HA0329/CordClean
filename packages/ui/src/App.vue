@@ -9,6 +9,7 @@ import PluginsView from './views/PluginsView.vue'
 import HistoryView from './views/HistoryView.vue'
 import AiView from './views/AiView.vue'
 import SettingsView from './views/SettingsView.vue'
+import PluginStatusItems from './components/PluginStatusItems.vue'
 
 const nav = [
   { id: 'overview', label: '概览', icon: '🏠' },
@@ -169,6 +170,7 @@ async function revealDataDir() {
           <span class="cc-pill">Node {{ state.app?.node }}</span>
           <span class="cc-pill" v-if="state.transport?.kind === 'electron'">桌面外壳</span>
           <span class="cc-pill" v-else-if="state.transport">浏览器外壳</span>
+          <PluginStatusItems />
         </div>
         <div class="topbar-right">
           <span class="cc-faint" v-if="state.app">启动耗时 {{ state.app.bootMs }} ms</span>

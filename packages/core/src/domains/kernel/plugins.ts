@@ -110,7 +110,7 @@ export function defaultConfigOf(plugin: any): Record<string, any> {
 }
 
 export class PluginManagerService extends Service implements PluginManagerLike {
-  static inject = ['cleaner', 'settings', 'ui']
+  static inject = ['cleaner', 'settings', 'ui', 'window']
 
   private records = new Map<string, RuntimeRecord>()
 
@@ -467,6 +467,9 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   async disable(id: string): Promise<void> {
     const record = this.records.get(id)
     if (!record) throw new Error(`插件不存在：${id}`)
+    try {
+      this.ctx.window.closeAll(id)
+    } catch {}
     const uiDispose = (record as any).uiDispose as (() => void) | undefined
     if (uiDispose) {
       try {

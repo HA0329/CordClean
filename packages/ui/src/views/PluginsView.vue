@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CATEGORIES, RISK_META } from '@cordclean/shared'
-import type { PluginRuntime, UiContributionEntry, UiPageContribution } from '@cordclean/shared'
+import type { PluginRuntime, UiCommandContribution, UiContributionEntry, UiPageContribution } from '@cordclean/shared'
 import {
   loadPluginDefaults,
   refreshPlugins,
@@ -19,6 +19,7 @@ import {
   savePluginConfig,
   setPluginEnabled,
   resolvePluginUi,
+  runPluginCommand,
   startScan,
   state,
 } from '../api/store.ts'
@@ -50,6 +51,19 @@ const pageFrame = ref<HTMLIFrameElement>()
 
 function pagesFor(plugin: PluginRuntime): UiPageContribution[] {
   return uiEntries.value.find((entry) => entry.pluginId === plugin.id)?.contributions.pages ?? []
+}
+
+function commandsFor(plugin: PluginRuntime): UiCommandContribution[] {
+  return uiEntries.value.find((entry) => entry.pluginId === plugin.id)?.contributions.commands ?? []
+}
+
+async function executePluginCommand(plugin: PluginRuntime, command: UiCommandContribution): Promise<void> {
+  try {
+    await runPluginCommand(plugin.id, command.rpc ?? command.id)
+    ElMessage.success(`已执行：${command.title}`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
 }
 
 function openPluginPage(plugin: PluginRuntime): void {
@@ -387,6 +401,14 @@ function categoryName(id: string) {
             <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" type="primary" plain @click="runPluginTasks(plugin)">扫描此插件</el-button>
             <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" @click="addPluginToScheduler(plugin)">加入定时任务</el-button>
             <el-button v-if="pagesFor(plugin).length" size="small" type="primary" plain @click="openPluginPage(plugin)">插件页面</el-button>
+            <el-button
+              v-for="command in commandsFor(plugin)"
+              :key="command.id"
+              size="small"
+              type="primary"
+              plain
+              @click="executePluginCommand(plugin, command)"
+            >{{ command.title }}</el-button>
             <el-button v-if="!plugin.enabled" size="small" type="primary" plain @click="install(plugin)">启用</el-button>
             <el-button v-if="plugin.source === 'external'" size="small" type="danger" plain @click="uninstall(plugin)">卸载并删除</el-button>
             <el-button v-else-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">停用</el-button>

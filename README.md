@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.4.0`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；50 个测试文件 / 371 个用例。
+当前版本 `0.5.0`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；51 个测试文件 / 374 个用例。
 
 ## 快速开始
 
@@ -28,14 +28,14 @@ pnpm start:desktop    # Electron 桌面应用
 | --- | --- |
 | 插件化清理 | 11 个内置插件（8 个默认启用）、默认 38 个清理任务，每个插件独立启停、独立配置、热重载 |
 | 运行时插件管理 | 「插件」页面可启用/停用/热重载插件，配置写入 `config.json`，无需重启应用 |
-| 通用插件框架 P1 | 外部插件可按原生 Cordis 插件加载，拥有完整 `ctx`；可贡献概览卡片、iframe 沙箱页面；支持持久化与主动生命周期；旧 worker cleaner 插件继续兼容 |
+| 通用插件框架 P1 | 外部插件可按原生 Cordis 插件加载，拥有完整 `ctx`；可贡献概览卡片、状态栏、命令、iframe 沙箱页面；主动事件/通知可实时刷新 UI；Electron 壳提供悬浮窗口/托盘；旧 worker cleaner 插件继续兼容 |
 | 安全策略 | 路径策略（保护系统/用户重要目录）+ 隔离区（可恢复）+ 注册表 `.reg` 备份；本地服务随机 token + Host/Origin 校验（见 [威胁模型](docs/threat-model.md)） |
 | 扫描/清理分离 | 先扫描出「可清理项」，用户勾选后再执行；支持 `dryRun` 预演 |
 | 定时任务 | 多计划定时扫描；每个任务可自定义名称、按间隔或每天固定时间运行；自动清理需授权，规则变化后授权失效 |
 | 扫描结果选择 v2 | 千条级结果按「分类 → 任务」聚合；安全项智能推荐，谨慎/高风险项显式确认；支持风险/大小/任务筛选、三态整组勾选、逐项明细 + 详情说明 + 打开位置、受保护只读视图、清理确认摘要 |
 | 双外壳 | 同一内核与界面，可运行在浏览器（HTTP + WebSocket）或 Electron（IPC）中 |
 | AI 顾问插件 | 把脱敏的本机画像交给 DeepSeek 等 OpenAI 兼容接口，产出结构化清理建议 |
-| AI 插件工坊 | 生成原生 Cordis 通用插件（cleaner/widget/active），支持 UI 卡片/iframe 页面、持久化与重启自动加载；可声明 npm 依赖（用户确认后下载，禁用 lifecycle scripts）；生成后静态契约 + 语法校验，失败自动重试，安装前真实加载 |
+| AI 插件工坊 | 生成原生 Cordis 通用插件（cleaner/widget/active/desktop），支持 UI 卡片/iframe 页面、持久化与重启自动加载；可声明 npm 依赖（用户确认后下载，禁用 lifecycle scripts）；生成后静态契约 + 语法校验，失败自动重试，安装前真实加载 |
 | 可观测 | 扫描/清理进度事件、结构化日志、清理历史、失败归因 |
 
 ## 2. 技术栈
@@ -45,7 +45,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 55 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（371 个用例 / 50 个文件）
+- **测试**：Vitest（374 个用例 / 51 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -96,7 +96,7 @@ pnpm start:desktop    # Electron 桌面应用
 │   ├── host/                 # 传输层：RPC 方法 + WebSocket/HTTP 宿主
 │   ├── ui/                   # 界面：Vue 3 单页应用
 │   └── plugins/              # 11 个清理插件（每个是一个独立包）
-├── tests/                    # Vitest 测试（50 个文件 / 371 用例）
+├── tests/                    # Vitest 测试（51 个文件 / 374 用例）
 ├── bench/                    # 性能基准脚本
 ├── scripts/                  # 构建、冒烟测试、插件自测、Mock LLM、E2E
 └── docs/                     # 架构、威胁模型、插件规范、论文素材
@@ -261,7 +261,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 371 个用例 / 50 个文件
+pnpm test          # 374 个用例 / 51 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）
@@ -347,7 +347,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [AI 模型与接口兼容策略](docs/ai-model-compatibility.md) —— 官方模型 ID/版本对照、别名迁移、`/models` 元数据、未来接口变化应对清单
 - [扫描结果选择设计](docs/scan-selection-design.md) —— 分组/推荐/风险分层/批量选择/详情说明
 - [市面清理工具选择交互调研](docs/research/scan-selection-ux.md) —— 11 个产品的横向对比与可借鉴模式
-- [v2 选择体验验收报告](docs/verification/scan-selection-verify.md) —— 验收时的 289 条单测、真实 E2E、3000 条数据的语义与性能验收（历史快照；当前全量 371 条单测）
+- [v2 选择体验验收报告](docs/verification/scan-selection-verify.md) —— 验收时的 289 条单测、真实 E2E、3000 条数据的语义与性能验收（历史快照；当前全量 374 条单测）
 - [测试设计](docs/test-plan.md) —— 测试分层、命令与已知缺口
 - [规则库审计报告](docs/rules-report.md)
 - [依赖与升级策略](docs/dependency-policy.md) —— 版本锁定、已清理依赖、答辩后升级清单

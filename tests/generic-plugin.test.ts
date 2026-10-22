@@ -15,10 +15,16 @@ export const description = 'P1 通用插件测试'
 export const contributes = {
   overviewCards: [{ id: 'hello', title: 'Hello P1', type: 'text', fallback: 'fallback' }],
   pages: [{ id: 'page', title: 'P1 页面', mode: 'iframe', html: '<h1>ok</h1>' }],
+  statusItems: [{ id: 'mode', label: '模式', resolve: 'mode' }],
+  commands: [{ id: 'say-hi', title: '打招呼', rpc: 'say-hi' }],
 }
 
 export function apply(ctx) {
   ctx.effect(() => ctx.ui.resolve('native-widget', 'hello', () => ({ value: 42 })))
+  ctx.effect(() => ctx.ui.resolve('native-widget', 'mode', () => 'demo'))
+  ctx.effect(() => ctx.ui.command('native-widget', 'say-hi', () => ({ ok: true })))
+  ctx.ui.emit('native-widget', 'refreshed', { value: 7 })
+  ctx.ui.notify('native-widget', { title: 'P1 通知', message: 'ok', level: 'success' })
 }
 `
 
@@ -33,6 +39,10 @@ describe('P1 通用插件：原生 Cordis 插件与 UI 贡献', () => {
     const dataDir = path.join(tempRoot, 'app1')
     const file = await makePluginFile(tempRoot)
     const app = await createApp({ dataDir, logger: false, manifest: [] as any })
+    const events: any[] = []
+    const notices: any[] = []
+    app.ctx.on('plugin/ui-event', (event) => events.push(event))
+    app.ctx.on('plugin/notify', (event) => notices.push(event))
     try {
       const result = await app.ctx.plugins.installNativePlugin!(file)
       expect(result.id).toBe('external:native-widget')
@@ -44,7 +54,12 @@ describe('P1 通用插件：原生 Cordis 插件与 UI 贡献', () => {
       expect(entry?.kind).toBe('widget')
       expect(entry?.contributions.overviewCards?.[0]).toMatchObject({ id: 'hello', title: 'Hello P1' })
       expect(entry?.contributions.pages?.[0]?.title).toBe('P1 页面')
+      expect(entry?.contributions.statusItems?.[0]?.label).toBe('模式')
+      expect(entry?.contributions.commands?.[0]?.title).toBe('打招呼')
+      await expect(app.ctx.ui.runCommand(result.id, 'say-hi')).resolves.toEqual({ ok: true })
       await expect(app.ctx.ui.resolveValue(result.id, 'hello')).resolves.toEqual({ value: 42 })
+      expect(events.some((event) => event.event === 'refreshed' && event.payload?.value === 7)).toBe(true)
+      expect(notices.some((event) => event.title === 'P1 通知' && event.level === 'success')).toBe(true)
     } finally {
       await app.dispose()
     }

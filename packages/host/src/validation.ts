@@ -39,6 +39,13 @@ const schemas: Record<string, z.ZodTypeAny> = {
       params: z.record(z.string(), z.unknown()).optional(),
     })
     .strict(),
+  'ui/command': z
+    .object({
+      pluginId: z.string().min(1).max(120),
+      id: z.string().min(1).max(120),
+      params: z.record(z.string(), z.unknown()).optional(),
+    })
+    .strict(),
   'plugins/uninstall': z.object({ id: z.string().min(1) }).strict(),
   'quarantine/restore': z.object({ ids: z.array(z.string()).max(10_000) }).strict(),
   'quarantine/purge': z.object({ ids: z.array(z.string()).max(10_000).optional() }).strict(),

@@ -80,10 +80,85 @@ export interface UiContributionApi {
   register(pluginId: string, contributions: PluginUiContributions, kind?: PluginKind): () => void
   /** 注册一个数据解析函数，供声明式卡片/状态项使用 */
   resolve(pluginId: string, id: string, handler: UiResolveHandler): () => void
+  /** 注册一个命令处理函数（对应 contributes.commands） */
+  command(pluginId: string, id: string, handler: UiResolveHandler): () => void
+  /** 执行插件命令（供宿主 RPC 调用） */
+  runCommand(pluginId: string, id: string, params?: Record<string, unknown>): Promise<unknown>
   /** 列出全部贡献 */
   list(): UiContributionEntry[]
   /** 读取一个 resolve 的数据（供宿主 RPC 调用） */
   resolveValue(pluginId: string, id: string, params?: Record<string, unknown>): Promise<unknown>
   /** 清空某个插件的贡献（禁用/卸载时调用） */
   clear(pluginId: string): void
+  /** 主动推送 UI 事件（active 插件用它通知界面刷新） */
+  emit(pluginId: string, event: string, payload?: unknown): void
+  /** 主动弹通知（宿主负责限频/展示） */
+  notify(
+    pluginId: string,
+    notification: { title: string; message?: string; level?: 'info' | 'success' | 'warning' | 'error' },
+  ): void
+}
+
+/** 客户端收到的插件 UI 事件 */
+export interface PluginUiEvent {
+  pluginId: string
+  event: string
+  payload?: unknown
+  at: number
+}
+
+/** 客户端收到的插件通知 */
+export interface PluginNotifyEvent {
+  pluginId: string
+  title: string
+  message?: string
+  level: 'info' | 'success' | 'warning' | 'error'
+  at: number
+}
+
+export interface PluginWindowOptions {
+  /** 插件内唯一窗口 id */
+  id: string
+  /** 自包含 HTML；脚本在隔离的 BrowserWindow 中运行 */
+  html: string
+  title?: string
+  width?: number
+  height?: number
+  x?: number
+  y?: number
+  transparent?: boolean
+  alwaysOnTop?: boolean
+  resizable?: boolean
+  skipTaskbar?: boolean
+  /** 鼠标穿透（桌宠/悬浮球常用） */
+  clickThrough?: boolean
+}
+
+export interface PluginTrayItem {
+  id: string
+  label: string
+}
+
+export interface PluginTrayOptions {
+  tooltip?: string
+  /** data:image/png;base64,...；不传则使用空图标 */
+  iconDataUrl?: string
+  items: PluginTrayItem[]
+  onSelect?: (itemId: string) => void
+}
+
+/** 宿主窗口能力：浏览器壳不可用；Electron 壳提供 BrowserWindow/Tray */
+export interface PluginWindowApi {
+  readonly available: boolean
+  open(pluginId: string, options: PluginWindowOptions): Promise<{ id: string }>
+  close(pluginId: string, windowId: string): void
+  closeAll(pluginId: string): void
+  createTray(pluginId: string, options: PluginTrayOptions): () => void
+}
+
+declare module 'cordis' {
+  interface Events {
+    'plugin/ui-event'(event: PluginUiEvent): void
+    'plugin/notify'(event: PluginNotifyEvent): void
+  }
 }

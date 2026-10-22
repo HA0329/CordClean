@@ -25,9 +25,11 @@ import { RulesService } from './domains/rules/rules.ts'
 import { SettingsService } from './domains/kernel/settings.ts'
 import { SystemService } from './domains/engine/system.ts'
 import { UiContributionService } from './domains/kernel/ui.ts'
+import { PluginWindowService } from './domains/kernel/window.ts'
+import type { PluginWindowBackend } from './domains/kernel/window.ts'
 
 export const APP_NAME = 'CordClean'
-export const APP_VERSION = '0.4.0'
+export const APP_VERSION = '0.5.0'
 
 export interface AppOptions {
   /** 数据目录，默认 `%LOCALAPPDATA%\\CordClean` */
@@ -43,6 +45,8 @@ export interface AppOptions {
   logForward?: boolean
   /** 是否启用日志（测试中可关闭） */
   logger?: boolean
+  /** Electron 桌面壳注入的窗口/托盘后端；不传则 ctx.window 不可用 */
+  windowBackend?: PluginWindowBackend
 }
 
 export interface App {
@@ -83,6 +87,8 @@ export async function createApp(options: AppOptions = {}): Promise<App> {
   await ctx.plugin(ExecutorService)
   await ctx.plugin(CleanerService)
   await ctx.plugin(UiContributionService)
+  await ctx.plugin(PluginWindowService)
+  if (options.windowBackend) (ctx.window as PluginWindowService).attachBackend(options.windowBackend)
   await ctx.plugin(PluginManagerService, { manifest: options.manifest ?? BUILTIN_MANIFEST })
 
   if (options.loadPlugins !== false) {

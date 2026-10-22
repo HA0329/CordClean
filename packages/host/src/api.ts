@@ -243,6 +243,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'ui/contributions': () => ctx.ui.list(),
     'ui/resolve': ({ pluginId, id, params }) => ctx.ui.resolveValue(pluginId, id, params),
+    'ui/command': ({ pluginId, id, params }) => ctx.ui.runCommand(pluginId, id, params),
     'plugins/uninstall': async ({ id }) => {
       const source = ctx.plugins.sourcePath(id)
       await ctx.plugins.uninstallExternal(id)

@@ -108,6 +108,14 @@ watch(
   () => void reload(),
 )
 
+// active 插件主动推送事件时，刷新当前卡片数据（无事件时仍按 refreshMs 轮询）
+watch(
+  () => state.pluginEventSeq,
+  () => {
+    for (const item of cards.value) void refreshCard(item)
+  },
+)
+
 onMounted(() => {
   void reload()
 })

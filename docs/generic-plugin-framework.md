@@ -71,7 +71,9 @@ interface PluginUiContributions {
 - [x] 概览页渲染插件声明式卡片（`packages/ui/src/components/PluginOverviewCards.vue`）
 - [x] AI 工坊生成原生 Cordis 通用插件（kind/inject/contributes/apply + 依赖）
 - [x] 插件 iframe 页面：sandbox + postMessage resolve 桥（P1.5）
-- [ ] 主动通知/窗口/托盘能力（后续阶段）
+- [x] 主动事件推送/通知：`ctx.ui.emit()` / `ctx.ui.notify()` → 事件桥 → UI 刷新
+- [x] statusItems 顶栏渲染 + commands 插件页按钮 + `ui/command` RPC
+- [x] Electron 窗口/托盘：`ctx.window.open()/createTray()`（仅桌面壳）
 - [ ] 插件市场（P2，暂缓）
 
 ### 概览卡片渲染
@@ -118,6 +120,35 @@ export const contributes = {
   ```
 - 插件页按钮在插件卡片出现为「插件页面」，打开弹窗沙箱运行；
 - 页面 HTML 属于插件可信代码，安装前仍需审阅。
+
+### 主动事件、状态栏与命令
+
+- active 插件可调用：
+  ```js
+  ctx.ui.emit(name, 'data-changed', { value: 1 })      // 主动刷新 UI 卡片
+  ctx.ui.notify(name, { title: '提醒', message: '...', level: 'success' })
+  ```
+- 事件经主进程事件桥（`plugin/ui-event`、`plugin/notify`）转发到客户端；
+- 客户端概览卡片监听事件序号立即重新 resolve，不必等轮询；
+- `contributes.statusItems` 渲染到顶栏，`commands` 渲染为插件页按钮；
+- 命令由插件用 `ctx.ui.command(name, id, handler)` 注册，宿主通过 `ui/command` RPC 调用。
+
+### Electron 窗口/托盘
+
+- 仅桌面壳注入后端；浏览器壳 `ctx.window.available === false`；
+- 插件：
+  ```js
+  export const inject = ['window']
+  const { id } = await ctx.window.open(name, {
+    id: 'pet', html: '<h1>pet</h1>', width: 200, height: 120,
+    transparent: true, alwaysOnTop: true, clickThrough: true,
+  })
+  ctx.window.close(name, id)
+  ctx.window.createTray(name, { tooltip, iconDataUrl, items, onSelect })
+  ```
+- 窗口是独立 `BrowserWindow`：`nodeIntegration=false`、`contextIsolation=true`、`sandbox=true`，禁止导航/新窗口；
+- 插件停用/卸载时自动关闭该插件的全部窗口与托盘；
+- 未提供具体插件；桌宠/悬浮窗只是能力演示方向。
 
 ## 5. 安全边界
 

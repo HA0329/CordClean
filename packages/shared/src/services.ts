@@ -350,6 +350,8 @@ declare module 'cordis' {
     cleaner: CleanerLike
     /** 通用插件 UI 贡献注册表 */
     ui: import('./plugin-api.ts').UiContributionApi
+    /** 桌面窗口/托盘能力（仅 Electron 壳注入后端） */
+    window: import('./plugin-api.ts').PluginWindowApi
     /** 规则注册表：插件登记清理规则，卸载时自动注销 */
     rules: RulesLike
     /** 规则评估器：可为每条候选给出建议与风险（可替换实现） */

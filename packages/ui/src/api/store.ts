@@ -17,6 +17,7 @@ import type {
   HistoryEntry,
   PluginRuntime,
   PluginRuntimeInfo,
+  PluginUiEvent,
   QuarantineRecord,
   ScanProgressEvent,
   ScanReport,
@@ -53,6 +54,9 @@ export interface UiState {
   cleaning: boolean
   lastClean?: CleanReport | null
   plugins: UiPluginRuntime[]
+  /** 插件主动推送事件的递增序号，组件可 watch 它刷新 */
+  pluginEventSeq: number
+  lastPluginEvent?: PluginUiEvent
   settings?: Settings
   history: HistoryEntry[]
   totals: { sessions: number; freedBytes: number; cleaned: number }
@@ -78,6 +82,7 @@ export const state = reactive<UiState>({
   scanning: false,
   cleaning: false,
   plugins: [],
+  pluginEventSeq: 0,
   history: [],
   totals: { sessions: 0, freedBytes: 0, cleaned: 0 },
   quarantine: [],
@@ -155,6 +160,18 @@ export async function init(): Promise<void> {
     state.transport.on('plugins/changed', () => {
       void refreshPlugins()
       void refreshTasks()
+    })
+    state.transport.on('plugin/ui-event', (event) => {
+      state.lastPluginEvent = event
+      state.pluginEventSeq += 1
+    })
+    state.transport.on('plugin/notify', (event) => {
+      ElNotification({
+        title: event.title,
+        message: event.message || '',
+        type: event.level,
+        duration: 6000,
+      })
     })
     state.transport.on('history/changed', () => void refreshHistory())
     state.transport.on('log', (entry) => {
@@ -308,6 +325,15 @@ export async function resolvePluginUi(
   params?: Record<string, unknown>,
 ): Promise<unknown> {
   return requireTransport().request('ui/resolve', { pluginId, id, params })
+}
+
+/** 执行插件贡献的命令按钮 */
+export async function runPluginCommand(
+  pluginId: string,
+  id: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  return requireTransport().request('ui/command', { pluginId, id, params })
 }
 
 export async function uninstallPlugin(id: string): Promise<void> {
