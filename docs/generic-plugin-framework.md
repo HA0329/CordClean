@@ -62,7 +62,7 @@ interface PluginUiContributions {
 - 禁用保留文件和记录，启用时重新注册贡献；
 - 卸载删除记录（工坊生成的文件由宿主一并清理）。
 
-## 4. 当前进度（P1.1 + P1.3 + P1.4）
+## 4. 当前进度（P1 完成）
 
 - [x] 通用插件类型/UI 贡献类型（`packages/shared/src/plugin-api.ts`）
 - [x] `ctx.ui` 贡献注册服务（`packages/core/src/domains/kernel/ui.ts`）
@@ -71,7 +71,8 @@ interface PluginUiContributions {
 - [x] 概览页渲染插件声明式卡片（`packages/ui/src/components/PluginOverviewCards.vue`）
 - [x] AI 工坊生成原生 Cordis 通用插件（kind/inject/contributes/apply + 依赖）
 - [x] 插件 iframe 页面：sandbox + postMessage resolve 桥（P1.5）
-- [ ] 主动生命周期/通知/窗口能力（后续阶段）
+- [ ] 主动通知/窗口/托盘能力（后续阶段）
+- [ ] 插件市场（P2，暂缓）
 
 ### 概览卡片渲染
 

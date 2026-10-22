@@ -27,7 +27,7 @@ import { SystemService } from './domains/engine/system.ts'
 import { UiContributionService } from './domains/kernel/ui.ts'
 
 export const APP_NAME = 'CordClean'
-export const APP_VERSION = '0.3.5'
+export const APP_VERSION = '0.4.0'
 
 export interface AppOptions {
   /** 数据目录，默认 `%LOCALAPPDATA%\\CordClean` */

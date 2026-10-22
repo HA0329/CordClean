@@ -3,7 +3,7 @@
 > 本文档记录「主动自测」阶段发现并修复的问题，可作为论文第 6 章「系统测试」中
 > 「测试发现的问题与改进」小节，也可用于答辩时说明工程严谨性。
 >
-> 测试方式：366 个自动化用例（48 个文件）+ 现有插件自测脚本 + 11 个真实插件扫描审计 + Electron 端到端点检 + 性能基准。
+> 测试方式：366 个自动化用例（50 个文件）+ 现有插件自测脚本 + 11 个真实插件扫描审计 + Electron 端到端点检 + 性能基准。
 > **所有会删除文件的测试都在临时沙箱中进行，未触碰真实用户数据。**
 >
 > 编号约定：D-01~D-17 为自测阶段（含 AI 接口联调）发现的问题；D-18~D-29 为批次1 安全与正确性加固新增；D-30~D-34 为 v0.2.2 根据用户反馈修复的 AI 顾问页问题。
@@ -74,6 +74,8 @@
 | D-46 | 🟡 中（可用性/文案） | 内置插件“卸载”其实只是停用；外部插件停用后没有卸载入口 | 已修复 |
 
 | D-47 | 🟢 低（布局） | 插件卡片操作按钮过多时横向溢出，新增的“加入定时任务”被裁切 | 已修复 |
+
+| D-48 | 🟠 中（架构/扩展性） | 外部插件只能注册清理任务，无法贡献 UI 或后台生命周期；AI 工坊只能生成 cleaner 脚本，离通用插件框架还差一层 | 已修复（P1） |
 
 ## 详细说明
 
@@ -204,7 +206,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **效果**：单次校验 166 µs → **10.4 µs**（走代理约 20 µs）；
 扫描吞吐 4526 → **33 551 文件/秒**（4000 个文件 0.12 s，修复当时的基准环境）；
-删除吞吐 2331 → **6616 文件/秒**（批次1 后基准环境重跑为 2 178 文件/秒，扫描 26 770 文件/秒，见 docs/benchmark.md）。回归：当前全量 366 个用例通过。
+删除吞吐 2331 → **6616 文件/秒**（批次1 后基准环境重跑为 2 178 文件/秒，扫描 26 770 文件/秒，见 docs/benchmark.md）。回归：当前全量 371 个用例通过。
 
 ### D-11 路径写法绕过（尾点与 8.3 短名）
 
@@ -400,7 +402,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **现象**：按 DeepSeek 官方文档核对后发现：请求 ID 应是 `deepseek-flash`（实际由 DeepSeek-V4.1-Flash-1017 提供服务），`deepseek-v4-flash` 等旧 ID 仍被接受但已退役；项目里用户配置的 3000 tokens 会被内部静默抬到 32768；界面只显示模型 ID、看不到底层版本。
 **修复**：扩展官方别名表（chat/reasoner/coder/v4-flash/v4-flash-vision-exp → flash，未知名称保留）；以 `/models` 的 `name` / `max_output_tokens` / 上下文/模态作为显示与能力依据；分析请求严格按「用户值 min 模型上限」收敛，不再偷抬；界面显示「当前模型版本 + 上下文」并支持手动模型名；新增 [AI 模型与接口兼容策略](ai-model-compatibility.md) 记录官方依据与未来变更清单。
-**验证**：`tests/ai-model-metadata.test.ts`（/models 能力收敛到 2000、自定义模型名原样发送）；`tests/ai-config-defaults.test.ts`（默认 flash + 旧官方 ID 迁移）；全量 49 文件 / 366 用例通过。
+**验证**：`tests/ai-model-metadata.test.ts`（/models 能力收敛到 2000、自定义模型名原样发送）；`tests/ai-config-defaults.test.ts`（默认 flash + 旧官方 ID 迁移）；全量 50 文件 / 371 用例通过。
 
 ### D-37 定时任务无法自定义名称
 
@@ -427,7 +429,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - 生成流程先跑契约检查，失败时把错误回传给模型自动重试（最多 3 次），不把坏草稿交给用户；
 - 安装端展开 `%TEMP%/%USERPROFILE%/%LOCALAPPDATA%/%APPDATA%/%WINDIR%`，再做绝对路径/辖区校验；
 - 安装成功后刷新插件列表；新增真实安装测试（草稿写入文件 → worker 加载 → 任务注册）。
-**验证**：`tests/plugin-workshop-contract.test.ts`（4 个契约用例）、`tests/ai-plugin-workshop.test.ts`（首次坏草稿自动重试 → 最终代码真实安装并注册任务）；全量 49 文件 / 366 用例通过。
+**验证**：`tests/plugin-workshop-contract.test.ts`（4 个契约用例）、`tests/ai-plugin-workshop.test.ts`（首次坏草稿自动重试 → 最终代码真实安装并注册任务）；全量 50 文件 / 371 用例通过。
 
 ### D-40 插件工坊生成无反馈、语法错误草稿未被拦截
 
@@ -442,7 +444,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - 宿主校验改为异步 `spawn`，不再阻塞主线程；
 - 代码编辑校验防抖 400ms，并立即把旧校验结果置空、取消“已阅读”勾选，避免用旧结果误装；
 - 语法错误信息保留具体行/列与原因，不再只有空泛的「语法错误：」。
-**验证**：`tests/ai-plugin-workshop.test.ts` 首次返回语法不完整草稿，断言自动重试后得到可安装代码；`tests/plugin-workshop.test.ts` 覆盖语法错误；全量 49 文件 / 366 用例通过，typecheck/build 通过。
+**验证**：`tests/ai-plugin-workshop.test.ts` 首次返回语法不完整草稿，断言自动重试后得到可安装代码；`tests/plugin-workshop.test.ts` 覆盖语法错误；全量 50 文件 / 371 用例通过，typecheck/build 通过。
 
 ### D-41 Electron 下 `node --check` 误把 electron.exe 当 Node 启动
 
@@ -461,7 +463,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - 界面展示依赖清单与风险确认，未勾选「允许下载依赖」不允许安装；宿主 RPC 也要求 `acknowledgeDependencies=true`；
 - 宿主在插件目录执行 `npm install --ignore-scripts`（失败回落 pnpm），禁用 lifecycle scripts，最多 8 个依赖，只允许 npm 包名 + semver，禁止 file/git/URL；
 - 安装依赖期间按钮 loading，防重复点击；依赖安装失败给出可读错误。
-**验证**：依赖声明/白名单校验测试；真实 smoke：安装 `is-number@7` 到临时插件目录 → `ExternalPluginProxy` 真实加载并注册任务成功；全量 49 文件 / 366 用例通过。
+**验证**：依赖声明/白名单校验测试；真实 smoke：安装 `is-number@7` 到临时插件目录 → `ExternalPluginProxy` 真实加载并注册任务成功；全量 50 文件 / 371 用例通过。
 
 ### D-43 插件工坊失败/卸载残留
 
@@ -472,7 +474,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - `plugins/uninstall` 对工坊生成的插件删除对应文件/插件目录；
 - 应用启动时清理上一次运行留下的 `generated-plugins/`（外部插件本来就不跨进程持久加载）；
 - npm/pnpm 全局下载缓存保留（共享缓存，不属于单插件残留）。
-**验证**：`tests/plugin-workshop.test.ts` 覆盖单文件/依赖目录清理；全量 49 文件 / 366 用例通过。
+**验证**：`tests/plugin-workshop.test.ts` 覆盖单文件/依赖目录清理；全量 50 文件 / 371 用例通过。
 
 ### D-44 插件工坊安装与清理缺少自动化回归
 
@@ -480,7 +482,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 **补充测试**：
 - `tests/workshop-api.test.ts`：零依赖安装成功 → 卸载删除文件；未确认依赖拒绝且不落盘；模拟 npm/pnpm 不可用 → 依赖安装失败后清理插件目录；启动时清理 stale `generated-plugins`；
 - 真实 Electron UI 自检：生成 → 审阅 → 安装 → 插件页出现；卸载后生成文件/目录消失；另测声明 `is-number` 依赖的插件，勾选依赖确认后真实安装依赖并加载成功、卸载后目录删除。
-**结果**：全量 49 文件 / 366 用例通过，UI 自检 0 JS 异常。
+**结果**：全量 50 文件 / 371 用例通过，UI 自检 0 JS 异常。
 
 ### D-45 外部插件不持久、插件页无法直接运行
 
@@ -492,7 +494,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - 卸载时清空持久化记录并删除文件；
 - 插件页为外部插件提供「扫描此插件」（只扫描该插件任务并跳到清理页）与「加入定时任务」（预选任务范围）；
 - 新增 [插件使用说明](plugin-usage.md)，解释被动插件、定时任务驱动与为什么不支持后台常驻主动插件。
-**验证**：`tests/workshop-api.test.ts` 覆盖“安装后重启自动加载且启动清理不删文件”；真实 Electron 自检点击两个新按钮：扫描得到 1 个分组、定时任务预选成功、0 JS 异常；全量 49 文件 / 366 用例通过。
+**验证**：`tests/workshop-api.test.ts` 覆盖“安装后重启自动加载且启动清理不删文件”；真实 Electron 自检点击两个新按钮：扫描得到 1 个分组、定时任务预选成功、0 JS 异常；全量 50 文件 / 371 用例通过。
 
 ### D-46 插件“停用/卸载”语义与入口不一致
 
@@ -509,6 +511,28 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 **现象**：外部插件卡片同时显示配置/扫描/定时/卸载/热重载/源码等按钮时，单行 flex 不换行，右侧按钮被卡片裁切。
 **修复**：操作区拆成「主操作组 + 次要操作组」，两组都 `flex-wrap: wrap`；卡片加 `min-width: 0`；按钮间距统一由 gap 控制，去掉 Element 相邻按钮的 margin-left。当前按钮自动换行，后续继续增加按钮也不会溢出。
 **验证**：重新生成插件页截图（`docs/screenshots/ui-plugins.png`），按钮分行显示；全量 E2E 0 JS 异常。
+
+### D-48 通用插件框架 P1：外部插件成为一等公民
+
+**现象**：外部插件运行在 worker 里，只有 describe/configure/scan/clean 四个动作；只能 ctx.cleaner.define，不能注册 UI、服务、事件或后台定时器；AI 工坊只生成 cleaner 单文件。用户无法用外部插件做卡片、自定义页面或主动插件。
+
+**修复（P1，分步提交）**：
+- P1.1 通用契约 `packages/shared/src/plugin-api.ts`：PluginKind、UI 卡片/页面/状态项/命令、ctx.ui.register/resolve；
+- P1.2 原生外部 Cordis 插件：`installNativePlugin()` 通过 `ctx.plugin()` 获得完整 ctx；持久化 externalPath/externalType；旧 worker cleaner 插件兼容；
+- P1.3 概览页渲染插件声明式卡片（metric/text/list/progress + 定时刷新）；
+- P1.4 AI 工坊生成原生 Cordis 通用插件（kind/inject/contributes/apply），安装走 native 模式；
+- P1.5 iframe 插件页面：sandbox + data URL + postMessage resolve 桥，页面不能访问宿主 DOM；
+- 全程未新增具体业务插件，只做框架与验证。
+
+**验证**：
+- `tests/generic-plugin.test.ts`：原生安装、UI 贡献、resolve、重启加载、禁用清理；
+- `tests/plugin-workshop-contract.test.ts`：native 契约接受 apply/inject/contributes，拒绝旧式 object；
+- `tests/ai-plugin-workshop.test.ts` 改成原生 cleaner 草稿安装；
+- `tests/workshop-api.test.ts`：AI 安装原生 widget 并注册卡片；
+- 真实 Electron：AI 生成 widget → 安装 → 概览渲染卡片；iframe 页面 resolve 返回 from-iframe，0 JS 异常；
+- 全量 50 个测试文件 / 371 个用例通过，typecheck/build 通过。
+
+**边界**：外部原生插件是可信代码，拥有完整 Node/Cordis 权限；P1 不做插件市场（P2 暂缓），窗口/托盘/桌面宠物能力仍未暴露。详见 [通用插件框架](generic-plugin-framework.md)。
 
 ## 未修复但已知的限制
 
