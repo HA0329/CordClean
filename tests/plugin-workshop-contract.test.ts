@@ -37,14 +37,14 @@ export default {
 `
 
 describe('外部插件源码契约（AI 工坊生成/安装共用）', () => {
-  it('接受零依赖、普通对象、带 scan 的插件', () => {
+  it('接受零依赖、普通对象、带 scan 的插件', async () => {
     const result = checkPluginSource(GOOD)
     expect(result.ok).toBe(true)
     expect(result.errors).toEqual([])
-    expect(validatePluginCode(GOOD).ok).toBe(true)
+    expect((await validatePluginCode(GOOD)).ok).toBe(true)
   })
 
-  it('拒绝 AI 常见的 @cordisjs/plugin-cleaner 幻觉 import', () => {
+  it('拒绝 AI 常见的 @cordisjs/plugin-cleaner 幻觉 import', async () => {
     const bad = `import { defineCleanerPlugin } from '@cordisjs/plugin-cleaner'
 
 export default defineCleanerPlugin({
@@ -56,7 +56,7 @@ export default defineCleanerPlugin({
     expect(result.ok).toBe(false)
     expect(result.errors.join(' ')).toContain('@cordisjs')
     expect(result.errors.join(' ')).toContain('defineCleanerPlugin')
-    const host = validatePluginCode(bad)
+    const host = await validatePluginCode(bad)
     expect(host.ok).toBe(false)
     expect(host.errors.join(' ')).toContain('外部插件')
   })
@@ -84,3 +84,4 @@ export default { name: 'bad', setup() { fs.rmSync('C:/tmp') } }
     expect(result.errors.join(' ')).toMatch(/删除|rmSync/)
   })
 })
+

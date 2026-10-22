@@ -8,7 +8,7 @@
  * - 语法用 `node --check` 验证（与运行时同一个解析器）；
  * - 文件写到 <dataDir>/generated-plugins/，不污染仓库，也不覆盖用户文件。
  */
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -20,7 +20,49 @@ export interface PluginValidation {
   warnings: string[]
 }
 
-export function validatePluginCode(code: string): PluginValidation {
+/** 用与运行时同一个解析器做语法检查；异步执行，避免阻塞宿主主线程 */
+function checkSyntax(text: string): Promise<string | null> {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'cordclean-plugin-'))
+  const file = path.join(dir, 'check.mjs')
+  writeFileSync(file, text, 'utf8')
+  return new Promise((resolve) => {
+    let stderr = ''
+    let stdout = ''
+    let settled = false
+    const child = spawn(process.execPath, ['--check', file], { windowsHide: true })
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      try {
+        child.kill()
+      } catch {}
+      resolve('语法检查超时（10 秒）')
+    }, 10_000)
+    child.stderr?.on('data', (chunk) => (stderr += String(chunk)))
+    child.stdout?.on('data', (chunk) => (stdout += String(chunk)))
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve('语法检查无法执行：' + error.message)
+    })
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      try {
+        rmSync(dir, { recursive: true, force: true })
+      } catch {}
+      if (code === 0) return resolve(null)
+      const raw = (stderr || stdout || 'node --check 返回非零退出码').trim()
+      // 只保留关键行，避免把整段 Node 堆栈塞进界面
+      const message = raw.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 4).join(' ')
+      resolve(message || 'node --check 返回非零退出码')
+    })
+  })
+}
+
+export async function validatePluginCode(code: string): Promise<PluginValidation> {
   const text = String(code ?? '')
   // 与生成端共用同一套契约检查，避免「生成能过、安装加载失败」
   const base = checkPluginSource(text)
@@ -28,22 +70,8 @@ export function validatePluginCode(code: string): PluginValidation {
   const warnings = [...base.warnings]
   if (!text.trim()) return { ok: false, errors: errors.length ? errors : ['代码为空'], warnings }
 
-  // 语法检查：与运行时同一个解析器
-  let dir = ''
-  try {
-    dir = mkdtempSync(path.join(os.tmpdir(), 'cordclean-plugin-'))
-    const file = path.join(dir, 'check.mjs')
-    writeFileSync(file, text, 'utf8')
-    const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8', timeout: 10_000 })
-    if (result.status !== 0) {
-      const message = (result.stderr || result.stdout || '语法检查失败').split('\n').filter(Boolean).slice(0, 3).join(' ')
-      errors.push('语法错误：' + message)
-    }
-  } catch (error) {
-    errors.push('语法检查无法执行：' + String(error))
-  } finally {
-    if (dir) rmSync(dir, { recursive: true, force: true })
-  }
+  const syntaxError = await checkSyntax(text)
+  if (syntaxError) errors.push('语法错误：' + syntaxError)
 
   return { ok: errors.length === 0, errors, warnings }
 }

@@ -1,5 +1,7 @@
 import { existsSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { folderSize } from '@cordclean/utils'
@@ -268,6 +270,13 @@ export class AiService extends Service implements AiLike {
           check.errors.join('\n- ') +
           '\n请修正后重新输出完整代码：外部插件必须零依赖，不要 import 框架包，直接 export default 普通对象。'
         this.ctx.logger.info('插件草稿未通过契约检查，自动重试：%s', check.errors[0])
+        continue
+      }
+      const syntaxError = await checkPluginSyntax(code)
+      if (syntaxError) {
+        lastError = '语法错误：' + syntaxError
+        feedback = '\n\n上一次生成的插件代码有语法错误：\n' + syntaxError + '\n请输出语法完整、括号配对的代码，不要省略结尾。'
+        this.ctx.logger.info('插件草稿语法错误，自动重试：%s', syntaxError.slice(0, 200))
         continue
       }
       const matched = code.match(/name:\s*['"]([a-zA-Z0-9_-]+)['"]/)
@@ -664,6 +673,46 @@ export function extractPluginCode(text: string): string {
     } catch {}
   }
   return raw
+}
+
+/** 与运行时同一个解析器做语法检查（异步，不阻塞主线程） */
+function checkPluginSyntax(text: string): Promise<string | null> {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'cordclean-ai-plugin-'))
+  const file = path.join(dir, 'check.mjs')
+  writeFileSync(file, text, 'utf8')
+  return new Promise((resolve) => {
+    let stderr = ''
+    let stdout = ''
+    let settled = false
+    const child = spawn(process.execPath, ['--check', file], { windowsHide: true })
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      try {
+        child.kill()
+      } catch {}
+      resolve('语法检查超时（10 秒）')
+    }, 10_000)
+    child.stderr?.on('data', (chunk) => (stderr += String(chunk)))
+    child.stdout?.on('data', (chunk) => (stdout += String(chunk)))
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve('语法检查无法执行：' + error.message)
+    })
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      try {
+        rmSync(dir, { recursive: true, force: true })
+      } catch {}
+      if (code === 0) return resolve(null)
+      const raw = (stderr || stdout || 'node --check 返回非零退出码').trim()
+      resolve(raw.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 4).join(' ') || 'node --check 返回非零退出码')
+    })
+  })
 }
 const PLUGIN_TOOL = {
   name: 'emit_plugin',

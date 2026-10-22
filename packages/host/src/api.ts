@@ -284,7 +284,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
     'ai/plugin/validate': ({ code }) => validatePluginCode(String(code ?? '')),
     'ai/plugin/install': async ({ name, code }) => {
-      const checked = validatePluginCode(String(code ?? ''))
+      const checked = await validatePluginCode(String(code ?? ''))
       if (!checked.ok) throw new Error(checked.errors[0] ?? '校验未通过')
       const file = saveGeneratedPlugin(api.dataDir, name, String(code))
       await ctx.plugins.installExternal(file)

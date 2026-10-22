@@ -45,12 +45,19 @@ export default {
 }
 `
 
-const BAD_CODE = `import { defineCleanerPlugin } from '@cordisjs/plugin-cleaner'
-
-export default defineCleanerPlugin({
+const BAD_CODE = `export default {
   name: 'bad-draft',
-  setup() {},
-})
+  version: '1.0.0',
+  capabilities: { fsRoots: ['%TEMP%'] },
+  setup(ctx) {
+    ctx.cleaner.define({
+      id: 'bad-task',
+      name: '坏草稿',
+      category: 'apps',
+      risk: 'safe',
+      scan(scan) { scan.emit({ path: 'C:/temp/x.tmp', kind: 'file', size: 1 }) },
+    })
+  // 故意缺少 setup 和对象的闭合括号，用来验证语法检查会触发自动重试
 `
 
 beforeAll(async () => {

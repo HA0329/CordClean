@@ -408,24 +408,47 @@ const workshopDraft = ref<{ name: string; code: string; notes: string } | null>(
 const workshopValidation = ref<{ ok: boolean; errors: string[]; warnings: string[] } | null>(null)
 const workshopReviewed = ref(false)
 const workshopBusy = ref(false)
+const workshopError = ref('')
+let workshopRequest = 0
+let workshopValidateTimer: ReturnType<typeof setTimeout> | null = null
 
 async function generateWorkshopDraft() {
   if (!workshopRequirement.value.trim()) {
     ElMessage.warning('先写一句需求')
     return
   }
+  const requestId = ++workshopRequest
+  // 立即打开弹窗显示进度，避免“点了没反应直到草稿出现”的错觉
+  workshopOpen.value = true
   workshopBusy.value = true
+  workshopError.value = ''
+  workshopDraft.value = null
+  workshopValidation.value = null
+  workshopReviewed.value = false
   try {
     const draft = await draftAiPlugin(workshopRequirement.value.trim())
+    if (requestId !== workshopRequest) return
     workshopDraft.value = draft
     workshopValidation.value = await validateAiPlugin(draft.code)
     workshopReviewed.value = false
-    workshopOpen.value = true
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : String(error))
+    if (requestId === workshopRequest) workshopError.value = error instanceof Error ? error.message : String(error)
   } finally {
-    workshopBusy.value = false
+    if (requestId === workshopRequest) workshopBusy.value = false
   }
+}
+
+/** 编辑代码时防抖校验，避免每敲一个字都发一次宿主校验请求 */
+function scheduleRevalidateWorkshopDraft() {
+  if (!workshopDraft.value) return
+  // 代码一改就立即视为“未校验/未重新审阅”，防止用旧校验结果误装
+  workshopValidation.value = null
+  workshopReviewed.value = false
+  if (workshopValidateTimer) clearTimeout(workshopValidateTimer)
+  workshopValidateTimer = setTimeout(() => {
+    workshopValidateTimer = null
+    void revalidateWorkshopDraft()
+  }, 400)
 }
 
 async function revalidateWorkshopDraft() {
@@ -742,7 +765,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <div class="cc-card-title"><h3>🛠️ AI 插件工坊</h3><span class="cc-faint">无需先分析：生成单文件插件 → 校验 → 你阅读代码后安装</span></div>
         <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。生成的是零依赖单文件插件（不依赖框架包），会先自动校验，不通过的代码不会进入安装步骤。</p>
         <el-input v-model="workshopRequirement" type="textarea" :rows="2" placeholder="例如：写一个插件，清理 D 盘下超过 30 天的 .log 文件" />
-        <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
+        <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" :disabled="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
       </div>
 
       <!-- 分析结果 -->
@@ -892,12 +915,17 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
           <p v-else class="cc-hint">✓ 语法与契约校验通过</p>
           <p v-if="workshopValidation.warnings.length" class="cc-faint">提示：{{ workshopValidation.warnings.join('；') }}</p>
         </div>
-        <el-input v-model="workshopDraft.code" type="textarea" :rows="18" class="cc-mono" spellcheck="false" @input="revalidateWorkshopDraft" />
+        <el-input v-model="workshopDraft.code" type="textarea" :rows="18" class="cc-mono" spellcheck="false" @input="scheduleRevalidateWorkshopDraft" />
         <el-checkbox v-model="workshopReviewed" style="margin-top: 8px">我已阅读上述代码，理解它会以完整权限运行</el-checkbox>
       </template>
+      <div v-else-if="workshopBusy" style="padding: 32px 12px; text-align: center">
+        <p style="font-size: 15px">⏳ AI 正在生成插件草稿…</p>
+        <p class="cc-hint">生成后还会做静态契约与语法校验；大模型慢时可能需要 30~90 秒，请勿重复点击。</p>
+      </div>
+      <div v-else-if="workshopError" class="error-text" style="padding: 24px 12px">生成失败：{{ workshopError }}</div>
       <template #footer>
         <el-button @click="workshopOpen = false">取消</el-button>
-        <el-button type="primary" :disabled="!workshopValidation?.ok || !workshopReviewed" @click="installWorkshopDraft">安装并启用</el-button>
+        <el-button type="primary" :disabled="!workshopDraft || !workshopValidation?.ok || !workshopReviewed" @click="installWorkshopDraft">安装并启用</el-button>
       </template>
     </el-dialog>
 
