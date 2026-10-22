@@ -4,7 +4,7 @@
 > 关键流程、安全模型与工程折中。所有结论均可在源码中找到对应实现。
 >
 > 事实基准：11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法、
-> 51 个测试文件 / 374 个用例、规则库 catalog 28 类/271 条 + extra 9 类/130 条。
+> 52 个测试文件 / 375 个用例、规则库 catalog 28 类/271 条 + extra 9 类/130 条。
 > 安全边界与残余风险另见 [威胁模型与信任边界](threat-model.md)。
 
 ## 1. 设计目标与约束
@@ -269,17 +269,21 @@ ctx.effect(() => {
 - 桌面外壳用 `sandbox: true` + `contextIsolation: true` + `nodeIntegration: false`，preload 只暴露最小 IPC；
   禁止新窗口（`setWindowOpenHandler` → deny）、拦截非白名单导航，界面 `index.html` 带 CSP；
 - `app/open-path` 改用 `explorer` 参数数组（不经 shell），消除路径拼接导致的命令注入面；
-- 外部插件不获得清空白名单（`addClearRoot`），`targets` 必须落在能力声明的 `fsRoots` 内，
-  仅白名单环境变量经 `workerData.env` 暴露给插件上下文。
+- 外部插件分两种加载路径：
+  - **原生 Cordis 插件（P1 默认）**：由 `PluginManager.installNativePlugin()` 通过 `ctx.plugin()` 加载，拥有完整 ctx（服务/事件/UI/窗口），与内置插件同权；持久化 `externalPath`，重启自动加载；
+  - **旧式 worker cleaner 插件（兼容）**：worker 只提供故障隔离，不获得清空白名单（`addClearRoot`），`targets` 必须落在能力声明的 `fsRoots` 内，仅白名单环境变量经 `workerData.env` 暴露；
+- 原生插件贡献 UI 时，卡片由宿主固定组件渲染，自定义页面走 sandbox iframe；插件窗口是独立 BrowserWindow（`nodeIntegration=false`/`contextIsolation=true`/`sandbox=true`，禁止导航）。
 
 > 完整威胁模型（谁在防谁、插件信任模型、TOCTOU 等残余风险）见 [威胁模型与信任边界](threat-model.md)。
 
 ### 6.4 插件信任边界（如实说明）
 
 - **内置插件 = 可信代码**：与内核同进程，安全依赖路径策略/补偿链等约定，而非沙箱；
-- **外部插件**：worker 只提供**故障隔离**（崩溃/超时不影响主线程），不是安全沙箱 ——
+- **原生外部插件 = 可信代码**：通过 `ctx.plugin()` 加载，拥有完整 Cordis/Node 权限，可注册服务、UI、窗口；持久化后随启动自动加载；
+- **旧式 worker 外部插件**：worker 只提供**故障隔离**（崩溃/超时不影响主线程），不是安全沙箱 ——
   插件仍可访问文件系统、`process.env` 与 `child_process`；能力声明只是安装时静态校验，运行时并不强制；
   安装外部插件等同于允许其执行本机代码，界面会给出风险警告；
+- 插件 iframe 页面/BrowserWindow 只是 UI 隔离，不改变“插件代码本身是可信代码”的事实；
 - 因此本系统的安全目标是「能力收窄 + 故障隔离 + 风险提示 + 删除链唯一入口」，不是「不可信插件沙箱」。
 
 ## 7. 界面实现
@@ -313,7 +317,7 @@ ctx.effect(() => {
 
 | 层次 | 方式 | 覆盖 |
 | --- | --- | --- |
-| 单元 / 集成 | Vitest（51 个文件、**374 个用例**） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
+| 单元 / 集成 | Vitest（52 个文件、**375 个用例**） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
 | 插件审计 | `scripts/audit-plugins.ts` | 11 个内置插件真实扫描 + 清理项契约不变量（只读） |
 | 插件自测 | `scripts/check-*.ts` | 现有插件的定向验证（只扫描，清理只用 dryRun） |
 | 冒烟 | `scripts/smoke.ts` | 内核启动 + 全插件加载 + 扫描 |

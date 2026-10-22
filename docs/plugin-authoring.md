@@ -180,30 +180,28 @@ import {
 4. **默认不勾选**：风险等级为 `caution` / `risky` 的项要设置 `defaultSelected: false`。
 5. **需要管理员权限的操作**（清空回收站、写 HKLM、Prefetch）要在 `note` 中说明，并在 `env.elevated === false` 时降级处理而不是抛错。
 6. **所有清理都必须幂等、可跳过**：文件被占用时返回失败而不是让整个任务崩溃。
-7. **不要依赖「插件是沙箱」**：内置插件与内核同进程，属于受信任代码；外部插件在 worker 中运行只是故障隔离，
-   且不会获得清空白名单（`addClearRoot`），`targets` 必须落在能力声明的 `fsRoots` 内。
-   安全边界与残余风险见 [威胁模型](threat-model.md)。
+7. **不要依赖「插件是沙箱」**：内置插件与内核同进程，属于受信任代码；原生外部插件通过 `ctx.plugin()` 加载，拥有完整 Cordis ctx（与内置同权）；只有旧式 worker cleaner 插件由 worker 做故障隔离，且不会获得清空白名单（`addClearRoot`），`targets` 必须落在能力声明的 `fsRoots` 内。
+   安全边界与残余风险见 [威胁模型](threat-model.md) 与 [通用插件框架](generic-plugin-framework.md)。
 
-### 6.1 AI 插件工坊生成的外部插件契约
+### 6.1 AI 插件工坊生成的原生 Cordis 插件契约
 
-AI 工坊生成的是**单文件外部插件**，和内置插件包不同；它可以声明 npm 依赖：
+AI 工坊默认生成**原生 Cordis 通用插件**（P1 起），由 `PluginManager.installNativePlugin()` 通过 `ctx.plugin()` 加载：
 
-- 不依赖第三方包时：`generated-plugins/<name>.mjs`，只允许 `node:fs` / `node:fs/promises` / `node:path` / `node:os` / `node:url` / `node:util` / `node:crypto`；
-- 需要第三方能力时，生成结果带 `dependencies: { 包名: "semver" }`：
-  - 安装目录为 `generated-plugins/<name>/`（`plugin.mjs` + `package.json` + `node_modules`），Node 的 ESM 解析可直接找到依赖；
-  - **必须由用户确认依赖清单后才会下载**；安装时禁用 lifecycle scripts（`--ignore-scripts`）；
-  - 只允许 npm 包名 + semver，禁止 `file:` / `git` / URL / 路径规格，最多 8 个；
-- 不能使用 `defineCleanerPlugin`（框架内部 helper 解析不到），直接 `export default { name, version, description, capabilities, Config, setup }`；
-- 不能 `import '@cordclean/shared'`、`@cordisjs/*` 或未在 `dependencies` 声明的包；第三方包按包名匹配，支持子路径 import；
-- `capabilities.fsRoots` 与 `targets` 支持 `%TEMP%`、`%USERPROFILE%`、`%LOCALAPPDATA%`、`%APPDATA%`、`%WINDIR%` 模板，
-  安装时展开为绝对路径；代码里用 `ctx.system.env.get('TEMP')` 取实际路径；
-- 静态检查不通过时工坊会带着错误自动重试生成；最终安装前还会在 worker 中真实加载一次。
+- 入口是单文件 ESM：`export const name = "kebab-case"`、`export const kind = "cleaner|widget|active|desktop"`；
+- 必须 `export function apply(ctx)`；按需声明 `export const inject = ["ui"]` / `["cleaner"]` / `["window"]`；
+- 可通过 `export const contributes` 提供 `overviewCards`、`statusItems`、`commands`、`pages`；
+- UI 数据用 `ctx.ui.resolve(name, id, fn)`，命令用 `ctx.ui.command(name, id, fn)`，主动事件用 `ctx.ui.emit/notify`；
+- 需要第三方依赖时，生成结果带 `dependencies: { 包名: "semver" }`，安装到 `generated-plugins/<name>/node_modules`；
+- 不能使用 `defineCleanerPlugin`，不能 import `@cordclean/*`、`@cordisjs/*` 或未在 `dependencies` 声明的包；
+- 静态检查不通过时工坊会带着错误自动重试；安装前会再次校验并真实加载。
 
-> 安全提醒：第三方 npm 包与插件拥有相同的完整 Node 权限；禁用安装脚本只能阻止安装期脚本，不能阻止包代码在 import 时执行。请只安装你信任的依赖，见 [威胁模型](threat-model.md) §3.2。
+旧式零依赖 worker cleaner 契约仍兼容：`export default { name, version, capabilities, Config, setup }`，但新生成默认走原生契约。
 
-**残留清理**：依赖安装、校验或 worker 加载任一步失败，宿主会卸载已部分注册的插件并删除本次生成的 `generated-plugins/<name>/`（含 `node_modules`）；卸载外部插件时也会删除对应文件/目录；下次启动会清理上一次运行留下的 `generated-plugins/`（外部插件本身不跨进程持久加载）。npm/pnpm 自身的全局下载缓存不会删除——它是共享缓存，不属于某个插件。
+> 安全提醒：原生插件拥有完整 Cordis/Node 权限；插件 iframe 页面与独立 BrowserWindow 只是 UI 隔离，不是插件沙箱。第三方 npm 包与插件拥有相同权限；禁用安装脚本只能阻止安装期脚本，不能阻止包代码在 import 时执行。请只安装你信任的依赖，见 [威胁模型](threat-model.md) §3.2。
 
-校验规则在 `packages/shared/src/plugin-code.ts`，生成端、安装端、测试共用同一套。
+**残留清理**：依赖安装、静态校验或插件加载任一步失败，宿主会卸载已部分注册的插件并删除本次生成的 `generated-plugins/<name>/`（含 `node_modules`）；卸载外部插件时也会删除对应文件/目录；原生插件路径持久化到 `settings.plugins[id].externalPath`，重启自动加载；启动时会清理没有持久化记录的工坊残留。npm/pnpm 自身的全局下载缓存不会删除——它是共享缓存，不属于某个插件。
+
+校验规则在 `packages/shared/src/plugin-code.ts`（`mode: 'native' | 'worker'`），生成端、安装端、测试共用同一套。
 
 ## 8. 自测方式
 

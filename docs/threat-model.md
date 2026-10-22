@@ -66,8 +66,9 @@
   - 外部插件**不会**获得 `addClearRoot`（清空白名单）授权，只能登记普通清理辖区（`addRoot`），辖区随插件卸载回收；
   - 仅 `PLUGIN_ENV_ALLOWLIST` 中的系统目录变量会经 `workerData.env` 暴露给插件上下文（`_API_KEY`/`_TOKEN`/`_SECRET`/`_PASSWORD`、`DEEPSEEK_*`、`OPENAI_*`、`DASHSCOPE_*` 一律过滤）——但插件若直接读 `process.env` 仍可看到全部变量；
   - worker 内**没有删除能力**：只能回传候选，删除由主进程补偿链 + 执行器完成。
-- **安装即执行代码**：`plugins/install` 会在本机加载插件模块，安装不可信插件等同于允许其执行本机代码；界面会展示风险警告。
-- **持久化外部插件会随启动自动加载**：外部插件路径记录在 `settings.plugins[id].externalPath`，应用启动时会自动重新执行其 `setup()`，等同于开机自启动代码；只应安装可信插件，不用时请卸载。
+- **安装即执行代码**：`plugins/install` / `plugins/install-native` 会在本机加载插件模块，安装不可信插件等同于允许其执行本机代码；界面会展示风险警告。
+- **原生外部插件是完整 Cordis 插件**：通过 `ctx.plugin()` 加载，拥有完整 Node/Cordis 权限，可注册 UI、窗口、服务；插件 iframe 页面与独立 BrowserWindow 只是 UI 隔离，不是插件沙箱。
+- **持久化外部插件会随启动自动加载**：外部插件路径记录在 `settings.plugins[id].externalPath`，应用启动时会自动重新执行其 `apply()`，等同于开机自启动代码；只应安装可信插件，不用时请卸载。
 - **AI 工坊的第三方依赖**：允许插件声明 npm 依赖，用户确认后由宿主在插件目录执行 `npm install --ignore-scripts`（失败回落 pnpm），再加载插件。供应链风险由用户确认与版本锁定缓解，但**依赖包本身仍以完整 Node 权限运行**；禁用 lifecycle scripts 只能阻止安装期脚本，不能阻止包代码在 import 时执行。恶意依赖与恶意插件代码等价。
 
 **残余风险**：恶意外部插件可以读取文件、发起网络请求、读取同进程内其它服务状态，甚至直接删除文件绕过补偿链。CordClean 的目标是「故障隔离 + 能力收窄 + 风险提示」，不是插件沙箱；生产使用应只安装签名/可信来源插件（签名校验尚未实现）。

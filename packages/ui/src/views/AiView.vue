@@ -794,9 +794,9 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
 
       <!-- AI 插件工坊：不依赖分析结果，进页面即可使用 -->
       <div class="cc-card">
-        <div class="cc-card-title"><h3>🛠️ AI 插件工坊</h3><span class="cc-faint">无需先分析：生成单文件插件 → 校验 → 你阅读代码后安装</span></div>
-        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。生成的是单文件插件，可声明 npm 第三方依赖（安装前需你确认，下载时禁用 lifecycle scripts）；安装失败会自动清理本次生成的文件与依赖目录，卸载插件也会清理。不通过的代码不会进入安装步骤。</p>
-        <el-input v-model="workshopRequirement" type="textarea" :rows="2" placeholder="例如：写一个插件，清理 D 盘下超过 30 天的 .log 文件" />
+        <div class="cc-card-title"><h3>🛠️ AI 插件工坊</h3><span class="cc-faint">无需先分析：生成原生 Cordis 插件 → 校验 → 你审阅代码后安装</span></div>
+        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。支持生成 cleaner / widget / active / desktop 四类原生 Cordis 插件：可注册清理任务、概览卡片、iframe 页面、状态栏/命令，active 插件可主动推送事件，desktop 插件可用悬浮窗/托盘。可声明 npm 第三方依赖（安装前需你确认，下载时禁用 lifecycle scripts）；安装失败会自动清理本次生成的文件与依赖目录，卸载插件也会清理。不通过的代码不会进入安装步骤。</p>
+        <el-input v-model="workshopRequirement" type="textarea" :rows="2" placeholder="例如：写一个 widget 插件，在概览页显示当前时间；或写一个 cleaner 插件清理 %TEMP% 下超过 7 天的 .log" />
         <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" :disabled="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
       </div>
 

@@ -29,7 +29,7 @@ import { PluginWindowService } from './domains/kernel/window.ts'
 import type { PluginWindowBackend } from './domains/kernel/window.ts'
 
 export const APP_NAME = 'CordClean'
-export const APP_VERSION = '0.5.0'
+export const APP_VERSION = '0.5.1'
 
 export interface AppOptions {
   /** 数据目录，默认 `%LOCALAPPDATA%\\CordClean` */

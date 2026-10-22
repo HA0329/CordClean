@@ -30,6 +30,10 @@ const MAX_DEPENDENCIES = 8
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
 const VERSION_RE = /^[~^]?\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$/
 
+function hasInject(code: string, service: string): boolean {
+  return new RegExp(`export\\s+const\\s+inject\\s*=\\s*\\[[^\\]]*['"]${service}['"]`).test(code)
+}
+
 const FORBIDDEN: Array<{ pattern: RegExp; message: string }> = [
   { pattern: /child_process/, message: '禁止使用 child_process（不能起子进程）' },
   { pattern: /process\.exit/, message: '禁止调用 process.exit' },
@@ -124,8 +128,14 @@ export function checkPluginSource(code: string, options: PluginCodeOptions = {})
     if (/\bsetup\s*\(/.test(text)) {
       warnings.push('原生 Cordis 插件应使用 apply(ctx)，setup 是旧式 worker 插件字段')
     }
-    if (/\bctx\.ui\b/.test(text) && !/export\s+const\s+inject\s*=\s*\[[^\]]*['"]ui['"]/.test(text)) {
+    if (/\bctx\.ui\b/.test(text) && !hasInject(text, 'ui')) {
       warnings.push('使用了 ctx.ui，请在插件中声明 export const inject = ["ui"]')
+    }
+    if (/\bctx\.window\b/.test(text) && !hasInject(text, 'window')) {
+      warnings.push('使用了 ctx.window，请在插件中声明 export const inject = ["window"]')
+    }
+    if (/\bctx\.cleaner\b/.test(text) && !hasInject(text, 'cleaner')) {
+      warnings.push('使用了 ctx.cleaner，请在插件中声明 export const inject = ["cleaner"]')
     }
   } else {
     if (!/export\s+default\b/.test(text)) {
