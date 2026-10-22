@@ -31,7 +31,7 @@ function makeEntry(index: number, overrides: Partial<HistoryEntry> = {}): Histor
     failed: 0,
     dryRun: false,
     ...overrides,
-  }
+  } as HistoryEntry
 }
 
 describe('设置服务', () => {

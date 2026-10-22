@@ -66,8 +66,26 @@ describe('API 全链路', () => {
     expect(history.result[0].cleaned).toBeGreaterThanOrEqual(2)
 
     const undo = await rpc('clean/undo-state')
-    expect(undo.result.available).toBe(true)
+    // 回收站模式无法通过“撤销”接口真正恢复（需要用户手动清空/还原回收站），因此不再显示为可撤销
+    expect(undo.result.available).toBe(false)
     expect(undo.result.recycle).toBeGreaterThanOrEqual(2)
+  })
+
+  it('clean/start 不接受界面回传的清理项（只认 itemIds）', async () => {
+    const bad = await rpc('clean/start', { items: [{ id: 'x', taskId: 'flow-files', path: dir, kind: 'file', size: 1, risk: 'safe', category: 'system', title: 'x' }] })
+    expect(bad.error.code).toBe(-32602)
+    expect(bad.error.message).toContain('参数校验失败')
+  })
+
+  it('settings/set 拒绝原型链路径，settings/patch 对 null 配置段自愈', async () => {
+    const polluted = await rpc('settings/set', { path: '__proto__.polluted', value: 'yes' })
+    expect(polluted.error).toBeTruthy()
+    expect(({} as any).polluted).toBeUndefined()
+
+    const healed = await rpc('settings/patch', { patch: { scan: null } })
+    expect(healed.error).toBeUndefined()
+    expect(healed.result.scan).toBeTruthy()
+    expect(healed.result.scan.concurrency).toBeGreaterThan(0)
   })
 
   it('RPC 参数校验拦截非法请求', async () => {

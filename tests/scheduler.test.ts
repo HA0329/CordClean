@@ -105,4 +105,59 @@ describe('定时任务：授权与自动清理', () => {
     } finally {
       await app.dispose()
     }
-  })})
+  })
+
+  it('授权指纹绑定计划范围：taskIds 变化会生成不同 hash', async () => {
+    const app = await createApp({
+      dataDir: path.join(sandbox.dataDir, 'scheduler-scope'),
+      logger: false,
+      loadPlugins: true,
+      manifest: manifestOf([{ id: 'scheduler', plugin: schedulerPlugin }]),
+      settingsOverrides: { plugins: { scheduler: { enabled: true, config: { enabled: true, everyMinutes: 15, mode: 'scan', taskIds: [] } } } },
+    })
+    try {
+      let first: any
+      let second: any
+      ;(app.ctx as any).emit('scheduler/authorize', { taskIds: ['task-a'] }, (config: any) => { first = config })
+      ;(app.ctx as any).emit('scheduler/authorize', { taskIds: ['task-b'] }, (config: any) => { second = config })
+      expect(first?.plans?.[0]?.authorizedHash).toMatch(/^[0-9a-f]{16}$/)
+      expect(second?.plans?.[0]?.taskIds).toEqual(['task-b'])
+      expect(second?.plans?.[0]?.authorizedHash).not.toBe(first?.plans?.[0]?.authorizedHash)
+    } finally {
+      await app.dispose()
+    }
+  })
+
+  it('撤销会清空所有计划的授权（多计划也不会漏）', async () => {
+    const app = await createApp({
+      dataDir: path.join(sandbox.dataDir, 'scheduler-revoke'),
+      logger: false,
+      loadPlugins: true,
+      manifest: manifestOf([{ id: 'scheduler', plugin: schedulerPlugin }]),
+      settingsOverrides: {
+        plugins: {
+          scheduler: {
+            enabled: true,
+            config: {
+              enabled: true,
+              plans: [
+                { id: 'p1', name: '计划1', enabled: true, taskIds: ['a'], mode: 'clean', authorizedHash: 'deadbeef' },
+                { id: 'p2', name: '计划2', enabled: true, taskIds: ['b'], mode: 'clean', authorizedHash: 'feedface' },
+              ],
+            },
+          },
+        },
+      },
+    })
+    try {
+      let next: any
+      ;(app.ctx as any).emit('scheduler/revoke', undefined, (config: any) => { next = config })
+      expect(next?.plans?.map((plan: any) => plan.authorizedHash)).toEqual(['', ''])
+      expect(next?.plans?.map((plan: any) => plan.mode)).toEqual(['scan', 'scan'])
+      expect(next?.mode).toBe('scan')
+      expect(next?.authorizedHash).toBe('')
+    } finally {
+      await app.dispose()
+    }
+  })
+})

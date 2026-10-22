@@ -13,7 +13,7 @@ const sandbox = createSandbox()
 let server: Server
 let port = 0
 let mode: 'ok' | 'http500' | 'invalid-json' | 'bad-shape' | 'slow' = 'ok'
-let lastRequest: { url?: string; body: any } = {}
+let lastRequest: { url?: string; body?: any } = {}
 
 const OK_BODY = {
   summary: '一切正常',
