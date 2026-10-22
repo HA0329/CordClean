@@ -308,15 +308,19 @@ function categoryName(id: string) {
 
         <div class="plugin-spacer"></div>
         <div class="plugin-actions">
-          <el-button size="small" :disabled="!plugin.enabled" @click="openConfig(plugin)">配置</el-button>
-          <el-button size="small" @click="reload(plugin)">热重载</el-button>
-          <el-button size="small" @click="openSource(plugin)">源码</el-button>
-          <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" type="primary" plain @click="runPluginTasks(plugin)">扫描此插件</el-button>
-          <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" @click="addPluginToScheduler(plugin)">加入定时任务</el-button>
-          <el-button v-if="!plugin.enabled" size="small" type="primary" plain @click="install(plugin)">启用</el-button>
-          <el-button v-if="plugin.source === 'external'" size="small" type="danger" plain @click="uninstall(plugin)">卸载并删除</el-button>
-          <el-button v-else-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">停用</el-button>
-          <span class="cc-faint" style="margin-left: auto">{{ plugin.configurable ? '支持配置' : '无配置项' }}</span>
+          <div class="plugin-action-group">
+            <el-button size="small" :disabled="!plugin.enabled" @click="openConfig(plugin)">配置</el-button>
+            <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" type="primary" plain @click="runPluginTasks(plugin)">扫描此插件</el-button>
+            <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" @click="addPluginToScheduler(plugin)">加入定时任务</el-button>
+            <el-button v-if="!plugin.enabled" size="small" type="primary" plain @click="install(plugin)">启用</el-button>
+            <el-button v-if="plugin.source === 'external'" size="small" type="danger" plain @click="uninstall(plugin)">卸载并删除</el-button>
+            <el-button v-else-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">停用</el-button>
+          </div>
+          <div class="plugin-action-group secondary">
+            <el-button size="small" @click="reload(plugin)">热重载</el-button>
+            <el-button size="small" @click="openSource(plugin)">源码</el-button>
+            <span class="cc-faint">{{ plugin.configurable ? '支持配置' : '无配置项' }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -397,6 +401,7 @@ function categoryName(id: string) {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 .plugin-card.disabled {
@@ -467,10 +472,32 @@ function categoryName(id: string) {
 
 .plugin-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--cc-border);
+}
+
+.plugin-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plugin-action-group.secondary {
+  margin-left: auto;
+}
+
+.plugin-action-group .el-button {
+  margin-left: 0;
+}
+
+.plugin-action-group .cc-faint {
+  margin-left: 2px;
 }
 
 .plugin-spacer {
