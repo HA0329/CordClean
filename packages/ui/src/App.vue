@@ -10,6 +10,7 @@ import HistoryView from './views/HistoryView.vue'
 import AiView from './views/AiView.vue'
 import SettingsView from './views/SettingsView.vue'
 import CleaningView from './views/CleaningView.vue'
+import ScanningView from './views/ScanningView.vue'
 import PluginStatusItems from './components/PluginStatusItems.vue'
 
 const nav = [
@@ -29,11 +30,12 @@ const views: Record<string, any> = {
   ai: AiView,
   settings: SettingsView,
   cleaning: CleaningView,
+  scanning: ScanningView,
 }
 
 function navActive(id: string): boolean {
   if (state.page === id) return true
-  return id === 'clean' && state.page === 'cleaning'
+  return id === 'clean' && (state.page === 'cleaning' || state.page === 'scanning')
 }
 
 const current = computed(() => views[state.page] ?? OverviewView)
@@ -223,6 +225,9 @@ async function revealDataDir() {
           <span class="cc-pill runtime-pill" :title="shellTitle" @click="refreshAppInfo">{{ shellText }}</span>
           <button v-if="state.cleaning" class="cleaning-back" title="查看实时清理进度" @click="state.page = 'cleaning'">
             🧹 清理中 · 查看进度
+          </button>
+          <button v-else-if="state.scanning" class="cleaning-back" title="查看实时扫描进度" @click="state.page = 'scanning'">
+            🔍 扫描中 · 查看进度
           </button>
           <PluginStatusItems />
         </div>

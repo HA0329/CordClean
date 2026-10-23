@@ -58,6 +58,10 @@ function openHistory(): void {
 /** 回收站回执解析失败时后端可能把整段 JSON 当 message；优先展示内部真实 message */
 function failureMessage(message: string): string {
   const text = String(message ?? '')
+  // Windows 回收站对正在被系统占用的缓存文件常返回 ERROR_INVALID_LEVEL；
+  // 不要把 .NET 反射式异常文案直接丢给用户。
+  if (/系统调用级别不正确|DeleteFile/i.test(text)) return '文件正被系统占用或受保护，无法放入回收站，已跳过'
+  if (/EBUSY|被占用|另一个程序/i.test(text)) return '文件正在被占用，已跳过'
   if (!text.trim().startsWith('{')) return text
   try {
     const data = JSON.parse(text) as { failed?: Array<{ message?: string }> }

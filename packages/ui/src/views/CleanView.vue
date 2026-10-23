@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import {
   CATEGORIES,
   RISK_META,
@@ -490,30 +490,37 @@ const tasksByCategory = computed(() => {
   }))
 })
 
-async function runScan() {
+async function runScanWith(ids: string[]) {
+  // 独立扫描进度页：避免结果页在扫描过程中被进度事件反复干扰
+  state.scan = undefined
+  state.page = 'scanning'
   try {
-    const ids = selectedTaskIds.value.filter((id) => state.tasks.some((task) => task.id === id))
-    if (!ids.length) {
-      ElMessage.warning('请先勾选要扫描的清理项（默认已勾选安全项）')
-      return
-    }
     await startScan(ids)
-    if (state.scan?.cancelled) ElMessage.warning('扫描已取消，已显示部分结果')
-    else ElMessage.success('扫描完成')
+    const report = state.scan as { cancelled?: boolean; items?: unknown[] } | null | undefined
+    if (state.page === 'scanning') state.page = 'clean'
+    if (report?.cancelled) {
+      ElNotification({ title: '扫描已取消', message: '已保留部分扫描结果', type: 'warning' })
+    } else if (state.page !== 'clean') {
+      ElNotification({ title: '扫描完成', message: `发现 ${report?.items?.length ?? 0} 个可清理项`, type: 'success' })
+    }
   } catch (error) {
+    if (state.page === 'scanning') state.page = 'clean'
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
 
+async function runScan() {
+  const ids = selectedTaskIds.value.filter((id) => state.tasks.some((task) => task.id === id))
+  if (!ids.length) {
+    ElMessage.warning('请先勾选要扫描的清理项（默认已勾选安全项）')
+    return
+  }
+  await runScanWith(ids)
+}
+
 async function runScanSingle(taskId: string) {
   selectedTaskIds.value = [taskId]
-  try {
-    await startScan([taskId])
-    if (state.scan?.cancelled) ElMessage.warning('扫描已取消，已显示部分结果')
-    else ElMessage.success('扫描完成')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : String(error))
-  }
+  await runScanWith([taskId])
 }
 
 // 新扫描结果：应用推荐策略、重置筛选与选择（首次加载已有扫描结果时同样适用）
@@ -616,6 +623,12 @@ async function handleBulkCommand(command: string) {
 
 <template>
   <div class="cc-page clean-view">
+    <el-alert v-if="scanning" type="info" :closable="false" show-icon class="scanning-banner">
+      <template #title>
+        <span>扫描正在进行，本页操作已暂停。</span>
+        <el-button link type="primary" @click="state.page = 'scanning'">查看实时扫描进度</el-button>
+      </template>
+    </el-alert>
     <el-alert v-if="cleaning" type="warning" :closable="false" show-icon class="cleaning-banner">
       <template #title>
         <span>清理正在进行，本页操作已暂停。</span>
@@ -1125,6 +1138,10 @@ async function handleBulkCommand(command: string) {
 
 <style scoped>
 .cleaning-banner {
+  margin-bottom: 14px;
+}
+
+.scanning-banner {
   margin-bottom: 14px;
 }
 .task-groups {
