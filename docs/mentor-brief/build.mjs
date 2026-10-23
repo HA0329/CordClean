@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const parts = ['01-head.html', '02-body-a.html', '03-body-b.html', '04-body-c.html', '05-script.html']
-const shotDir = 'D:/桌面/deepseek-harness/CordClean-v0.5.2/assets/screenshots'
+const shotDir = 'D:/桌面/deepseek-harness/CordClean-v0.5.3/assets/screenshots'
 const out = 'D:/桌面/deepseek-harness/CordClean-项目介绍.html'
 
 const SHOTS = {
@@ -34,6 +34,7 @@ if (left) throw new Error('unreplaced shot tokens: ' + left.join(', '))
 fs.writeFileSync(out, html, 'utf8')
 console.log('built:', out)
 console.log('size:', (fs.statSync(out).size / 1024 / 1024).toFixed(2), 'MB')
+
 
 
 
