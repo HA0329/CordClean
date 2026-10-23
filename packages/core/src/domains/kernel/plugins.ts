@@ -24,6 +24,36 @@ import type {
 } from '@cordclean/shared'
 import { errorMessage, isAbsolutePath, isSubPath } from '@cordclean/utils'
 
+const AUTO_INJECT_SERVICES = new Set([
+  'cleaner',
+  'ui',
+  'window',
+  'settings',
+  'system',
+  'pathPolicy',
+  'rules',
+  'evaluator',
+  'history',
+  'quarantine',
+  'compensate',
+  'executor',
+  'recycleBin',
+  'ai',
+  'aiContext',
+  'egress',
+])
+
+/** 扫描源码里出现的核心服务访问；用于兼容旧 AI 工坊产物缺失 inject 的情况 */
+function detectCtxServiceRefs(source: string): string[] {
+  const found = new Set<string>()
+  const re = /\bctx\.([A-Za-z_$][\w$]*)/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(source))) {
+    if (AUTO_INJECT_SERVICES.has(match[1])) found.add(match[1])
+  }
+  return [...found]
+}
+
 /** 插件清单项 */
 export interface PluginManifestEntry {
   id: string
@@ -277,6 +307,22 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     if (!plugin || (typeof plugin.apply !== 'function' && typeof plugin.setup !== 'function' && typeof plugin !== 'function')) {
       throw new Error('原生插件必须导出 Cordis 插件（apply(ctx) 函数或含 apply 的对象）')
     }
+    // 旧版 AI 工坊可能生成“只 inject ui、却访问 ctx.cleaner/system”的插件。
+    // 严格校验会拦截新安装；这里对已生成文件做一次兼容补齐，避免用户升级后插件永久报错。
+    let loadedPlugin = plugin
+    if (plugin && typeof plugin === 'object' && typeof plugin.apply === 'function') {
+      const source = await readFile(abs, 'utf8').catch(() => '')
+      const declared = new Set<string>(
+        Array.isArray(plugin.inject) ? plugin.inject.filter((item: unknown): item is string => typeof item === 'string') : [],
+      )
+      const missing = detectCtxServiceRefs(source).filter((service) => !declared.has(service))
+      if (missing.length) {
+        loadedPlugin = { ...plugin, inject: [...declared, ...missing] }
+        this.ctx.logger?.warn?.(
+          `插件 ${String(plugin.name ?? path.basename(abs))} 未声明 inject: ${missing.join(', ')}；已按源码自动补齐（旧工坊产物兼容）`,
+        )
+      }
+    }
     const name = String(plugin.name ?? namespace.name ?? path.basename(abs, path.extname(abs)))
     const id = 'external:' + name
     if (this.records.has(id)) throw new Error('同名插件已加载：' + id)
@@ -288,11 +334,11 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       category: (plugin.category as CategoryId) ?? 'apps',
       version: String(plugin.version ?? '0.0.0'),
       defaultEnabled: true,
-      load: async () => ({ default: plugin }),
+      load: async () => ({ default: loadedPlugin }),
     }
     const record: RuntimeRecord = {
       entry,
-      module: plugin,
+      module: loadedPlugin,
       status: 'stopped',
       config: stored?.config ?? {},
       taskIds: [],

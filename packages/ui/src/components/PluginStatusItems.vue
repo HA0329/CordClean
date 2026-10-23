@@ -27,6 +27,11 @@ function keyOf(view: StatusView): string {
   return `${view.pluginId}:${view.item.id}`
 }
 
+function labelOf(view: StatusView): string {
+  // 兼容旧 AI 工坊产物把 label 写成 title 的情况
+  return view.item.label ?? (view.item as unknown as { title?: string }).title ?? '状态'
+}
+
 function asText(value: unknown): string {
   if (value === undefined || value === null) return '—'
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value)
@@ -78,7 +83,7 @@ onUnmounted(() => {
 
 <template>
   <span v-for="view in items" :key="keyOf(view)" class="cc-pill plugin-status" :class="`tone-${view.item.tone ?? 'neutral'}`">
-    {{ view.item.label }}
+    {{ labelOf(view) }}
     <b>{{ values[keyOf(view)] ?? '…' }}</b>
   </span>
 </template>

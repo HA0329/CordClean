@@ -137,5 +137,17 @@ export function apply(ctx) {
     expect(result.errors.join(' ')).toContain('apply')
     expect((await validatePluginCode(old, {}, 'native')).ok).toBe(false)
   })
+
+  it('原生模式把“使用 ctx 服务但未 inject”判为错误，而不是警告', () => {
+    const bad = `export const name = 'missing-inject'
+export function apply(ctx) {
+  if (ctx.cleaner) ctx.logger.info('has cleaner')
+}
+`
+    const result = checkPluginSource(bad, { mode: 'native' })
+    expect(result.ok).toBe(false)
+    expect(result.errors.join(' ')).toContain('inject')
+    expect(result.errors.join(' ')).toContain('cleaner')
+  })
 })
 

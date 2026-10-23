@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.5.8`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；54 个测试文件 / 380 个用例。
+当前版本 `0.5.9`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；54 个测试文件 / 382 个用例。
 
 ## 快速开始
 
@@ -45,7 +45,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 55 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（380 个用例 / 51 个文件）
+- **测试**：Vitest（382 个用例 / 51 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -261,7 +261,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 380 个用例 / 51 个文件
+pnpm test          # 382 个用例 / 51 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）

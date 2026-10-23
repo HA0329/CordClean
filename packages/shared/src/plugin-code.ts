@@ -128,14 +128,32 @@ export function checkPluginSource(code: string, options: PluginCodeOptions = {})
     if (/\bsetup\s*\(/.test(text)) {
       warnings.push('原生 Cordis 插件应使用 apply(ctx)，setup 是旧式 worker 插件字段')
     }
-    if (/\bctx\.ui\b/.test(text) && !hasInject(text, 'ui')) {
-      warnings.push('使用了 ctx.ui，请在插件中声明 export const inject = ["ui"]')
-    }
-    if (/\bctx\.window\b/.test(text) && !hasInject(text, 'window')) {
-      warnings.push('使用了 ctx.window，请在插件中声明 export const inject = ["window"]')
-    }
-    if (/\bctx\.cleaner\b/.test(text) && !hasInject(text, 'cleaner')) {
-      warnings.push('使用了 ctx.cleaner，请在插件中声明 export const inject = ["cleaner"]')
+    // 这是硬错误：Cordis 读取未 inject 的 ctx 属性会直接抛错，警告不够。
+    // 典型踩坑：只 inject ui，却在代码里 if (ctx.cleaner) 探测能力。
+    const requiredInject = [
+      'ui',
+      'cleaner',
+      'window',
+      'settings',
+      'system',
+      'pathPolicy',
+      'rules',
+      'evaluator',
+      'history',
+      'quarantine',
+      'compensate',
+      'executor',
+      'recycleBin',
+      'ai',
+      'aiContext',
+      'egress',
+    ]
+    for (const service of requiredInject) {
+      if (new RegExp(`\\bctx\\.${service}\\b`).test(text) && !hasInject(text, service)) {
+        errors.push(
+          `使用了 ctx.${service}，但没有在 inject 中声明 "${service}"；Cordis 会直接抛错。不要用 if (ctx.${service}) 探测能力，只使用已 inject 的服务。`,
+        )
+      }
     }
   } else {
     if (!/export\s+default\b/.test(text)) {

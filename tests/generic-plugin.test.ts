@@ -65,6 +65,31 @@ describe('P1 通用插件：原生 Cordis 插件与 UI 贡献', () => {
     }
   })
 
+  it('旧工坊插件漏写 inject 时按源码自动补齐并成功加载', async () => {
+    const dataDir = path.join(tempRoot, 'auto-inject')
+    const file = path.join(tempRoot, 'native-no-inject.mjs')
+    writeFileSync(
+      file,
+      `export const name = 'native-no-inject'
+export const kind = 'widget'
+export function apply(ctx) {
+  ctx.effect(() => ctx.ui.resolve('native-no-inject', 'x', () => ({ text: 'ok' })))
+}
+`,
+      'utf8',
+    )
+    const app = await createApp({ dataDir, logger: false, manifest: [] as any })
+    try {
+      await app.ctx.plugins.installNativePlugin!(file)
+      const plugin = app.ctx.plugins.list().find((item) => item.id === 'external:native-no-inject')
+      expect(plugin?.enabled).toBe(true)
+      expect(plugin?.status).toBe('active')
+      await expect(app.ctx.ui.resolveValue('external:native-no-inject', 'x')).resolves.toEqual({ text: 'ok' })
+    } finally {
+      await app.dispose()
+    }
+  })
+
   it('原生插件持久化后重启自动加载，禁用后移除 UI 贡献', async () => {
     const dataDir = path.join(tempRoot, 'app2')
     const file = await makePluginFile(tempRoot)
