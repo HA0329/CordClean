@@ -43,6 +43,22 @@ const AUTO_INJECT_SERVICES = new Set([
   'egress',
 ])
 
+function describeNativePlugin(plugin: any): string {
+  const explicit = typeof plugin?.description === 'string' ? plugin.description.trim() : ''
+  if (explicit) return explicit
+  const kind = String(plugin?.kind ?? 'cleaner')
+  const cards = Array.isArray(plugin?.contributes?.overviewCards) ? plugin.contributes.overviewCards.length : 0
+  const commands = Array.isArray(plugin?.contributes?.commands) ? plugin.contributes.commands.length : 0
+  if (kind === 'widget') {
+    return cards > 0
+      ? `AI 工坊 Widget 插件：贡献 ${cards} 张概览卡片${commands ? `、${commands} 个操作按钮` : '（自动刷新）'}`
+      : 'AI 工坊 Widget 插件（未提供卡片说明）'
+  }
+  if (kind === 'active') return 'AI 工坊主动插件：启用后在后台运行'
+  if (kind === 'desktop') return 'AI 工坊桌面插件：可打开悬浮窗/托盘'
+  return 'AI 工坊原生插件'
+}
+
 /** 扫描源码里出现的核心服务访问；用于兼容旧 AI 工坊产物缺失 inject 的情况 */
 function detectCtxServiceRefs(source: string): string[] {
   const found = new Set<string>()
@@ -330,7 +346,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     const entry: PluginManifestEntry = {
       id,
       name,
-      description: String(plugin.description ?? '外部原生插件'),
+      description: describeNativePlugin(plugin),
       category: (plugin.category as CategoryId) ?? 'apps',
       version: String(plugin.version ?? '0.0.0'),
       defaultEnabled: true,

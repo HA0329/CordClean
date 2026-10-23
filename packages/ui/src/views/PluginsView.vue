@@ -53,6 +53,10 @@ function pagesFor(plugin: PluginRuntime): UiPageContribution[] {
   return uiEntries.value.find((entry) => entry.pluginId === plugin.id)?.contributions.pages ?? []
 }
 
+function cardsFor(plugin: PluginRuntime): number {
+  return uiEntries.value.find((entry) => entry.pluginId === plugin.id)?.contributions.overviewCards?.length ?? 0
+}
+
 function commandsFor(plugin: PluginRuntime): UiCommandContribution[] {
   return uiEntries.value.find((entry) => entry.pluginId === plugin.id)?.contributions.commands ?? []
 }
@@ -406,6 +410,7 @@ function categoryName(id: string) {
             <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" type="primary" plain @click="runPluginTasks(plugin)">扫描此插件</el-button>
             <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" @click="addPluginToScheduler(plugin)">加入定时任务</el-button>
             <el-button v-if="pagesFor(plugin).length" size="small" type="primary" plain @click="openPluginPage(plugin)">插件页面</el-button>
+            <el-button v-if="cardsFor(plugin) > 0" size="small" type="primary" plain @click="state.page = 'overview'">查看概览卡片（{{ cardsFor(plugin) }}）</el-button>
             <el-button
               v-for="command in commandsFor(plugin)"
               :key="command.id"

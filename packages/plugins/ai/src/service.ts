@@ -229,6 +229,36 @@ export class AiService extends Service implements AiLike {
     return result
   }
 
+  /** 给插件生成器的项目能力上下文（不发送源码/用户数据，只发送契约与任务清单） */
+  private pluginProjectBrief(): string {
+    let tasks: string[] = []
+    try {
+      tasks = this.ctx.cleaner
+        .list()
+        .slice(0, 80)
+        .map((task) => `${task.id}（${task.name}，${task.category}/${task.risk}）`)
+    } catch {
+      /* 插件管理器未就绪时只给静态契约 */
+    }
+    return [
+      '【CordClean 项目上下文】',
+      '定位：Windows 模块化清理工具的 Cordis 插件系统；插件只能生成一个自包含 ESM 文件。',
+      '目录结构（仅用于理解分层，不要 import 这些包）：',
+      '  apps/web、apps/desktop：Web/Electron 外壳',
+      '  packages/core/domains：cleaner/engine、safety（path-policy/quarantine/executor）、kernel（plugins/settings/ui/window）',
+      '  packages/shared：PluginKind、UI 贡献、RPC、清理任务契约',
+      '  packages/ui：Vue 页面与插件卡片/状态/命令渲染',
+      '宿主服务契约：',
+      '  ctx.cleaner.define({ id,name,category,risk,defaultSelected,targets,scan(scan) })；scan 只 emit 候选',
+      '  ctx.ui.resolve(pluginName,id,fn) / ctx.ui.command(pluginName,id,fn) / ctx.ui.emit / ctx.ui.notify',
+      '  ctx.system.env.get(name)、ctx.pathPolicy.check(path)、ctx.settings.get()',
+      '  ctx.window.open/createTray 仅 Electron 桌面壳',
+      'UI 数据：metric={value,unit?}；text={text}；list=string[] 或 {items:string[]}；progress={value,max}',
+      '插件页只渲染 contributes.overviewCards/statusItems/commands/pages；widget/active/desktop 至少提供一个 commands 手动入口。',
+      '内置清理任务（不要重复定义；可以按需组合/补充）：' + (tasks.length ? tasks.join('、') : '暂无'),
+    ].join('\n')
+  }
+
   /** AI 插件工坊：生成原生 Cordis 通用插件草稿（生成后先过静态契约，失败自动带错误重试） */
   async draftPlugin(requirement: string): Promise<AiPluginDraft> {
     const key = this.requireKey()
@@ -239,7 +269,13 @@ export class AiService extends Service implements AiLike {
     for (let attempt = 0; attempt < 3; attempt++) {
       const maxTokens = Math.min(131_072, Math.max(32_768, base.maxTokens) * (attempt ? 2 : 1))
       const config = { ...base, maxTokens }
-      const request = buildRequest(config, key, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX + requirement + feedback, [PLUGIN_TOOL])
+      const request = buildRequest(
+        config,
+        key,
+        PLUGIN_SYSTEM_PROMPT + '\n\n' + this.pluginProjectBrief(),
+        PLUGIN_USER_PREFIX + requirement + feedback,
+        [PLUGIN_TOOL],
+      )
       this.gate('plugin-draft', request.url, request.body)
       const result = await requestJson(request.url, {
         headers: request.headers,
@@ -788,6 +824,7 @@ const PLUGIN_TOOL = {
     type: 'object',
     properties: {
       name: { type: 'string', description: 'kebab-case 插件名' },
+      description: { type: 'string', description: '一句话说明插件功能，会显示在插件页' },
       kind: {
         type: 'string',
         enum: ['cleaner', 'widget', 'active', 'desktop'],
@@ -809,8 +846,9 @@ const PLUGIN_TOOL = {
 }
 
 const PLUGIN_SYSTEM_PROMPT = [
-  '你是 Cordis 通用插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "kind": "cleaner|widget|active|desktop", "code": "完整 ESM 源码", "notes": "简要说明", "dependencies": {"包名":"版本"} }。',
-  'code 是原生 Cordis 插件，必须是完整单文件 ESM：export const name = "kebab-case"; export const kind = "cleaner|widget|active|desktop"; 按需 export const inject = ["ui"] / ["cleaner"] / ["window"]; export function apply(ctx) { ... }。不要使用 export default 普通对象，也不要使用 setup()。',
+  '你是 Cordis 通用插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "description": "一句话说明插件功能", "kind": "cleaner|widget|active|desktop", "code": "完整 ESM 源码", "notes": "简要说明", "dependencies": {"包名":"版本"} }。',
+  'code 是原生 Cordis 插件，必须是完整单文件 ESM：export const name = "kebab-case"; export const description = "一句话"; export const kind = "cleaner|widget|active|desktop"; 按需 export const inject = ["ui"] / ["cleaner"] / ["window"]; export function apply(ctx) { ... }。不要使用 export default 普通对象，也不要使用 setup()。',
+  'widget/active/desktop 必须提供至少一个 commands 项（例如“刷新数据”“运行自检”），并在 apply 中用 ctx.ui.command(name, rpcID, handler) 注册；插件页没有手动命令时用户无法触发插件功能。cleaner 可不提供命令。',
   '插件按需声明 inject：用 ctx.ui 必须 inject 包含 "ui"；注册清理任务必须 inject 包含 "cleaner"；桌面窗口/托盘必须 inject 包含 "window"；使用 ctx.settings/system/pathPolicy 也必须分别 inject。Cordis 在未声明 inject 时读取 ctx 属性会直接抛错，禁止用 if (ctx.cleaner) / if (ctx.system) 这种方式探测能力；只使用 inject 中声明的服务。',
   'cleaner 类型：在 apply 中 ctx.cleaner.define({ id, name, category, risk, defaultSelected:false, targets:[...], scan(scan){ ... } })。scan 只读取目录并 scan.emit({ path, kind:"file"|"folder", size })，不要删除/修改文件。',
   'widget 类型：export const contributes = { overviewCards: [{ id, title, type:"metric|text|list|progress", resolve:"数据ID", refreshMs }] }；在 apply 中用 ctx.effect(() => ctx.ui.resolve(name, "数据ID", async () => ({ value: ... }))) 提供数据。宿主只渲染声明式卡片，禁止操作 DOM。',

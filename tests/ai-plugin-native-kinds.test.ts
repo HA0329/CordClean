@@ -93,6 +93,9 @@ describe('AI 插件工坊原生通用插件生成', () => {
       expect(firstRequest).toContain('ctx.window')
       expect(firstRequest).toContain('desktop')
       expect(firstRequest).toContain('overviewCards')
+      expect(firstRequest).toContain('CordClean 项目上下文')
+      expect(firstRequest).toContain('packages/core')
+      expect(firstRequest).toContain('内置清理任务')
 
       const desktop = await app.ctx.ai!.draftPlugin!('写一个桌宠插件')
       expect(desktop.mode).toBe('native')

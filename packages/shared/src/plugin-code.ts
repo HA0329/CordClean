@@ -128,6 +128,18 @@ export function checkPluginSource(code: string, options: PluginCodeOptions = {})
     if (/\bsetup\s*\(/.test(text)) {
       warnings.push('原生 Cordis 插件应使用 apply(ctx)，setup 是旧式 worker 插件字段')
     }
+    if (!/export\s+const\s+description\s*=/.test(text) && !/\bdescription\s*:/.test(text)) {
+      warnings.push('建议 export const description = "一句话说明插件功能"，否则插件页只能显示兜底说明')
+    }
+    const kindMatch = text.match(/export\s+const\s+kind\s*=\s*['"]([a-zA-Z-]+)['"]/)
+    const pluginKind = kindMatch?.[1] ?? ''
+    if (['widget', 'active', 'desktop'].includes(pluginKind)) {
+      const hasCommandContribution = /\bcommands\s*:\s*\[/.test(text)
+      const hasCommandHandler = /\bctx\.ui\.command\s*\(/.test(text)
+      if (!hasCommandContribution || !hasCommandHandler) {
+        warnings.push('widget/active/desktop 插件应至少提供一个 commands 按钮（如刷新/运行）并在 apply 中用 ctx.ui.command 注册，否则插件页没有手动入口')
+      }
+    }
     // 这是硬错误：Cordis 读取未 inject 的 ctx 属性会直接抛错，警告不够。
     // 典型踩坑：只 inject ui，却在代码里 if (ctx.cleaner) 探测能力。
     const requiredInject = [

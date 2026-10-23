@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue"
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 import { ElMessage } from 'element-plus'
 import { RISK_META, formatBytes, formatTime } from '@cordclean/shared'
 import {
@@ -418,8 +418,27 @@ const workshopDependenciesAccepted = ref(false)
 const workshopBusy = ref(false)
 const workshopInstalling = ref(false)
 const workshopError = ref('')
+const workshopElapsed = ref(0)
+let workshopElapsedTimer: ReturnType<typeof setInterval> | null = null
 let workshopRequest = 0
 let workshopValidateTimer: ReturnType<typeof setTimeout> | null = null
+
+function startWorkshopElapsed(): void {
+  if (workshopElapsedTimer) clearInterval(workshopElapsedTimer)
+  workshopElapsed.value = 0
+  workshopElapsedTimer = setInterval(() => {
+    workshopElapsed.value += 1
+  }, 1000)
+}
+
+function stopWorkshopElapsed(): void {
+  if (workshopElapsedTimer) {
+    clearInterval(workshopElapsedTimer)
+    workshopElapsedTimer = null
+  }
+}
+
+onUnmounted(stopWorkshopElapsed)
 
 async function generateWorkshopDraft() {
   if (!workshopRequirement.value.trim()) {
@@ -430,6 +449,8 @@ async function generateWorkshopDraft() {
   // 立即打开弹窗显示进度，避免“点了没反应直到草稿出现”的错觉
   workshopOpen.value = true
   workshopBusy.value = true
+  workshopElapsed.value = 0
+  startWorkshopElapsed()
   workshopError.value = ''
   workshopDraft.value = null
   workshopValidation.value = null
@@ -448,7 +469,10 @@ async function generateWorkshopDraft() {
   } catch (error) {
     if (requestId === workshopRequest) workshopError.value = error instanceof Error ? error.message : String(error)
   } finally {
-    if (requestId === workshopRequest) workshopBusy.value = false
+    if (requestId === workshopRequest) {
+      workshopBusy.value = false
+      stopWorkshopElapsed()
+    }
   }
 }
 
@@ -962,7 +986,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <el-checkbox v-model="workshopReviewed" style="margin-top: 8px">我已阅读上述代码，理解它会以完整权限运行</el-checkbox>
       </template>
       <div v-else-if="workshopBusy" style="padding: 32px 12px; text-align: center">
-        <p style="font-size: 15px">⏳ AI 正在生成插件草稿…</p>
+        <p style="font-size: 15px">⏳ AI 正在生成插件草稿…（已等待 {{ workshopElapsed }} 秒）</p>
         <p class="cc-hint">生成后还会做静态契约与语法校验；大模型慢时可能需要 30~90 秒，请勿重复点击。</p>
       </div>
       <div v-else-if="workshopError" class="error-text" style="padding: 24px 12px">生成失败：{{ workshopError }}</div>
