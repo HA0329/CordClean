@@ -54,6 +54,20 @@ function backToClean(): void {
 function openHistory(): void {
   state.page = 'history'
 }
+
+/** 回收站回执解析失败时后端可能把整段 JSON 当 message；优先展示内部真实 message */
+function failureMessage(message: string): string {
+  const text = String(message ?? '')
+  if (!text.trim().startsWith('{')) return text
+  try {
+    const data = JSON.parse(text) as { failed?: Array<{ message?: string }> }
+    const inner = data.failed?.[0]?.message
+    if (typeof inner === 'string' && inner.trim()) return inner
+  } catch {
+    /* 不是 JSON，按原文显示 */
+  }
+  return text
+}
 </script>
 
 <template>
@@ -120,7 +134,7 @@ function openHistory(): void {
         <h3>未能清理（{{ report.failures.length }}）</h3>
         <div v-for="failure in report.failures.slice(0, 20)" :key="failure.itemId" class="result-failure-row">
           <code>{{ failure.path }}</code>
-          <span class="error-text">{{ failure.message }}</span>
+          <span class="error-text">{{ failureMessage(failure.message) }}</span>
         </div>
       </div>
 

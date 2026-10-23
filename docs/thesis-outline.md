@@ -163,7 +163,7 @@ Windows 11、Node 24.19、pnpm 12、VS Code、Electron 38、Vue 3.5。
 全部可通过命令复现：
 
 ```bash
-pnpm test                                  # 53 文件 / 377 用例
+pnpm test                                  # 54 文件 / 380 用例
 pnpm exec tsx scripts/audit-plugins.ts     # 插件契约审计（只读）
 pnpm build:desktop && node scripts/e2e-ui.mjs   # Electron 端到端（CDP 点击 6 个页面 + 真实扫描）
 $env:DEEPSEEK_API_KEY='sk-...'; pnpm exec tsx scripts/ai-live-test.ts   # 真实接口（三形态/推理等级/模型列表/错误路径）

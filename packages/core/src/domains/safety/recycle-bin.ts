@@ -10,7 +10,7 @@
  *
  * 测试注记：`setRunnerForTests()` 可以注入假的执行器，避免测试真的往回收站扔东西。
  */
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { Service, type Context } from 'cordis'
@@ -29,7 +29,7 @@ export interface RecycleReceipt {
 export type RecycleRunner = (items: RecycleItem[]) => Promise<RecycleReceipt>
 
 /** 批量进入回收站的 PowerShell 脚本（UTF-8 写入临时文件后执行） */
-const RECYCLE_SCRIPT = `param([Parameter(Mandatory=$true)][string]$ListFile)
+const RECYCLE_SCRIPT = `param([Parameter(Mandatory=$true)][string]$ListFile, [Parameter(Mandatory=$true)][string]$ResultFile)
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName Microsoft.VisualBasic | Out-Null
 $items = Get-Content -LiteralPath $ListFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -48,7 +48,15 @@ foreach ($item in @($items)) {
   }
 }
 $result = [pscustomobject]@{ ok = $ok.ToArray(); failed = $failed.ToArray() }
-$result | ConvertTo-Json -Depth 4 -Compress
+# IMPORTANT: keep this script ASCII-only. Windows PowerShell 5.1 reads BOM-less
+# script files as ANSI; non-ASCII comments can corrupt parsing on some systems.
+# Write JSON as UTF-8 so Node does not decode the console codepage as UTF-8 mojibake.
+try {
+  $json = $result | ConvertTo-Json -Depth 4 -Compress
+  [System.IO.File]::WriteAllText($ResultFile, [string]$json, (New-Object System.Text.UTF8Encoding($false)))
+} catch {
+  [System.IO.File]::WriteAllText($ResultFile, '{"ok":[],"failed":[]}', (New-Object System.Text.UTF8Encoding($false)))
+}
 `
 
 export class RecycleBinService extends Service {
@@ -117,15 +125,22 @@ export class RecycleBinService extends Service {
   private async recycleChunk(chunk: RecycleItem[]): Promise<RecycleReceipt> {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'cordclean-recycle-'))
     const listFile = path.join(dir, 'list.json')
+    const resultFile = path.join(dir, 'result.json')
     try {
       writeFileSync(listFile, JSON.stringify(chunk), 'utf8')
       const script = this.ensureScript()
       const result = await runCommand(
         'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-ListFile', listFile],
+        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-ListFile', listFile, '-ResultFile', resultFile],
         { timeout: 5 * 60_000, maxBuffer: 16 * 1024 * 1024 },
       )
-      const parsed = parseReceipt(result.stdout)
+      let receiptText = ''
+      try {
+        receiptText = readFileSync(resultFile, 'utf8')
+      } catch {
+        /* PowerShell 可能中途失败，没有产出回执文件 */
+      }
+      const parsed = parseReceipt(receiptText)
       if (!parsed) {
         const message = (result.stderr || result.stdout || '回收站调用失败').slice(0, 200)
         return { ok: [], failed: chunk.map((item) => ({ path: item.path, message })) }
@@ -150,15 +165,19 @@ export class RecycleBinService extends Service {
 export function parseReceipt(stdout: string): RecycleReceipt | undefined {
   const text = stdout.replace(/^\uFEFF/, '').trim()
   if (!text) return undefined
-  const start = text.lastIndexOf('{')
-  if (start < 0) return undefined
-  try {
-    const payload = JSON.parse(text.slice(start)) as { ok?: string[]; failed?: Array<{ path: string; message: string }> }
-    return {
-      ok: Array.isArray(payload.ok) ? payload.ok : [],
-      failed: Array.isArray(payload.failed) ? payload.failed : [],
+  // 回执文件里是纯 JSON；仍兼容 stdout 前有 Add-Type 警告的情况：
+  // 先尝试第一个 '{'，失败再尝试最后一个 '{'（错误消息本身可能含 '{'）。
+  const starts = [...new Set([text.indexOf('{'), text.lastIndexOf('{')])].filter((index) => index >= 0)
+  for (const start of starts) {
+    try {
+      const payload = JSON.parse(text.slice(start)) as { ok?: string[]; failed?: Array<{ path: string; message: string }> }
+      return {
+        ok: Array.isArray(payload.ok) ? payload.ok : [],
+        failed: Array.isArray(payload.failed) ? payload.failed : [],
+      }
+    } catch {
+      /* 尝试下一个起点 */
     }
-  } catch {
-    return undefined
   }
+  return undefined
 }
