@@ -440,6 +440,25 @@ function stopWorkshopElapsed(): void {
 
 onUnmounted(stopWorkshopElapsed)
 
+function cancelWorkshopGeneration(): void {
+  if (!workshopBusy.value) return
+  // 客户端取消等待：使当前请求结果失效；模型 HTTP 请求可能已发出，不能保证服务端立刻停止
+  workshopRequest += 1
+  workshopBusy.value = false
+  stopWorkshopElapsed()
+  workshopOpen.value = false
+  ElMessage.info('已取消等待生成；模型请求可能仍在后台完成，但不会自动安装')
+}
+
+function discardWorkshopDraft(): void {
+  workshopOpen.value = false
+  workshopDraft.value = null
+  workshopValidation.value = null
+  workshopReviewed.value = false
+  workshopDependenciesAccepted.value = false
+  workshopError.value = ''
+}
+
 async function generateWorkshopDraft() {
   if (!workshopRequirement.value.trim()) {
     ElMessage.warning('先写一句需求')
@@ -466,8 +485,13 @@ async function generateWorkshopDraft() {
       draft.mode === 'native',
     )
     workshopReviewed.value = false
+    // 即使用户之前把弹窗关掉，结果到了也重新打开，避免草稿“生成好了就没了”
+    workshopOpen.value = true
   } catch (error) {
-    if (requestId === workshopRequest) workshopError.value = error instanceof Error ? error.message : String(error)
+    if (requestId === workshopRequest) {
+      workshopError.value = error instanceof Error ? error.message : String(error)
+      workshopOpen.value = true
+    }
   } finally {
     if (requestId === workshopRequest) {
       workshopBusy.value = false
@@ -824,6 +848,28 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" :disabled="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
       </div>
 
+      <!-- 生成任务不随弹窗关闭而丢失：后台继续时、草稿待审阅时都保留入口 -->
+      <div v-if="workshopBusy && !workshopOpen" class="cc-card workshop-pending">
+        <div>
+          <strong>⏳ 正在生成插件草稿</strong>
+          <p class="cc-hint">已等待 {{ workshopElapsed }} 秒；可以随时查看进度或取消。</p>
+        </div>
+        <div class="cc-actions">
+          <el-button type="primary" plain @click="workshopOpen = true">查看进度</el-button>
+          <el-button @click="cancelWorkshopGeneration">取消生成</el-button>
+        </div>
+      </div>
+      <div v-else-if="workshopDraft && !workshopOpen" class="cc-card workshop-pending">
+        <div>
+          <strong>📝 插件草稿待审阅：{{ workshopDraft.name }}</strong>
+          <p class="cc-hint">插件已生成，等待你阅读代码后安装；关闭弹窗不会自动安装。</p>
+        </div>
+        <div class="cc-actions">
+          <el-button type="primary" plain @click="workshopOpen = true">查看草稿</el-button>
+          <el-button @click="discardWorkshopDraft">放弃草稿</el-button>
+        </div>
+      </div>
+
       <!-- 分析结果 -->
       <template v-if="analysis">
     <div class="cc-card">
@@ -963,7 +1009,14 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <p v-if="!(egress?.records?.length)" class="cc-empty">还没有外发记录：发起一次分析或测试连接后即可看到。</p>
     </el-dialog>
 
-    <el-dialog v-model="workshopOpen" title="插件草稿审阅" width="900px">
+    <el-dialog
+      v-model="workshopOpen"
+      title="插件草稿审阅"
+      width="900px"
+      :close-on-click-modal="!workshopBusy"
+      :close-on-press-escape="!workshopBusy"
+      :show-close="!workshopBusy"
+    >
       <template v-if="workshopDraft">
         <p class="cc-hint">名称：{{ workshopDraft.name }} · {{ workshopDraft.notes }}</p>
         <p class="cc-hint">
@@ -991,13 +1044,18 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       </div>
       <div v-else-if="workshopError" class="error-text" style="padding: 24px 12px">生成失败：{{ workshopError }}</div>
       <template #footer>
-        <el-button @click="workshopOpen = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="workshopInstalling"
-          :disabled="workshopInstalling || !workshopDraft || !workshopValidation?.ok || !workshopReviewed || (workshopDraft && Object.keys(workshopDraft.dependencies ?? {}).length > 0 && !workshopDependenciesAccepted)"
-          @click="installWorkshopDraft"
-        >{{ workshopInstalling ? '正在安装依赖…' : '安装并启用' }}</el-button>
+        <template v-if="workshopBusy">
+          <el-button @click="cancelWorkshopGeneration">取消生成</el-button>
+        </template>
+        <template v-else>
+          <el-button @click="workshopOpen = false">关闭</el-button>
+          <el-button
+            type="primary"
+            :loading="workshopInstalling"
+            :disabled="workshopInstalling || !workshopDraft || !workshopValidation?.ok || !workshopReviewed || (workshopDraft && Object.keys(workshopDraft.dependencies ?? {}).length > 0 && !workshopDependenciesAccepted)"
+            @click="installWorkshopDraft"
+          >{{ workshopInstalling ? '正在安装依赖…' : '安装并启用' }}</el-button>
+        </template>
       </template>
     </el-dialog>
 
@@ -1184,5 +1242,17 @@ code {
   background: var(--cc-primary-soft);
   padding: 1px 5px;
   border-radius: 4px;
+}
+
+.workshop-pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.workshop-pending p {
+  margin: 4px 0 0;
 }
 </style>
