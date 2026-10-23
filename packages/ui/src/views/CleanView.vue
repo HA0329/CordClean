@@ -539,7 +539,10 @@ function askClean() {
 
 async function confirmClean() {
   showConfirm.value = false
-  // 立即切到独立进度页：实时状态 + 避免用户在结果列表上继续误点
+  // 立即切到独立进度页：实时状态 + 避免用户在结果列表上继续误点。
+  // 先清掉旧报告，否则进度页会短暂闪现上一次“清理完成”。
+  state.lastClean = undefined
+  state.cleanProgress = undefined
   state.page = 'cleaning'
   try {
     const report = await startClean([...selected.value], { dryRun: dryRun.value })

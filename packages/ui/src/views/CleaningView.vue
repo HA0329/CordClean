@@ -264,13 +264,29 @@ function openHistory(): void {
   font-size: 13px;
 }
 
+.result-task-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .result-failure-row {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: start;
 }
 
 .result-failure-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
   word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.result-failure-row .error-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .result-actions {

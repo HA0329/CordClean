@@ -291,6 +291,9 @@ export async function cancelScan(): Promise<void> {
 export async function startClean(itemIds: string[], options: { dryRun?: boolean; forceQuarantine?: boolean } = {}): Promise<CleanReport> {
   state.cleaning = true
   state.error = undefined
+  // 关键：先清掉上一次结果，避免切到进度页时旧「清理完成」闪一下
+  state.lastClean = undefined
+  state.cleanProgress = undefined
   try {
     const report = await requireTransport().request('clean/start', {
       itemIds,
