@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatBytes, formatDuration } from '@cordclean/shared'
 import { cancelClean, state } from '../api/store.ts'
@@ -7,6 +7,31 @@ import { cancelClean, state } from '../api/store.ts'
 const cleaning = computed(() => state.cleaning)
 const progress = computed(() => state.cleanProgress)
 const report = computed(() => state.lastClean)
+
+/**
+ * 清理当前路径变化极快（每个文件一次）；直接把它渲染成单行会导致整行文字
+ * 高频替换，看起来像页面在闪。这里保留最近处理文件列表，作为稳定的滚动日志。
+ */
+const recentPaths = ref<Array<{ seq: number; path: string }>>([])
+let pathSeq = 0
+let lastSession = ''
+let lastLoggedPath = ''
+watch(
+  () => state.cleanProgress,
+  (event) => {
+    if (!event) return
+    if (event.sessionId !== lastSession) {
+      lastSession = event.sessionId
+      recentPaths.value = []
+      lastLoggedPath = ''
+    }
+    const current = event.current
+    if (!current || current === lastLoggedPath) return
+    lastLoggedPath = current
+    recentPaths.value.push({ seq: ++pathSeq, path: current })
+    if (recentPaths.value.length > 8) recentPaths.value.splice(0, recentPaths.value.length - 8)
+  },
+)
 
 const percent = computed(() => {
   if (!cleaning.value && report.value) return 100
@@ -101,8 +126,14 @@ function failureMessage(message: string): string {
         <div><span>失败</span><b :class="{ 'has-failure': (progress?.failed ?? 0) > 0 }">{{ progress?.failed ?? 0 }}</b></div>
         <div><span>总项数</span><b>{{ progress?.total ?? '—' }}</b></div>
       </div>
-      <div v-if="progress?.current" class="cleaning-current">
-        <span class="cc-faint">当前：</span><code>{{ progress.current }}</code>
+      <div class="cleaning-current">
+        <div class="cleaning-log-title">正在处理（最近 {{ recentPaths.length }} 项）</div>
+        <div v-if="recentPaths.length" class="cleaning-log-list">
+          <div v-for="item in recentPaths" :key="item.seq" class="cleaning-log-row">
+            <code>{{ item.path }}</code>
+          </div>
+        </div>
+        <p v-else class="cc-faint cleaning-log-empty">等待第一个文件…</p>
       </div>
       <p class="cc-hint cleaning-tip">
         可以切换侧边栏做别的事，清理不会中断；如果回到清理页，页面会提示“正在清理”，避免重复点击。
@@ -230,13 +261,42 @@ function failureMessage(message: string): string {
 .cleaning-current {
   margin-top: 14px;
   padding: 10px 12px;
+  border: 1px solid var(--cc-border);
   border-radius: 8px;
   background: var(--cc-hover-bg);
   overflow: hidden;
 }
 
-.cleaning-current code {
-  word-break: break-all;
+.cleaning-log-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--cc-text-faint);
+}
+
+.cleaning-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 118px;
+  overflow: hidden;
+}
+
+.cleaning-log-row {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cleaning-log-row code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cleaning-log-empty {
+  margin: 0;
+  font-size: 12px;
 }
 
 .cleaning-tip {
