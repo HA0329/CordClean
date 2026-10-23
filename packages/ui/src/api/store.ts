@@ -154,6 +154,16 @@ export async function init(): Promise<void> {
       state.lastClean = report
       state.cleaning = false
       state.cleanProgress = undefined
+      // 用户切到别的页面时清理仍在后台继续；结束时用通知告诉他
+      if (state.page !== 'cleaning') {
+        const freed = report.freedBytes > 0 ? `，释放 ${(report.freedBytes / 1024 / 1024).toFixed(1)} MB` : ''
+        ElNotification({
+          title: report.cancelled ? '清理已取消' : report.dryRun ? '预演完成' : '清理完成',
+          message: `处理 ${report.cleaned} 项${freed}`,
+          type: report.cancelled ? 'warning' : report.failed ? 'warning' : 'success',
+          duration: 6000,
+        })
+      }
       void refreshHistory()
       void refreshSystem()
     })

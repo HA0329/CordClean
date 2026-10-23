@@ -539,6 +539,8 @@ function askClean() {
 
 async function confirmClean() {
   showConfirm.value = false
+  // 立即切到独立进度页：实时状态 + 避免用户在结果列表上继续误点
+  state.page = 'cleaning'
   try {
     const report = await startClean([...selected.value], { dryRun: dryRun.value })
     const modeLabel = report.mode === 'recycle' ? '回收站' : report.mode === 'quarantine' ? '隔离区' : '永久删除'
@@ -558,9 +560,10 @@ async function confirmClean() {
       ElMessage.warning(parts.join('，'))
     }
     if (report.failed) {
-      ElMessage.warning(`${report.failed} 项未能清理，可在下方查看原因`)
+      ElMessage.warning(`${report.failed} 项未能清理，可在清理进度页查看原因`)
     }
   } catch (error) {
+    if (!state.cleaning) state.page = 'clean'
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
@@ -609,6 +612,12 @@ async function handleBulkCommand(command: string) {
 
 <template>
   <div class="cc-page clean-view">
+    <el-alert v-if="cleaning" type="warning" :closable="false" show-icon class="cleaning-banner">
+      <template #title>
+        <span>清理正在进行，本页操作已暂停。</span>
+        <el-button link type="primary" @click="state.page = 'cleaning'">查看实时清理进度</el-button>
+      </template>
+    </el-alert>
     <div class="cc-page-title">
       <div>
         <h1>扫描与清理</h1>
@@ -617,7 +626,7 @@ async function handleBulkCommand(command: string) {
       <div class="cc-actions">
         <el-switch v-model="dryRun" active-text="仅预演" />
         <el-button :disabled="!scanning" @click="cancelScan">取消</el-button>
-        <el-button type="primary" :loading="scanning" @click="runScan">
+        <el-button type="primary" :loading="scanning" :disabled="scanning || cleaning" @click="runScan">
           {{ scanning ? '扫描中…' : '开始扫描' }}
         </el-button>
       </div>
@@ -642,7 +651,7 @@ async function handleBulkCommand(command: string) {
           <div class="task-grid">
             <div v-for="task in group.tasks" :key="task.id" class="task-card">
               <div class="task-head">
-                <el-checkbox :value="task.id" :disabled="scanning" />
+                <el-checkbox :value="task.id" :disabled="scanning || cleaning" />
                 <span class="task-icon">{{ task.icon ?? '🧹' }}</span>
                 <div class="task-title">
                   <div class="task-name">{{ task.name }}</div>
@@ -1111,6 +1120,9 @@ async function handleBulkCommand(command: string) {
 </template>
 
 <style scoped>
+.cleaning-banner {
+  margin-bottom: 14px;
+}
 .task-groups {
   display: block;
 }

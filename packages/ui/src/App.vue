@@ -9,6 +9,7 @@ import PluginsView from './views/PluginsView.vue'
 import HistoryView from './views/HistoryView.vue'
 import AiView from './views/AiView.vue'
 import SettingsView from './views/SettingsView.vue'
+import CleaningView from './views/CleaningView.vue'
 import PluginStatusItems from './components/PluginStatusItems.vue'
 
 const nav = [
@@ -27,6 +28,12 @@ const views: Record<string, any> = {
   history: HistoryView,
   ai: AiView,
   settings: SettingsView,
+  cleaning: CleaningView,
+}
+
+function navActive(id: string): boolean {
+  if (state.page === id) return true
+  return id === 'clean' && state.page === 'cleaning'
 }
 
 const current = computed(() => views[state.page] ?? OverviewView)
@@ -180,7 +187,7 @@ async function revealDataDir() {
           v-for="item in nav"
           :key="item.id"
           class="nav-item"
-          :class="{ active: state.page === item.id }"
+          :class="{ active: navActive(item.id) }"
           @click="state.page = item.id"
         >
           <span class="nav-icon">{{ item.icon }}</span>
@@ -214,6 +221,9 @@ async function revealDataDir() {
           </span>
           <span class="cc-pill runtime-pill" :title="nodeTitle" @click="refreshAppInfo">{{ nodeText }}</span>
           <span class="cc-pill runtime-pill" :title="shellTitle" @click="refreshAppInfo">{{ shellText }}</span>
+          <button v-if="state.cleaning" class="cleaning-back" title="查看实时清理进度" @click="state.page = 'cleaning'">
+            🧹 清理中 · 查看进度
+          </button>
           <PluginStatusItems />
         </div>
         <div class="topbar-right">
@@ -418,6 +428,21 @@ async function revealDataDir() {
 
 .runtime-pill {
   cursor: help;
+}
+
+.cleaning-back {
+  padding: 6px 10px;
+  border: 1px solid var(--cc-primary);
+  border-radius: 999px;
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cleaning-back:hover {
+  filter: brightness(0.96);
 }
 
 .content {

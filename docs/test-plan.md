@@ -45,6 +45,6 @@ pnpm bench && pnpm exec tsx scripts/audit-plugins.ts
 - 没有真实文件锁的句柄占用测试（依赖只读文件模拟）；
 - `app/open-path` 命令注入修复（D-25）暂无专门单测，目前靠代码审阅 + E2E 覆盖；
 - Electron 外壳的 CSP / `sandbox: true` / 导航拦截（批次1）缺少自动化断言，依赖人工/E2E；
-- E2E 脚本覆盖主流程；AI 工坊、AI 分析结果渲染、插件状态/事件、插件 iframe 页面与悬浮窗本次用临时 CDP 专项验证，尚未固化为独立 `scripts/e2e-*.mjs`；
+- E2E 脚本覆盖主流程；AI 工坊、AI 分析结果渲染、插件状态/事件、插件 iframe 页面、悬浮窗与独立清理进度页本次用临时 CDP 专项验证，尚未固化为独立 `scripts/e2e-*.mjs`；
 - UI 无组件级单测（仅 CDP 端到端）；Vue 模板/脚本类型由 `pnpm typecheck:ui`（vue-tsc）覆盖并已接入 CI，但还没有 UI 组件渲染测试；
 - 没有性能回归门禁（bench 需手动跑，参考 `docs/benchmark.md`）。
