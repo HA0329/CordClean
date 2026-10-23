@@ -57,10 +57,15 @@ function commandsFor(plugin: PluginRuntime): UiCommandContribution[] {
   return uiEntries.value.find((entry) => entry.pluginId === plugin.id)?.contributions.commands ?? []
 }
 
+function commandLabel(command: UiCommandContribution): string {
+  // 旧 AI 工坊产物可能把按钮标题写成 label，而不是 title
+  return command.title ?? (command as unknown as { label?: string }).label ?? command.id
+}
+
 async function executePluginCommand(plugin: PluginRuntime, command: UiCommandContribution): Promise<void> {
   try {
     await runPluginCommand(plugin.id, command.rpc ?? command.id)
-    ElMessage.success(`已执行：${command.title}`)
+    ElMessage.success(`已执行：${commandLabel(command)}`)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
@@ -408,7 +413,7 @@ function categoryName(id: string) {
               type="primary"
               plain
               @click="executePluginCommand(plugin, command)"
-            >{{ command.title }}</el-button>
+            >{{ commandLabel(command) }}</el-button>
             <el-button v-if="!plugin.enabled" size="small" type="primary" plain @click="install(plugin)">启用</el-button>
             <el-button v-if="plugin.source === 'external'" size="small" type="danger" plain @click="uninstall(plugin)">卸载并删除</el-button>
             <el-button v-else-if="plugin.enabled" size="small" type="danger" plain @click="uninstall(plugin)">停用</el-button>

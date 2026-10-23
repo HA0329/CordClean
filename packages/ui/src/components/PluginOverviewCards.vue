@@ -97,10 +97,20 @@ function asList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map((item) => (typeof item === 'string' ? item : asText(item))).slice(0, 8)
   }
-  if (value && typeof value === 'object' && Array.isArray((value as any).items)) {
-    return (value as any).items.map((item: unknown) => asText(item)).slice(0, 8)
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const items = Array.isArray(record.items) ? record.items : Array.isArray(record.value) ? record.value : undefined
+    if (items) return items.map((item: unknown) => asText(item)).slice(0, 8)
   }
   return []
+}
+
+/** progress 卡片兼容 { value, max } 形式，而不是只认 card.max */
+function progressPercent(item: CardView): number {
+  const value = displayValue(item)
+  const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined
+  const max = Number(item.card.max ?? record?.max ?? 100) || 100
+  return Math.max(0, Math.min(100, (asNumber(value) / max) * 100))
 }
 
 watch(
@@ -141,11 +151,7 @@ onUnmounted(() => stopTimers())
             {{ asText(displayValue(item)) }}<span v-if="item.card.unit" class="plugin-unit">{{ item.card.unit }}</span>
           </div>
           <div v-if="item.card.type === 'progress'" class="cc-bar">
-            <span
-              :style="{
-                width: `${Math.max(0, Math.min(100, item.card.max ? (asNumber(displayValue(item)) / item.card.max) * 100 : asNumber(displayValue(item))))}%`,
-              }"
-            />
+            <span :style="{ width: `${progressPercent(item)}%` }" />
           </div>
         </template>
         <template v-else-if="item.card.type === 'list'">

@@ -97,6 +97,8 @@
 
 | D-58 | 🔴 高（插件加载/提示词） | AI 生成的通用插件漏写 inject，却在代码里读取 ctx.cleaner/system 等；校验只警告，安装成功但启动时报 “cannot get property without inject” | 已修复 |
 
+| D-59 | 🟡 中（插件 UI 契约/AI 生成） | showcase-kit 的“环境概览”空白；“候选扫描进度”忽略返回 max；命令按钮用 label 导致标题空白 | 已修复 |
+
 ## 详细说明
 
 ### D-01 联接点穿越导致越界删除（高）
@@ -728,6 +730,29 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - 全量 54 个测试文件 / 382 个用例通过，typecheck/build/UI E2E 通过。
 
 **说明**：用户实际数据目录中的 `plugin-probe.mjs` 没有被删除或篡改；升级后重启应用，加载器会按源码自动补齐 inject。若仍失败，可在插件页「卸载并删除」后重新生成。
+
+### D-59 声明式卡片数据形状不匹配导致空白
+
+**现象**：真实 AI 生成的 `showcase-kit` 插件加载正常，但概览“环境概览”卡片空白；其命令按钮标题也可能空白。`plugin-probe` 的“可用能力 7”被误认为错误，实际是它自检到的 7 个宿主能力。
+
+**根因**：
+- list 卡片 resolver 返回 `{ value: string[] }`，而 UI 只接受 `string[]` 或 `{ items: string[] }`；
+- progress 卡片 resolver 返回 `{ value, max }`，UI 只读取 `card.max`，忽略 resolver 的 max；
+- 旧 AI 产物把 commands 的标题写成 `label`，而契约为 `title`；
+- 提示词没有给出四种卡片的精确返回格式，模型只能猜。
+
+**修复**：
+- `PluginOverviewCards` 的 list 兼容 `{ value: [] }` 与 `{ items: [] }`；progress 同时读取 `card.max` 和 resolver 返回的 `max`；
+- 插件页命令标题兼容 `title` / 旧 `label`；
+- 提示词补充精确返回格式：metric → `{value,unit?}`，text → `{text}`，list → `string[]` 或 `{items}`，progress → `{value,max}`；commands 必须用 `title`；
+- 保持严格 inject 校验与旧插件自动补齐（D-58）。
+
+**验证**：复制用户实际 `plugin-probe.mjs` 与 `showcase-kit.mjs` 到临时数据目录，真实 Electron：
+- plugin-probe 卡片正常（可用能力 7 是自检结果，不是错误）；
+- showcase-kit “环境概览”显示平台/临时目录/数据目录/用户目录四行，临时目录 10.8 MB，候选进度 100；
+- 0 JS 异常。
+
+本次是 UI 兼容 + 提示词修正，**没有修改用户数据目录中的插件文件**。
 
 ## 未修复但已知的限制
 
