@@ -1,8 +1,10 @@
-import { moveFiles } from '@cordclean/core'
+import { moveFiles, elevatedCheckedAt } from '@cordclean/core'
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { folderSize } from '@cordclean/utils'
 import { spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import os from 'node:os'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 /**
  * RPC 方法实现。
@@ -34,6 +36,33 @@ import {
   validatePluginCode,
 } from './plugin-workshop.ts'
 import { RpcError } from '@cordclean/shared'
+
+/** 读取系统 PATH 中的 Node 版本；Electron 内置 Node 与系统 Node 可能不同 */
+let systemNodePromise: Promise<string | undefined> | null = null
+
+function detectSystemNode(): Promise<string | undefined> {
+  if (systemNodePromise) return systemNodePromise
+  systemNodePromise = new Promise((resolve) => {
+    if (!process.versions.electron) {
+      resolve(process.versions.node)
+      return
+    }
+    execFile('node', ['--version'], { timeout: 2000, windowsHide: true }, (error, stdout) => {
+      resolve(error ? undefined : String(stdout).trim().replace(/^v/, ''))
+    })
+  })
+  return systemNodePromise
+}
+
+function platformLabel(): string {
+  if (process.platform === 'win32') {
+    const parts = os.release().split('.')
+    if (parts[0] === '10' && Number(parts[2] ?? 0) >= 22000) return 'Windows 11'
+    if (parts[0] === '10') return 'Windows 10'
+    return 'Windows ' + os.release()
+  }
+  return os.type() + ' ' + os.release()
+}
 
 /** 外壳能力适配器（不同运行环境的系统交互） */
 export interface ShellAdapter {
@@ -87,17 +116,29 @@ export function createHandlers(api: ApiContext): HandlerMap {
   }
 
   return {
-    'app/info': () => ({
-      name: 'CordClean',
-      version: api.version,
-      node: process.versions.node,
-      platform: process.platform,
-      electron: api.shell.electron ? process.versions.electron : undefined,
-      dataDir: api.dataDir,
-      elevated: ctx.system.env.elevated,
-      bootMs: api.bootMs,
-      protocolVersion: PROTOCOL_VERSION,
-    }),
+    'app/info': async () => {
+      const systemNode = await detectSystemNode()
+      const runtimeNode = process.versions.node
+      return {
+        name: 'CordClean',
+        version: api.version,
+        node: runtimeNode,
+        nodeRuntime: process.versions.electron ? ('electron' as const) : ('node' as const),
+        systemNode: systemNode && systemNode !== runtimeNode ? systemNode : undefined,
+        platform: process.platform,
+        platformLabel: platformLabel(),
+        osRelease: os.release(),
+        osVersion: typeof os.version === 'function' ? os.version() : undefined,
+        arch: process.arch,
+        electron: api.shell.electron ? process.versions.electron : undefined,
+        shell: api.shell.electron ? ('desktop' as const) : ('web' as const),
+        dataDir: api.dataDir,
+        elevated: ctx.system.env.elevated,
+        elevatedCheckedAt: elevatedCheckedAt(),
+        bootMs: api.bootMs,
+        protocolVersion: PROTOCOL_VERSION,
+      }
+    },
 
     'app/open-path': async ({ path }) => {
       await api.shell.openPath(path)

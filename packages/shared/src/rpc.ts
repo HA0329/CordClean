@@ -168,13 +168,27 @@ export const PROTOCOL_VERSION = 1
 export interface AppInfo {
   name: string
   version: string
+  /** 当前进程实际使用的 Node 版本（Electron 外壳下是 Electron 内置 Node） */
   node: string
+  /** electron=Electron 内置 Node；node=独立 Node 进程 */
+  nodeRuntime?: 'electron' | 'node'
+  /** 系统 PATH 中的 Node（桌面外壳下与内置 Node 可能不同） */
+  systemNode?: string
   platform: string
+  /** 给界面显示的短平台名，例如 Windows 11 */
+  platformLabel?: string
+  osRelease?: string
+  osVersion?: string
+  arch?: string
   electron?: string
+  /** desktop=Electron IPC；web=HTTP+WebSocket */
+  shell?: 'desktop' | 'web'
   /** 数据目录 */
   dataDir: string
-  /** 是否管理员权限 */
+  /** 是否管理员权限（Windows 依据 Mandatory Label，不是简单文件可写探测） */
   elevated: boolean
+  /** 权限检测时间（毫秒时间戳） */
+  elevatedCheckedAt?: number
   /** 内核启动耗时（毫秒） */
   bootMs: number
   protocolVersion: number

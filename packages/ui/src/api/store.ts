@@ -222,6 +222,11 @@ export async function refreshSystem(): Promise<void> {
   state.system = await requireTransport().request('system/info', undefined)
 }
 
+/** 重新读取真实运行时信息（Node/OS/权限/外壳），用于启动后与窗口重新聚焦时刷新 */
+export async function refreshAppInfo(): Promise<void> {
+  state.app = await requireTransport().request('app/info', undefined)
+}
+
 export async function refreshTasks(): Promise<void> {
   state.tasks = await requireTransport().request('tasks/list', undefined)
 }

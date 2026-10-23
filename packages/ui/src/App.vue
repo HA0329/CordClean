@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { state, init, openDataDir, quitApp } from './api/store.ts'
+import { state, init, openDataDir, quitApp, refreshAppInfo } from './api/store.ts'
 import { formatBytes } from '@cordclean/shared'
 import OverviewView from './views/OverviewView.vue'
 import CleanView from './views/CleanView.vue'
@@ -30,6 +30,49 @@ const views: Record<string, any> = {
 }
 
 const current = computed(() => views[state.page] ?? OverviewView)
+
+// 顶栏运行时信息：来自 app/info，不在前端硬编码
+const platformText = computed(() => {
+  const app = state.app
+  if (!app) return '检测中…'
+  return app.platformLabel ?? (app.platform === 'win32' ? 'Windows' : app.platform)
+})
+const platformTitle = computed(() => {
+  const app = state.app
+  if (!app) return ''
+  return [app.osVersion, app.osRelease, app.arch].filter(Boolean).join(' · ')
+})
+const nodeText = computed(() => {
+  const app = state.app
+  if (!app) return 'Node 检测中…'
+  if (app.systemNode) return `Node ${app.systemNode}（系统）`
+  return `Node ${app.node}${app.nodeRuntime === 'electron' ? '（内置）' : ''}`
+})
+const nodeTitle = computed(() => {
+  const app = state.app
+  if (!app) return ''
+  const runtime = app.nodeRuntime === 'electron' ? 'Electron 内置 Node' : '当前 Node 进程'
+  const lines = [`应用运行时：${runtime} ${app.node}`]
+  if (app.systemNode) lines.push(`系统 PATH Node：${app.systemNode}`)
+  if (app.electron) lines.push(`Electron ${app.electron}`)
+  return lines.join('\n')
+})
+const elevationTitle = computed(() => {
+  const app = state.app
+  if (!app) return ''
+  const at = app.elevatedCheckedAt ? new Date(app.elevatedCheckedAt).toLocaleTimeString() : '启动时'
+  return `Windows Mandatory Label 检测（${at}）：${app.elevated ? 'High/System 完整性' : 'Medium/未提升'}`
+})
+const shellText = computed(() => {
+  if (state.app?.shell) return state.app.shell === 'desktop' ? '桌面外壳' : '浏览器外壳'
+  return state.transport?.kind === 'electron' ? '桌面外壳' : '浏览器外壳'
+})
+const shellTitle = computed(() => {
+  if (state.app?.shell === 'desktop' || state.transport?.kind === 'electron') {
+    return `Electron ${state.app?.electron ?? ''} · IPC`.trim()
+  }
+  return 'HTTP + WebSocket'
+})
 
 // 用 URL hash 同步当前页面：便于深链接、刷新保持与自动化截图
 const initialPage = (location.hash || '').replace('#', '')
@@ -91,6 +134,8 @@ onMounted(() => {
     applySidebar(localStorage.getItem('cordclean.sidebar') === 'collapsed')
   } catch {}
   bootstrap()
+  // 切回窗口时重新检查一次真实运行时信息（Node/OS/权限/外壳）
+  window.addEventListener('focus', () => void refreshAppInfo().catch(() => {}))
 })
 
 async function quitCordClean() {
@@ -163,13 +208,12 @@ async function revealDataDir() {
     <main class="main">
       <header class="topbar">
         <div class="topbar-left">
-          <span class="cc-pill">{{ state.app?.platform === 'win32' ? 'Windows' : state.app?.platform }}</span>
-          <span class="cc-pill" :class="{ 'status-active': state.app?.elevated }">
+          <span class="cc-pill runtime-pill" :title="platformTitle" @click="refreshAppInfo">{{ platformText }}</span>
+          <span class="cc-pill runtime-pill" :class="{ 'status-active': state.app?.elevated }" :title="elevationTitle" @click="refreshAppInfo">
             {{ state.app?.elevated ? '管理员权限' : '普通用户' }}
           </span>
-          <span class="cc-pill">Node {{ state.app?.node }}</span>
-          <span class="cc-pill" v-if="state.transport?.kind === 'electron'">桌面外壳</span>
-          <span class="cc-pill" v-else-if="state.transport">浏览器外壳</span>
+          <span class="cc-pill runtime-pill" :title="nodeTitle" @click="refreshAppInfo">{{ nodeText }}</span>
+          <span class="cc-pill runtime-pill" :title="shellTitle" @click="refreshAppInfo">{{ shellText }}</span>
           <PluginStatusItems />
         </div>
         <div class="topbar-right">
@@ -370,6 +414,10 @@ async function revealDataDir() {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.runtime-pill {
+  cursor: help;
 }
 
 .content {

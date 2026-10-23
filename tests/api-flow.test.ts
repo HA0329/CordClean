@@ -53,6 +53,12 @@ describe('API 全链路', () => {
   it('扫描 → 清理 → 历史 → 撤销状态', async () => {
     const info = await rpc('app/info')
     expect(info.result.protocolVersion).toBe(1)
+    expect(info.result.node).toBe(process.versions.node)
+    expect(info.result.nodeRuntime).toBe('node')
+    expect(info.result.shell).toBe('web')
+    expect(info.result.platform).toBe(process.platform)
+    expect(typeof info.result.platformLabel).toBe('string')
+    expect(typeof info.result.elevated).toBe('boolean')
 
     const scan = await rpc('scan/start', { taskIds: ['flow-files'] })
     expect(scan.result.items.length).toBeGreaterThanOrEqual(2)
