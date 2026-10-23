@@ -148,7 +148,9 @@ export async function init(): Promise<void> {
     })
     state.transport.on('clean/progress', (event) => {
       state.cleanProgress = event
-      state.cleaning = !event.finished
+      // 关键：finished 只表示「当前任务」结束，不代表整个清理会话结束。
+      // 之前这里写成 !event.finished，会让多任务清理在第一个任务完成时就把进度页关掉。
+      state.cleaning = true
     })
     state.transport.on('clean/done', (report) => {
       state.lastClean = report
