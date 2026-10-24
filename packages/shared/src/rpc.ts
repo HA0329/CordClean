@@ -14,6 +14,7 @@ import type {
   ScanReport,
   Settings,
   SystemInfo,
+  SystemLiveInfo,
   AiAnalysis,
   AiPluginDraft,
   AiRuleSuggestion,
@@ -90,6 +91,7 @@ export interface ApiMap {
   'app/open-data-dir': { params: void; result: string }
 
   'system/info': { params: void; result: SystemInfo }
+  'system/live': { params: void; result: SystemLiveInfo }
   'system/hotspots': { params: void; result: Array<{ label: string; path: string; bytes: number }> }
 
   'tasks/list': { params: void; result: TaskDescriptor[] }

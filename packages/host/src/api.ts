@@ -209,6 +209,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
     },
 
     'system/info': () => ctx.system.info(),
+    'system/live': () => ctx.system.live(),
     'system/hotspots': () => ctx.system.hotspots(),
 
     'tasks/list': () => ctx.cleaner.list(),

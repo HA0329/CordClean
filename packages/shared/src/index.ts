@@ -260,6 +260,14 @@ export interface SystemInfo {
   collectedAt: number
 }
 
+/** 轻量系统采样（概览自动刷新用，避免每次都枚举磁盘） */
+export interface SystemLiveInfo {
+  memoryTotal: number
+  memoryFree: number
+  uptimeSeconds: number
+  collectedAt: number
+}
+
 /** AI 插件产出的一条建议 */
 export interface AiSuggestion {
   id: string

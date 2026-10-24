@@ -25,6 +25,7 @@ import type {
   QuarantineRecord,
   ScanReport,
   SystemInfo,
+  SystemLiveInfo,
 } from './index.ts'
 import type {
   CleanProgressEvent,
@@ -237,6 +238,8 @@ export interface HistoryLike {
 export interface SystemLike {
   readonly env: TaskEnv
   info(): Promise<SystemInfo>
+  /** 轻量采样：内存与运行时长，不枚举磁盘 */
+  live(): SystemLiveInfo
   disks(): Promise<DiskInfo[]>
   /** 关键目录占用 */
   hotspots(): Promise<Array<{ label: string; path: string; bytes: number }>>

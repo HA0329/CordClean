@@ -234,6 +234,22 @@ export async function refreshSystem(): Promise<void> {
   state.system = await requireTransport().request('system/info', undefined)
 }
 
+/** 轻量刷新内存/运行时长；不枚举磁盘，用于概览页的短周期自动刷新 */
+export async function refreshSystemLive(): Promise<void> {
+  const live = await requireTransport().request('system/live', undefined)
+  if (!state.system) {
+    await refreshSystem()
+    return
+  }
+  state.system = {
+    ...state.system,
+    memoryTotal: live.memoryTotal,
+    memoryFree: live.memoryFree,
+    uptimeSeconds: live.uptimeSeconds,
+    collectedAt: live.collectedAt,
+  }
+}
+
 /** 重新读取真实运行时信息（Node/OS/权限/外壳），用于启动后与窗口重新聚焦时刷新 */
 export async function refreshAppInfo(): Promise<void> {
   state.app = await requireTransport().request('app/info', undefined)

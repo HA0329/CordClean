@@ -7,7 +7,7 @@ import { statfs } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Service, type Context } from 'cordis'
-import type { DiskInfo, SystemInfo, SystemLike, TaskEnv } from '@cordclean/shared'
+import type { DiskInfo, SystemInfo, SystemLike, SystemLiveInfo, TaskEnv } from '@cordclean/shared'
 import { folderSize } from '@cordclean/utils'
 
 export interface SystemConfig {
@@ -43,6 +43,16 @@ export class SystemService extends Service implements SystemLike {
     )
     this.diskCache = { at: Date.now(), value }
     return value
+  }
+
+  /** 轻量系统采样：概览页按秒/5 秒刷新时不需要枚举磁盘 */
+  live(): SystemLiveInfo {
+    return {
+      memoryTotal: os.totalmem(),
+      memoryFree: os.freemem(),
+      uptimeSeconds: Math.round(os.uptime()),
+      collectedAt: Date.now(),
+    }
   }
 
   /** 系统概览 */

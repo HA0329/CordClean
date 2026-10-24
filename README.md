@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.5.13`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；54 个测试文件 / 382 个用例。
+当前版本 `0.5.14`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；54 个测试文件 / 382 个用例。
 
 ## 快速开始
 
@@ -45,7 +45,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 55 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（382 个用例 / 51 个文件）
+- **测试**：Vitest（382 个用例 / 54 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -261,7 +261,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 382 个用例 / 51 个文件
+pnpm test          # 382 个用例 / 54 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）
@@ -347,7 +347,8 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [AI 模型与接口兼容策略](docs/ai-model-compatibility.md) —— 官方模型 ID/版本对照、别名迁移、`/models` 元数据、未来接口变化应对清单
 - [扫描结果选择设计](docs/scan-selection-design.md) —— 分组/推荐/风险分层/批量选择/详情说明
 - [市面清理工具选择交互调研](docs/research/scan-selection-ux.md) —— 11 个产品的横向对比与可借鉴模式
-- [v2 选择体验验收报告](docs/verification/scan-selection-verify.md) —— 验收时的 289 条单测、真实 E2E、3000 条数据的语义与性能验收（历史快照；当前全量 374 条单测）
+- [v2 选择体验验收报告](docs/verification/scan-selection-verify.md) —— 验收时的 289 条单测、真实 E2E、3000 条数据的语义与性能验收（历史快照；当前全量 382 条单测）
+- [全项目复审（2026-10-24）](docs/verification/project-review-2026-10-24.md) —— 概览实时性、轻量 system/live 采样、插件/AI 工坊与文档一致性复核
 - [测试设计](docs/test-plan.md) —— 测试分层、命令与已知缺口
 - [规则库审计报告](docs/rules-report.md)
 - [依赖与升级策略](docs/dependency-policy.md) —— 版本锁定、已清理依赖、答辩后升级清单
@@ -380,3 +381,4 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 
 所有启动脚本都是 **Node 实现**（`scripts/launch.mjs` / `status.mjs` / `stop.mjs`），不依赖 PowerShell；
 依赖已安装时不会联网下载。界面右上角还有 ⏻ 电源按钮，可一键退出。
+
