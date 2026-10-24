@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { formatBytes, formatDuration, formatTime } from '@cordclean/shared'
 import PluginOverviewCards from '../components/PluginOverviewCards.vue'
-import { openDataDir, refreshSystem, startScan, state } from '../api/store.ts'
+import { openDataDir, refreshAppInfo, refreshSystem, startScan, state } from '../api/store.ts'
 
 const system = computed(() => state.system)
+const appInfo = computed(() => state.app)
 const disks = computed(() => system.value?.disks ?? [])
 const memoryUsed = computed(() => (system.value ? system.value.memoryTotal - system.value.memoryFree : 0))
 const memoryPercent = computed(() => (system.value ? Math.round((memoryUsed.value / system.value.memoryTotal) * 100) : 0))
@@ -22,12 +23,18 @@ async function quickScan() {
 
 async function refresh() {
   try {
-    await refreshSystem()
+    // 系统信息里的 Node 版本/平台来自真实宿主检测，而不是启动时缓存的旧值
+    await Promise.all([refreshSystem(), refreshAppInfo()])
     ElMessage.success('已刷新')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
+
+onMounted(() => {
+  // 每次进入概览都重新采样一次，避免长时间运行后展示启动时的旧信息
+  void Promise.all([refreshSystem(), refreshAppInfo()]).catch(() => {})
+})
 </script>
 
 <template>
@@ -91,18 +98,29 @@ async function refresh() {
       <div class="cc-card">
         <div class="cc-card-title">
           <h3>🖥️ 系统信息</h3>
-          <span class="cc-pill" :class="{ 'status-active': system?.elevated }">
-            {{ system?.elevated ? '管理员权限' : '普通用户' }}
-          </span>
+          <div class="cc-actions">
+            <span v-if="system" class="cc-faint">采样于 {{ formatTime(system.collectedAt) }}</span>
+            <span class="cc-pill" :class="{ 'status-active': system?.elevated }">
+              {{ system?.elevated ? '管理员权限' : '普通用户' }}
+            </span>
+          </div>
         </div>
         <div class="info-grid">
-          <div class="info-row"><span>操作系统</span><b>Windows {{ system?.release }}</b></div>
+          <div class="info-row"><span>操作系统</span><b>{{ appInfo?.platformLabel ?? 'Windows' }} <span class="cc-faint">({{ system?.release }})</span></b></div>
           <div class="info-row"><span>处理器</span><b>{{ system?.cpuModel }}</b></div>
           <div class="info-row"><span>核心数</span><b>{{ system?.cpuCores }}</b></div>
           <div class="info-row"><span>主机名</span><b>{{ system?.hostname }}</b></div>
           <div class="info-row"><span>当前用户</span><b>{{ system?.username }}</b></div>
           <div class="info-row"><span>运行时长</span><b>{{ formatDuration((system?.uptimeSeconds ?? 0) * 1000) }}</b></div>
-          <div class="info-row"><span>Node 版本</span><b>{{ system?.nodeVersion }}</b></div>
+          <div class="info-row">
+            <span>Node 版本</span>
+            <b :title="appInfo?.systemNode && appInfo.systemNode !== appInfo.node ? `Electron 内置 Node：${appInfo.node}` : ''">
+              {{ appInfo?.systemNode ?? appInfo?.node ?? system?.nodeVersion }}<span v-if="appInfo?.systemNode" class="cc-faint">（系统 Node）</span>
+            </b>
+          </div>
+          <div v-if="appInfo?.node && appInfo.node !== appInfo.systemNode" class="info-row">
+            <span>Electron Node</span><b>{{ appInfo.node }}</b>
+          </div>
           <div class="info-row"><span>数据目录</span><button class="link" @click="openDataDir">{{ state.app?.dataDir }}</button></div>
         </div>
       </div>
