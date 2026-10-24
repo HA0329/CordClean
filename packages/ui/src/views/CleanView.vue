@@ -491,11 +491,20 @@ const tasksByCategory = computed(() => {
 })
 
 async function runScanWith(ids: string[]) {
+  if (state.scanning || state.cleaning) {
+    ElMessage.info('正在扫描或清理中，请稍候')
+    return
+  }
   // 独立扫描进度页：避免结果页在扫描过程中被进度事件反复干扰
   state.scan = undefined
   state.page = 'scanning'
   try {
-    await startScan(ids)
+    if (!(await startScan(ids))) {
+      // 极小概率的竞态：startScan 发现已有扫描，恢复结果页而不是停在空进度页
+      if (state.page === 'scanning') state.page = 'clean'
+      ElMessage.info('已有扫描正在进行')
+      return
+    }
     const report = state.scan as { cancelled?: boolean; items?: unknown[] } | null | undefined
     if (state.page === 'scanning') state.page = 'clean'
     if (report?.cancelled) {
@@ -553,28 +562,12 @@ async function confirmClean() {
   state.cleaning = true
   state.page = 'cleaning'
   try {
-    const report = await startClean([...selected.value], { dryRun: dryRun.value })
-    const modeLabel = report.mode === 'recycle' ? '回收站' : report.mode === 'quarantine' ? '隔离区' : '永久删除'
-    const parts: string[] = []
-    if (report.freedBytes > 0) parts.push(`释放 ${formatBytes(report.freedBytes)}`)
-    if (report.recycledBytes > 0) parts.push(`${formatBytes(report.recycledBytes)} 已移入${modeLabel}`)
-    if (report.quarantinedBytes > 0) parts.push(`${formatBytes(report.quarantinedBytes)} 已隔离（可恢复）`)
-    if (report.vanished > 0) parts.push(`${report.vanished} 项扫描后已不存在`)
-    if (report.skipped > 0) parts.push(`${report.skipped} 项按条件跳过`)
-    if (report.freedBytes > 0 || report.cleaned > 0) {
-      ElMessage.success(
-        report.dryRun
-          ? `预演完成：可释放 ${formatBytes(report.freedBytes)}`
-          : `已处理 ${report.cleaned} 项${parts.length ? `：${parts.join('，')}` : ''}`,
-      )
-    } else if (parts.length) {
-      ElMessage.warning(parts.join('，'))
-    }
-    if (report.failed) {
-      ElMessage.warning(`${report.failed} 项未能清理，可在清理进度页查看原因`)
-    }
+    // 完成提示由 store 的 clean/done 统一处理：仍在清理页时不重复弹，
+    // 切到其他页面时由全局通知提醒，避免同一次清理收到两条消息。
+    await startClean([...selected.value], { dryRun: dryRun.value })
   } catch (error) {
-    if (!state.cleaning) state.page = 'clean'
+    // 只有仍停留在进度页时才把用户带回结果页；已经切走的页面不强行拽回
+    if (state.page === 'cleaning') state.page = 'clean'
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
@@ -680,7 +673,7 @@ async function handleBulkCommand(command: string) {
                 <span v-if="itemsByTask.get(task.id)" class="task-result">
                   {{ itemsByTask.get(task.id)!.count }} 项 · {{ formatBytes(itemsByTask.get(task.id)!.bytes) }}
                 </span>
-                <button class="mini-btn" @click.stop="runScanSingle(task.id)">单独扫描</button>
+                <button class="mini-btn" :disabled="scanning || cleaning" @click.stop="runScanSingle(task.id)">单独扫描</button>
               </div>
             </div>
           </div>

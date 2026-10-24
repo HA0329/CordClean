@@ -25,9 +25,16 @@ const liveUptimeSeconds = computed(() => {
 })
 
 async function quickScan() {
+  if (state.scanning || state.cleaning) {
+    ElMessage.info('正在扫描或清理中，请稍候')
+    return
+  }
   state.page = 'clean'
   try {
-    await startScan()
+    if (!(await startScan())) {
+      ElMessage.info('已有扫描正在进行')
+      return
+    }
     ElMessage.success('扫描完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -171,9 +178,9 @@ onUnmounted(() => {
         </div>
         <div class="info-grid">
           <div class="info-row"><span>操作系统</span><b>{{ appInfo?.platformLabel ?? 'Windows' }} <span class="cc-faint">({{ system?.release }})</span></b></div>
-          <div class="info-row"><span>处理器</span><b>{{ system?.cpuModel }}</b></div>
+          <div class="info-row"><span>处理器</span><b :title="system?.cpuModel">{{ system?.cpuModel }}</b></div>
           <div class="info-row"><span>核心数</span><b>{{ system?.cpuCores }}</b></div>
-          <div class="info-row"><span>主机名</span><b>{{ system?.hostname }}</b></div>
+          <div class="info-row"><span>主机名</span><b :title="system?.hostname">{{ system?.hostname }}</b></div>
           <div class="info-row"><span>当前用户</span><b>{{ system?.username }}</b></div>
           <div class="info-row"><span>运行时长</span><b>{{ formatDuration(liveUptimeSeconds * 1000) }}</b></div>
           <div class="info-row">
@@ -185,7 +192,7 @@ onUnmounted(() => {
           <div v-if="appInfo?.node && appInfo.node !== appInfo.systemNode" class="info-row">
             <span>Electron Node</span><b>{{ appInfo.node }}</b>
           </div>
-          <div class="info-row"><span>数据目录</span><button class="link" @click="openDataDir">{{ state.app?.dataDir }}</button></div>
+          <div class="info-row"><span>数据目录</span><button class="link" :title="state.app?.dataDir" @click="openDataDir">{{ state.app?.dataDir }}</button></div>
         </div>
       </div>
     </div>

@@ -253,7 +253,9 @@ async function revealDataDir() {
           <el-button type="primary" @click="bootstrap">重试</el-button>
         </div>
 
-        <component :is="current" v-else />
+        <KeepAlive v-else include="AiView">
+          <component :is="current" />
+        </KeepAlive>
       </div>
     </main>
   </div>

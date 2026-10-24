@@ -168,6 +168,19 @@ describe('执行器与诚实计量', () => {
     expect(existsSync(target)).toBe(false)
   })
 
+  it('执行前已取消：返回 cancelled，不执行任何删除', async () => {
+    const app = await boot('executor-abort')
+    app.ctx.pathPolicy.addRoot(sandbox.root)
+    const target = file('abort/a.bin', 4096)
+    const issued = await app.ctx.compensate.issue({ mode: 'delete', items: [makeItem(target, 4096)] })
+    const controller = new AbortController()
+    controller.abort()
+    const outcome = await app.ctx.executor.execute(issued.ticket, { signal: controller.signal })
+    expect(outcome.cancelled).toBe(true)
+    expect(outcome.results).toHaveLength(0)
+    expect(existsSync(target)).toBe(true)
+  })
+
   it('隔离区：计入 quarantinedBytes 且可恢复', async () => {
     const app = await boot('executor-quarantine')
     app.ctx.pathPolicy.addRoot(sandbox.root)
@@ -244,6 +257,40 @@ describe('清理引擎接入', () => {
     expect(cleaned.freedBytes).toBe(1234)
     expect(cleaned.recycledBytes).toBe(0)
     expect(existsSync(path.join(dir, 'a.bin'))).toBe(false)
+  })
+
+  it('关闭隔离区时不再强制隔离，模式安全回退到回收站', async () => {
+    const app = await boot('clean-quarantine-disabled', {
+      clean: { mode: 'quarantine', highRiskQuarantine: true },
+      quarantine: { enabled: false },
+    })
+    const dir = path.join(sandbox.root, 'clean-quarantine-disabled')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'a.bin'), Buffer.alloc(256, 6))
+    app.ctx.pathPolicy.addRoot(dir)
+    let recycleCalls = 0
+    app.ctx.recycleBin.setRunnerForTests(async (items) => {
+      recycleCalls++
+      return { ok: items.map((item) => item.path), failed: [] }
+    })
+    app.ctx.cleaner.define({
+      id: 'q-disabled-task',
+      name: '关闭隔离区测试',
+      category: 'system',
+      risk: 'risky',
+      icon: '🧪',
+      defaultSelected: true,
+      targets: [dir],
+      async scan(scan) {
+        scan.emit({ path: path.join(dir, 'a.bin'), kind: 'file', size: 256 })
+      },
+    })
+    const report = await app.ctx.cleaner.scan({ taskIds: ['q-disabled-task'] })
+    const cleaned = await app.ctx.cleaner.clean({ items: report.items })
+    expect(cleaned.mode).toBe('recycle')
+    expect(cleaned.quarantined).toBe(0)
+    expect(recycleCalls).toBe(1)
+    expect(await app.ctx.quarantine.list()).toHaveLength(0)
   })
 })
 

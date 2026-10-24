@@ -6,7 +6,6 @@ import type { PluginRuntime, UiCommandContribution, UiContributionEntry, UiPageC
 import {
   loadPluginDefaults,
   refreshPlugins,
-  fetchLastScan,
   fetchUiContributions,
   reloadPlugin,
   pluginSource,
@@ -151,7 +150,7 @@ function toggleExpanded(id: string) {
   expanded.value[id] = !expanded.value[id]
 }
 
-const lastScan = ref<any>(null)
+const lastScan = computed(() => state.scan as any)
 const ruleOpen = ref(false)
 const ruleHits = computed(() => {
   const map = new Map<string, { ruleId: string; name: string; items: number; bytes: number }>()
@@ -241,10 +240,17 @@ async function runPluginTasks(plugin: PluginRuntime) {
     ElMessage.warning('该插件没有注册清理任务')
     return
   }
+  if (state.scanning || state.cleaning) {
+    ElMessage.info('正在扫描或清理中，请稍候')
+    return
+  }
   state.page = 'clean'
   await nextTick()
   try {
-    await startScan(taskIds)
+    if (!(await startScan(taskIds))) {
+      ElMessage.info('已有扫描正在进行')
+      return
+    }
     ElMessage.success(`已扫描「${plugin.name}」的 ${taskIds.length} 个任务，结果在清理页`)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))

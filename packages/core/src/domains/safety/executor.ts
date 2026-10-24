@@ -30,6 +30,8 @@ export interface ExecuteOutcome {
   vanished: number
   skipped: number
   failed: number
+  /** 用户在执行中取消；已执行的部分仍会如实返回 */
+  cancelled: boolean
 }
 
 /** 删除前预检：递归尝试以读写方式打开每个文件；被占用/无权限即判整目录不可删 */
@@ -74,7 +76,6 @@ export class ExecutorService extends Service {
 
   async execute(ticket: unknown, options: ExecuteOptions = {}): Promise<ExecuteOutcome> {
     if (!isCleanTicket(ticket)) throw new Error('执行器拒绝：缺少补偿链令牌')
-    if (options.signal?.aborted) throw Object.assign(new Error('清理已取消'), { name: 'AbortError' })
 
     const outcome: ExecuteOutcome = {
       results: [],
@@ -84,6 +85,11 @@ export class ExecutorService extends Service {
       vanished: 0,
       skipped: 0,
       failed: 0,
+      cancelled: false,
+    }
+    if (options.signal?.aborted) {
+      outcome.cancelled = true
+      return outcome
     }
     if (options.dryRun) {
       for (const item of ticket.items) {
@@ -144,15 +150,18 @@ export class ExecutorService extends Service {
     // 非回收站项并发执行（补偿链已在前置阶段完成逐项校验）
     const settled = await mapLimit(plainQueue, 16, (item) => this.runOne(item, options, settings.clean.retries))
     for (const result of settled) {
+      if (!result) continue
       this.absorb(outcome, result)
       options.onItem?.(result)
     }
+    outcome.cancelled = Boolean(options.signal?.aborted)
     outcome.failed = outcome.results.filter((result) => !result.ok).length
     return outcome
   }
 
   /** 单条执行：删除 / 清空 / 隔离 */
-  private async runOne(item: CleanTicketItem, options: ExecuteOptions, retries: number): Promise<CleanItemResult> {
+  private async runOne(item: CleanTicketItem, options: ExecuteOptions, retries: number): Promise<CleanItemResult | undefined> {
+    if (options.signal?.aborted) return undefined
     const fail = (message: string): CleanItemResult => ({ itemId: item.itemId, path: item.path, ok: false, bytes: 0, error: message })
     try {
       // 隔离区：可恢复，按"移动前的体积"计量
@@ -171,11 +180,17 @@ export class ExecutorService extends Service {
         const preflight = await preflightDirectory(item.path)
         if (!preflight.ok) return fail(preflight.message)
       }
+      if (options.signal?.aborted) return undefined
       // 清空语义：只删子项，保留目录
       if (item.action === 'clear') {
-        const result = await clearDirectory(item.path, { retries })
+        const result = await clearDirectory(item.path, { retries, signal: options.signal })
+        if (result.cancelled) return fail('清理已取消，当前目录可能已部分清空')
+        if (result.failed.length) {
+          return fail(`清空目录时有 ${result.failed.length} 个子项失败（可能被占用或无权限）`)
+        }
         return { itemId: item.itemId, path: item.path, ok: true, bytes: result.bytes || item.size }
       }
+      if (options.signal?.aborted) return undefined
       const before = await stat(item.path).then((info) => info.size).catch(() => item.size)
       const result = await deletePath(item.path, { recursive: true, retries })
       const freed = result.bytes || before

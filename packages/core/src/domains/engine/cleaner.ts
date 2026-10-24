@@ -363,8 +363,11 @@ export class CleanerService extends Service implements CleanerLike {
     const sessionId = `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
     this.currentSessionId = sessionId
     const startedAt = Date.now()
-    const quarantineSession = dryRun ? undefined : this.ctx.quarantine.beginSession(sessionId)
-    const forceQuarantine = options.forceQuarantine ?? false
+    const quarantineEnabled = settings.quarantine.enabled !== false
+    const quarantineSession = dryRun || !quarantineEnabled ? undefined : this.ctx.quarantine.beginSession(sessionId)
+    // 用户关闭隔离区时不能再强制进隔离；普通清理模式若仍是 quarantine，安全回退到回收站
+    const forceQuarantine = quarantineEnabled ? (options.forceQuarantine ?? false) : false
+    const effectiveMode: CleanMode = !quarantineEnabled && settings.clean.mode === 'quarantine' ? 'recycle' : settings.clean.mode
 
     // 按任务分组：支持插件自定义清理逻辑
     const groups = new Map<string, CleanItem[]>()
@@ -453,20 +456,33 @@ export class CleanerService extends Service implements CleanerLike {
         }
       } else {
         // 文件/目录：走补偿链 + 唯一删除入口（高风险项强制隔离区）
-        const riskyItems = settings.clean.highRiskQuarantine ? groupItems.filter((item) => item.risk === 'risky') : []
+        const riskyItems = quarantineEnabled && settings.clean.highRiskQuarantine
+          ? groupItems.filter((item) => item.risk === 'risky')
+          : []
         const normalItems = groupItems.filter((item) => !riskyItems.includes(item))
 
         const batches: Array<{ items: CleanItem[]; mode: CleanMode }> = []
-        if (normalItems.length) batches.push({ items: normalItems, mode: forceQuarantine ? 'quarantine' : settings.clean.mode })
+        if (normalItems.length) {
+          let normalMode: CleanMode = forceQuarantine ? 'quarantine' : effectiveMode
+          if (!quarantineEnabled && normalMode === 'quarantine') normalMode = 'recycle'
+          batches.push({ items: normalItems, mode: normalMode })
+        }
         if (riskyItems.length) batches.push({ items: riskyItems, mode: 'quarantine' })
 
         for (const batch of batches) {
           if (controller.signal.aborted) break
-          const issued = await this.ctx.compensate.issue({
-            items: batch.items,
-            mode: batch.mode,
-            signal: controller.signal,
-          })
+          let issued
+          try {
+            issued = await this.ctx.compensate.issue({
+              items: batch.items,
+              mode: batch.mode,
+              signal: controller.signal,
+            })
+          } catch (error) {
+            // 取消可能发生在签发令牌/复核期间；此时应保留已处理项的 partial report，而不是 reject
+            if (controller.signal.aborted) break
+            throw error
+          }
           for (const rejection of issued.rejections) {
             if (rejection.reason === 'vanished') vanished++
             else skipped++
@@ -492,6 +508,7 @@ export class CleanerService extends Service implements CleanerLike {
           freedBytes += dryRun
             ? executed.results.reduce((sum, result) => sum + (result.ok ? result.bytes : 0), 0)
             : executed.freedBytes
+          if (executed.cancelled || controller.signal.aborted) break
         }
       }
 
@@ -514,7 +531,7 @@ export class CleanerService extends Service implements CleanerLike {
       }
       for (const result of results) {
         if (result.ok && undoAll.length < 5000) {
-          undoAll.push({ path: result.path, mode: result.quarantined ? 'quarantine' : settings.clean.mode })
+          undoAll.push({ path: result.path, mode: result.quarantined ? 'quarantine' : effectiveMode })
         }
       }
       perTask.push({ taskId, cleaned: taskCleaned, bytes: taskBytes, failed: taskFailed })
@@ -524,7 +541,7 @@ export class CleanerService extends Service implements CleanerLike {
 
     const report: CleanReport = {
       sessionId,
-      mode: settings.clean.mode,
+      mode: effectiveMode,
       taskIds: [...groups.keys()],
       dryRun,
       startedAt,

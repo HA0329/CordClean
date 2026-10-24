@@ -29,7 +29,8 @@ export interface DeleteResult {
  * @returns 命中的链接路径；未发现返回 undefined
  */
 export async function findLinkAncestor(target: string, stopAt?: string): Promise<string | undefined> {
-  const boundary = stopAt ? normalizePath(stopAt).toLowerCase() : undefined
+  // 去掉尾部分隔符：否则 C:\ 作为边界时会变成 "c:\\" 前缀，首轮即被误判为越界
+  const boundary = stopAt ? normalizePath(stopAt).toLowerCase().replace(/\\+$/, '') : undefined
   let current = normalizePath(target)
   // 从父目录开始检查（目标自身由 deletePath 以「只删链接」方式处理）
   current = current.slice(0, current.lastIndexOf('\\'))
@@ -121,19 +122,25 @@ export async function inspectPath(target: string): Promise<PathMeta> {
  *
  * @returns 实际释放字节数与被跳过的链接数量
  */
-export async function clearDirectory(target: string, options: { retries?: number } = {}): Promise<{ bytes: number; skippedLinks: number; failed: string[] }> {
+export async function clearDirectory(
+  target: string,
+  options: { retries?: number; signal?: AbortSignal } = {},
+): Promise<{ bytes: number; skippedLinks: number; failed: string[]; cancelled: boolean }> {
   const meta = await inspectPath(target)
-  if (!meta.exists || !meta.isDirectory) return { bytes: 0, skippedLinks: 0, failed: [] }
+  if (!meta.exists || !meta.isDirectory) return { bytes: 0, skippedLinks: 0, failed: [], cancelled: false }
   let entries
   try {
     entries = await fs.readdir(toLongPath(target), { withFileTypes: true })
   } catch {
-    return { bytes: 0, skippedLinks: 0, failed: [target] }
+    return { bytes: 0, skippedLinks: 0, failed: [target], cancelled: false }
   }
   let bytes = 0
   let skippedLinks = 0
   const failed: string[] = []
   for (const entry of entries) {
+    if (options.signal?.aborted) {
+      return { bytes, skippedLinks, failed, cancelled: true }
+    }
     const child = target.endsWith('\\') ? target + entry.name : target + '\\' + entry.name
     try {
       const result = await deletePath(child, { recursive: true, retries: options.retries ?? 2 })
@@ -143,7 +150,7 @@ export async function clearDirectory(target: string, options: { retries?: number
       failed.push(child)
     }
   }
-  return { bytes, skippedLinks, failed }
+  return { bytes, skippedLinks, failed, cancelled: false }
 }
 
 /**

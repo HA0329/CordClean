@@ -1,6 +1,6 @@
 # 测试设计（全量测试分层）
 
-当前规模：**54 个测试文件 / 382 个用例**（2026-10-23）；总耗时约 50 s（`pool: 'forks'`）。
+当前规模：**54 个测试文件 / 385 个用例**（2026-10-23）；总耗时约 50 s（`pool: 'forks'`）。
 
 ## 分层
 
@@ -48,3 +48,4 @@ pnpm bench && pnpm exec tsx scripts/audit-plugins.ts
 - E2E 脚本覆盖主流程；AI 工坊、AI 分析结果渲染、插件状态/事件、插件 iframe 页面、悬浮窗与独立清理进度页本次用临时 CDP 专项验证，尚未固化为独立 `scripts/e2e-*.mjs`；
 - UI 无组件级单测（仅 CDP 端到端）；Vue 模板/脚本类型由 `pnpm typecheck:ui`（vue-tsc）覆盖并已接入 CI，但还没有 UI 组件渲染测试；
 - 没有性能回归门禁（bench 需手动跑，参考 `docs/benchmark.md`）。
+

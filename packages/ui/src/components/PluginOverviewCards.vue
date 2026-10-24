@@ -14,6 +14,7 @@ const entries = ref<UiContributionEntry[]>([])
 const values = reactive<Record<string, unknown>>({})
 const errors = reactive<Record<string, boolean>>({})
 const timers = new Map<string, ReturnType<typeof setInterval>>()
+let disposed = false
 
 const cards = computed<CardView[]>(() =>
   entries.value.flatMap((entry) =>
@@ -59,11 +60,17 @@ function scheduleTimers(): void {
 
 async function reload(): Promise<void> {
   try {
-    entries.value = await fetchUiContributions()
+    const next = await fetchUiContributions()
+    if (disposed) return
+    entries.value = next
     await Promise.all(cards.value.map((item) => refreshCard(item)))
+    if (disposed) return
     scheduleTimers()
   } catch {
-    entries.value = []
+    if (!disposed) {
+      entries.value = []
+      stopTimers()
+    }
   }
 }
 
@@ -129,7 +136,10 @@ watch(
 onMounted(() => {
   void reload()
 })
-onUnmounted(() => stopTimers())
+onUnmounted(() => {
+  disposed = true
+  stopTimers()
+})
 </script>
 
 <template>

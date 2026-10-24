@@ -59,12 +59,22 @@ function describeNativePlugin(plugin: any): string {
   return 'AI 工坊原生插件'
 }
 
+/** 去掉注释与字符串字面量，避免把文档里的 ctx.ai 误当成硬依赖 */
+function stripPluginLiterals(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n\r]*/g, ' ')
+    .replace(/'(?:\\.|[^'\\])*'/g, '""')
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/`(?:\\.|[^`\\])*`/g, '""')
+}
+
 /** 扫描源码里出现的核心服务访问；用于兼容旧 AI 工坊产物缺失 inject 的情况 */
 function detectCtxServiceRefs(source: string): string[] {
   const found = new Set<string>()
   const re = /\bctx\.([A-Za-z_$][\w$]*)/g
   let match: RegExpExecArray | null
-  while ((match = re.exec(source))) {
+  while ((match = re.exec(stripPluginLiterals(source)))) {
     if (AUTO_INJECT_SERVICES.has(match[1])) found.add(match[1])
   }
   return [...found]
@@ -129,6 +139,8 @@ interface RuntimeRecord {
   errorStack?: string
   config: Record<string, any>
   taskIds: string[]
+  /** 进行中的 enable；disable 必须等它结束再停用，避免停用后又被写回 active */
+  enablePromise?: Promise<void>
 }
 
 export interface PluginManagerConfig {
@@ -264,7 +276,11 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     const idle = (record as any)?.idleTimer
     if (idle) { clearTimeout(idle); (record as any).idleTimer = undefined }
     if (!record) throw new Error(`插件不存在：${id}`)
-    if (record.status === 'active' || record.status === 'loading') return
+    if (record.status === 'active') return
+    if (record.status === 'loading') {
+      if (record.enablePromise) return record.enablePromise
+      return
+    }
 
     record.status = 'loading'
     record.error = undefined
@@ -272,6 +288,17 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     this.emitChanged()
 
     const before = new Set(this.ctx.cleaner.list().map((task) => task.id))
+    const promise = this.finishEnable(record, before)
+    record.enablePromise = promise
+    try {
+      await promise
+    } finally {
+      if (record.enablePromise === promise) record.enablePromise = undefined
+    }
+  }
+
+  private async finishEnable(record: RuntimeRecord, before: Set<string>): Promise<void> {
+    const id = record.entry.id
     let fiber: Fiber | undefined
     try {
       const plugin = await this.loadModule(record)
@@ -306,7 +333,8 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       }
       this.ctx.logger?.warn?.(`插件 ${id} 启动失败：%s`, record.error)
     }
-    this.persist(record, true)
+    // 启动失败不应在下次启动时继续被当作 enabled；成功/停用才持久化启用状态
+    this.persist(record, record.status === 'active')
     this.emitChanged()
   }
 
@@ -331,7 +359,15 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       const declared = new Set<string>(
         Array.isArray(plugin.inject) ? plugin.inject.filter((item: unknown): item is string => typeof item === 'string') : [],
       )
-      const missing = detectCtxServiceRefs(source).filter((service) => !declared.has(service))
+      const missing = detectCtxServiceRefs(source).filter((service) => {
+        if (declared.has(service)) return false
+        // 只补当前已注册的服务；否则会把插件挂成永远 pending（例如 AI 插件默认停用时注入 ai）
+        try {
+          return (this.ctx as any)[service] != null
+        } catch {
+          return false
+        }
+      })
       if (missing.length) {
         loadedPlugin = { ...plugin, inject: [...declared, ...missing] }
         this.ctx.logger?.warn?.(
@@ -529,6 +565,14 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   async disable(id: string): Promise<void> {
     const record = this.records.get(id)
     if (!record) throw new Error(`插件不存在：${id}`)
+    // 如果启动正在进行，先等它结束，否则 disable 后 in-flight enable 会把状态写回 active
+    if (record.enablePromise) {
+      try {
+        await record.enablePromise
+      } catch {
+        /* 启动失败也会在 finishEnable 中落到 error 状态 */
+      }
+    }
     try {
       this.ctx.window.closeAll(id)
     } catch {}

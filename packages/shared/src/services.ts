@@ -487,6 +487,7 @@ export interface ExecutorLike {
     vanished: number
     skipped: number
     failed: number
+    cancelled: boolean
   }>
 }
 

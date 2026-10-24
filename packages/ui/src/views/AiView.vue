@@ -1,4 +1,5 @@
 <script setup lang="ts">
+defineOptions({ name: 'AiView' })
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 import { ElMessage } from 'element-plus'
 import { RISK_META, formatBytes, formatTime } from '@cordclean/shared'
@@ -438,7 +439,13 @@ function stopWorkshopElapsed(): void {
   }
 }
 
-onUnmounted(stopWorkshopElapsed)
+onUnmounted(() => {
+  stopWorkshopElapsed()
+  if (workshopValidateTimer) {
+    clearTimeout(workshopValidateTimer)
+    workshopValidateTimer = null
+  }
+})
 
 function cancelWorkshopGeneration(): void {
   if (!workshopBusy.value) return
@@ -479,11 +486,14 @@ async function generateWorkshopDraft() {
     const draft = await draftAiPlugin(workshopRequirement.value.trim())
     if (requestId !== workshopRequest) return
     workshopDraft.value = draft
-    workshopValidation.value = await validateAiPlugin(
+    const validation = await validateAiPlugin(
       draft.code,
       draft.dependencies ?? {},
       draft.mode === 'native',
     )
+    // 校验也可能是慢 RPC：用户在校验期间点了取消，就不能再把弹窗/草稿写回来
+    if (requestId !== workshopRequest) return
+    workshopValidation.value = validation
     workshopReviewed.value = false
     // 即使用户之前把弹窗关掉，结果到了也重新打开，避免草稿“生成好了就没了”
     workshopOpen.value = true
@@ -513,13 +523,27 @@ function scheduleRevalidateWorkshopDraft() {
   }, 400)
 }
 
+let workshopValidateSeq = 0
+
 async function revalidateWorkshopDraft() {
   if (!workshopDraft.value) return
-  workshopValidation.value = await validateAiPlugin(
-    workshopDraft.value.code,
-    workshopDraft.value.dependencies ?? {},
-    workshopDraft.value.mode === 'native',
-  )
+  const seq = ++workshopValidateSeq
+  const draft = workshopDraft.value
+  try {
+    const validation = await validateAiPlugin(draft.code, draft.dependencies ?? {}, draft.mode === 'native')
+    // 只接受最后一次编辑对应的校验结果，避免旧校验覆盖新代码
+    if (seq === workshopValidateSeq && workshopDraft.value?.code === draft.code) {
+      workshopValidation.value = validation
+    }
+  } catch (error) {
+    if (seq === workshopValidateSeq && workshopDraft.value?.code === draft.code) {
+      workshopValidation.value = {
+        ok: false,
+        errors: [error instanceof Error ? error.message : String(error)],
+        warnings: [],
+      }
+    }
+  }
 }
 
 async function installWorkshopDraft() {
@@ -571,6 +595,7 @@ async function previewRule(rule: any) {
 }
 
 const selectionOpen = ref(false)
+const applyingSelection = ref(false)
 const selectionRows = computed(() => {
   const items = new Map((state.scan?.items ?? []).map((item) => [item.id, item]))
   return (analysis.value?.selection ?? []).map((entry) => {
@@ -586,18 +611,26 @@ const selectionRows = computed(() => {
 })
 
 async function applyAiSelection() {
+  if (applyingSelection.value) return
   const ids = selectionRows.value.filter((row) => row.size > 0).map((row) => row.id)
   if (!ids.length) {
     ElMessage.warning('这些项已不在当前扫描结果中，请重新扫描后再试')
     return
   }
+  applyingSelection.value = true
   try {
     const report = await startClean(ids)
     await Promise.all([refreshHistory(), refreshQuarantine()])
     selectionOpen.value = false
-    ElMessage.success(`已按 AI 建议清理 ${report.cleaned} 项，释放 ${formatBytes(report.freedBytes)}`)
+    if (report.cancelled) {
+      ElMessage.warning(`清理已取消，已处理 ${report.cleaned} 项`)
+    } else {
+      ElMessage.success(`已按 AI 建议清理 ${report.cleaned} 项，释放 ${formatBytes(report.freedBytes)}`)
+    }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    applyingSelection.value = false
   }
 }
 
@@ -969,7 +1002,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         </el-table>
         <template #footer>
           <el-button @click="selectionOpen = false">取消</el-button>
-          <el-button type="primary" @click="applyAiSelection">确认清理</el-button>
+          <el-button type="primary" :loading="applyingSelection" :disabled="applyingSelection" @click="applyAiSelection">确认清理</el-button>
         </template>
       </el-dialog>
 

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createApp } from '@cordclean/core'
@@ -43,6 +43,17 @@ describe('隔离区', () => {
     const result = await app.ctx.quarantine.restore([list[0].id])
     expect(result.restored).toBe(0)
     expect(result.failed[0].message).toContain('已存在')
+  })
+
+  it('恢复 id 不能穿越隔离区删除任意目录', async () => {
+    const victim = path.join(sandbox.root, 'victim-outside-quarantine')
+    mkdirSync(victim, { recursive: true })
+    writeFileSync(path.join(victim, 'keep.txt'), 'must-survive')
+    const relative = path.relative(app.ctx.quarantine.directory, victim).replace(/\\/g, '/')
+    const result = await app.ctx.quarantine.restore([`${relative}/0001_any`])
+    expect(result.restored).toBe(0)
+    expect(result.failed.length).toBeGreaterThan(0)
+    expect(existsSync(path.join(victim, 'keep.txt'))).toBe(true)
   })
 
   it('彻底删除隔离项后不可恢复', async () => {

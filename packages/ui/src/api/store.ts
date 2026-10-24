@@ -287,13 +287,14 @@ export async function refreshSettings(): Promise<void> {
 
 /* ---------------------------------- 扫描 / 清理 ---------------------------------- */
 
-export async function startScan(taskIds?: string[]): Promise<void> {
-  if (state.scanning) return
+export async function startScan(taskIds?: string[]): Promise<boolean> {
+  if (state.scanning) return false
   state.scanning = true
   state.error = undefined
   try {
     const report = await requireTransport().request('scan/start', { taskIds })
     state.scan = report
+    return true
   } catch (error) {
     state.error = error instanceof Error ? error.message : String(error)
     throw error

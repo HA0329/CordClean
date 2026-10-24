@@ -136,7 +136,8 @@ export class QuarantineService extends Service implements QuarantineLike {
     for (const session of sessions) {
       const dir = path.join(this.directory, session)
       for (const record of this.readManifest(dir)) {
-        if (existsSync(path.join(dir, record.storedName))) result.push(record)
+        const storedName = this.safeStoredName(record.storedName)
+        if (storedName && existsSync(path.join(dir, storedName))) result.push(record)
       }
     }
     return result.sort((a, b) => b.createdAt - a.createdAt)
@@ -147,32 +148,59 @@ export class QuarantineService extends Service implements QuarantineLike {
     return { count: records.length, bytes: records.reduce((sum, item) => sum + item.bytes, 0) }
   }
 
+  /** 只接受隔离区根目录下的单层会话目录，防止 `/` 拼接穿越 */
+  private resolveSessionDir(sessionId: string): string | undefined {
+    if (!sessionId || sessionId === '.' || sessionId === '..' || !/^[A-Za-z0-9._-]+$/.test(sessionId)) return undefined
+    const root = path.resolve(this.directory)
+    const dir = path.resolve(root, sessionId)
+    const prefix = root.endsWith(path.sep) ? root : root + path.sep
+    return dir.startsWith(prefix) ? dir : undefined
+  }
+
+  private safeStoredName(value: string): string | undefined {
+    if (!value || value === '.' || value === '..' || value.includes('/') || value.includes('\\')) return undefined
+    return path.basename(value) === value ? value : undefined
+  }
+
   /** 恢复隔离项到原始位置 */
   async restore(ids: string[]): Promise<{ restored: number; failed: Array<{ id: string; message: string }> }> {
     const failed: Array<{ id: string; message: string }> = []
     let restored = 0
+    // 只信任 list() 中实际存在的记录，不能把任意 id 拆成 session/name 后拼路径
+    const known = new Map((await this.list()).map((record) => [record.id, record]))
     const bySession = new Map<string, Set<string>>()
     for (const id of ids) {
-      const [session, name] = id.split('/')
-      if (!session || !name) {
+      const record = known.get(id)
+      if (!record) {
         failed.push({ id, message: '无效的隔离项 id' })
         continue
       }
-      if (!bySession.has(session)) bySession.set(session, new Set())
-      bySession.get(session)!.add(name)
+      if (!bySession.has(record.sessionId)) bySession.set(record.sessionId, new Set())
+      bySession.get(record.sessionId)!.add(id)
     }
 
-    for (const [session, names] of bySession) {
-      const dir = path.join(this.directory, session)
+    for (const [session, idSet] of bySession) {
+      const dir = this.resolveSessionDir(session)
+      if (!dir) {
+        for (const id of idSet) failed.push({ id, message: '无效的隔离会话 id' })
+        continue
+      }
       const records = this.readManifest(dir)
       const remaining: QuarantineRecord[] = []
       for (const record of records) {
-        if (!names.has(record.storedName)) {
+        if (!idSet.has(record.id)) {
           remaining.push(record)
           continue
         }
-        const source = path.join(dir, record.storedName)
+        const storedName = this.safeStoredName(record.storedName)
+        if (!storedName) {
+          failed.push({ id: record.id, message: '无效的隔离项文件名' })
+          remaining.push(record)
+          continue
+        }
+        const source = path.join(dir, storedName)
         try {
+          if (!existsSync(source)) throw new Error('隔离文件已不存在')
           if (existsSync(record.originalPath)) {
             throw new Error('原路径已存在同名文件')
           }
@@ -186,7 +214,7 @@ export class QuarantineService extends Service implements QuarantineLike {
       }
       writeFileSync(path.join(dir, MANIFEST), remaining.map((item) => JSON.stringify(item)).join('\n') + (remaining.length ? '\n' : ''), 'utf8')
       if (!remaining.length) {
-        // 会话已清空：删除空目录
+        // 会话已清空：只删除已经解析到隔离区内部的目录
         try {
           await fs.rm(dir, { recursive: true, force: true })
         } catch {
