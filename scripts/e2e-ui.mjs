@@ -198,6 +198,17 @@ try {
   const scanSummary = await evaluate(
     `[...document.querySelectorAll('.scan-stats > div')].map(el => el.textContent.replace(/\\s+/g,' ').trim()).join(' | ')`,
   )
+  const errorButton = await evaluate(
+    `(() => { const btn = [...document.querySelectorAll('.scan-actions .el-button')].find(b => b.textContent.includes('查看错误详情')); if (!btn) return ''; btn.click(); return btn.textContent.replace(/\\s+/g,' ').trim() })()`,
+  )
+  if (errorButton) {
+    await waitFor('扫描错误详情', async () => evaluate('!!document.querySelector(".scan-error-table")'), 10_000)
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    const file = await capture('scan-errors')
+    console.log('✓ 扫描错误详情：', errorButton, '截图=', path.relative(root, file))
+    await evaluate(`(() => { const btn = [...document.querySelectorAll('.el-dialog__footer .el-button')].find(b => b.textContent.includes('关闭')); btn?.click(); return !!btn })()`)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
   const enterSelection = await evaluate(
     `(() => { const btn = [...document.querySelectorAll('.el-button')].find(b => b.textContent.includes('去选择可清理项')); if (!btn) return false; btn.click(); return true })()`,
   )

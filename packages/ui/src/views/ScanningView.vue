@@ -125,14 +125,33 @@ function back(): void {
         <span v-if="report.errors.length >= 200" class="cc-faint">已展示前 200 条（达到显示上限）</span>
       </div>
 
-      <el-dialog v-model="errorOpen" title="扫描错误详情" width="860px">
+      <el-dialog
+        v-model="errorOpen"
+        title="扫描错误详情"
+        width="min(860px, 92vw)"
+        top="6vh"
+        append-to-body
+        class="scan-error-dialog"
+      >
         <p class="cc-hint">
           共 {{ report.errors.length }} 条；同路径、同原因的错误已去重。EPERM/EACCES 通常是系统或浏览器缓存的访问限制。
         </p>
-        <el-table :data="errorRows" size="small" max-height="420">
-          <el-table-column prop="kind" label="类型" width="90" />
-          <el-table-column prop="path" label="路径" min-width="260" show-overflow-tooltip />
-          <el-table-column prop="message" label="原因" min-width="280" show-overflow-tooltip />
+        <el-table :data="errorRows" size="small" max-height="260" class="scan-error-table">
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <div class="scan-error-expand">
+                <p><b>路径：</b><span>{{ row.path }}</span></p>
+                <p><b>原因：</b><span>{{ row.message }}</span></p>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="kind" label="类型" width="88" />
+          <el-table-column label="路径" min-width="260">
+            <template #default="{ row }"><span class="scan-error-ellipsis">{{ row.path }}</span></template>
+          </el-table-column>
+          <el-table-column label="原因" min-width="280">
+            <template #default="{ row }"><span class="scan-error-ellipsis">{{ row.message }}</span></template>
+          </el-table-column>
         </el-table>
         <template #footer><el-button @click="errorOpen = false">关闭</el-button></template>
       </el-dialog>
@@ -224,6 +243,40 @@ function back(): void {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 20px;
+}
+
+.scan-error-table {
+  table-layout: fixed;
+}
+
+:deep(.scan-error-dialog .el-dialog__body) {
+  max-height: 62vh;
+  overflow-y: auto;
+}
+
+@media (max-height: 720px) {
+  :deep(.scan-error-dialog .el-dialog__body) {
+    max-height: 55vh;
+  }
+}
+
+.scan-error-ellipsis {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-error-expand {
+  padding: 8px 16px;
+  background: var(--cc-hover-bg);
+  word-break: break-all;
+}
+
+.scan-error-expand p {
+  margin: 4px 0;
+  line-height: 1.6;
 }
 
 .scan-current {

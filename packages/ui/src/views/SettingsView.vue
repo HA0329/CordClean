@@ -722,8 +722,14 @@ async function doClearEgress() {
       <div class="cc-card">
         <div class="cc-card-title"><h3>ℹ️ 关于</h3></div>
         <p class="cc-hint">
-          CordClean v{{ state.app?.version ?? '0.1.0' }} · Node {{ state.app?.node }} · {{ state.app?.platform }}
-          <span v-if="state.transport"> · {{ state.transport.kind === 'electron' ? '桌面外壳' : '浏览器外壳' }}</span>
+          CordClean v{{ state.app?.version ?? '0.1.0' }}
+          · {{ state.app?.platformLabel ?? 'Windows' }}
+          · {{ state.app?.arch ?? 'x64' }}
+          · {{ state.app?.shell === 'desktop' || state.transport?.kind === 'electron' ? '桌面外壳' : '浏览器外壳' }}
+          <br />
+          Node：{{ state.app?.systemNode ?? state.app?.node }}
+          <span v-if="state.app?.systemNode && state.app.systemNode !== state.app.node">（系统 Node）</span>
+          <span v-if="state.app?.node && state.app.node !== state.app.systemNode">；Electron 内置 Node：{{ state.app.node }}</span>
           <br />
           内核基于 Cordis 4 插件框架；清理规则来自内置规则库（PC-Cleaner 迁移 + 自定义）。
         </p>
