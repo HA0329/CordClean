@@ -67,3 +67,4 @@ node scripts/e2e-ui.mjs       6 页面 + 扫描全链路成功，0 JS 异常
 4. **Windows CI** 仍比本机慢，主要耗时在 GitHub Windows runner 冷启动与 385 个用例；本轮未改 CI 拆分。
 5. 外部插件文件仍保留在用户数据目录，不纳入源码仓库；如需示例需单独脱敏后放入 `examples/`。
 
+

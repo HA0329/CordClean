@@ -193,7 +193,16 @@ try {
   )
   if (!clicked) throw new Error('未找到「开始扫描」按钮')
 
-  await waitFor('扫描结果分组', async () => evaluate('document.querySelectorAll(".group-row").length > 0'), 120_000, 500)
+  // 扫描完成后先进入独立的扫描结果页，再显式进入清理选择页
+  await waitFor('扫描结果页', async () => evaluate('!!document.querySelector(".scan-result")'), 120_000, 500)
+  const scanSummary = await evaluate(
+    `[...document.querySelectorAll('.scan-stats > div')].map(el => el.textContent.replace(/\\s+/g,' ').trim()).join(' | ')`,
+  )
+  const enterSelection = await evaluate(
+    `(() => { const btn = [...document.querySelectorAll('.el-button')].find(b => b.textContent.includes('去选择可清理项')); if (!btn) return false; btn.click(); return true })()`,
+  )
+  if (!enterSelection) throw new Error('扫描结果页缺少「去选择可清理项」按钮')
+  await waitFor('扫描结果分组', async () => evaluate('document.querySelectorAll(".group-row").length > 0'), 30_000, 500)
   const summary = await evaluate(
     `[...document.querySelectorAll('.cc-stat')].slice(0,4).map(el => el.textContent.replace(/\\s+/g,' ').trim()).join(' | ')`,
   )
@@ -201,6 +210,7 @@ try {
   const recommendText = await evaluate('document.querySelector(".recommend-banner")?.textContent?.replace(/\\s+/g," ").trim().slice(0, 160) ?? ""')
   if (!selectedText || /已选\s*0\s*项/.test(selectedText)) throw new Error('默认推荐选择为空：' + selectedText)
   if (!recommendText.includes('智能推荐')) throw new Error('推荐横幅未渲染')
+  console.log('扫描结果页：', scanSummary)
   console.log('扫描完成，统计卡片：', summary)
   console.log('推荐横幅：', recommendText)
   console.log('默认选择：', selectedText)

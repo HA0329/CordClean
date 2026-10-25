@@ -135,6 +135,7 @@ export class CleanerService extends Service implements CleanerLike {
     const items: CleanItem[] = []
     const seen = new Map<string, number>()
     const errors: ScanError[] = []
+    const errorKeys = new Set<string>()
     const taskResults: TaskScanResult[] = []
     const truncated = { value: false }
     const extraBytes = { value: 0 }
@@ -144,6 +145,15 @@ export class CleanerService extends Service implements CleanerLike {
     let duplicateCount = 0
     // 服务引用只取一次：每次 `ctx.pathPolicy` 访问都会经过 Cordis 代理
     const policyRef = this.ctx.pathPolicy
+
+    // 多个任务可能扫描同一目录（例如 Edge 缓存被浏览器缓存和系统垃圾同时命中），
+    // 同一条 path+message 只保留一次，避免用户看到重复的“错误 200”。
+    const pushScanError = (error: ScanError): void => {
+      const key = `${error.code ?? ''}|${error.path}|${error.message}`
+      if (errorKeys.has(key)) return
+      errorKeys.add(key)
+      if (errors.length < MAX_ERRORS) errors.push(error)
+    }
 
     const pushItem = (registered: RegisteredTask, draft: CleanItemDraft): boolean => {
       const { task } = registered
@@ -242,7 +252,7 @@ export class CleanerService extends Service implements CleanerLike {
           extraBytes.value += bytes
         },
         addError: (error) => {
-          if (errors.length < MAX_ERRORS) errors.push(error)
+          pushScanError(error)
         },
         throwIfAborted: () => {
           if (controller.signal.aborted) {
@@ -278,9 +288,7 @@ export class CleanerService extends Service implements CleanerLike {
         const aborted = controller.signal.aborted || isAbortError(error)
         if (!aborted) {
           this.ctx.logger?.warn?.(`扫描任务 ${task.id} 失败：%s`, errorMessage(error))
-          if (errors.length < MAX_ERRORS) {
-            errors.push({ path: `task:${task.id}`, message: errorMessage(error) })
-          }
+          pushScanError({ path: `task:${task.id}`, message: errorMessage(error) })
         }
         taskResults.push({
           taskId: task.id,

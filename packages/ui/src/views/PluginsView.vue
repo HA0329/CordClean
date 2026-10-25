@@ -244,15 +244,17 @@ async function runPluginTasks(plugin: PluginRuntime) {
     ElMessage.info('正在扫描或清理中，请稍候')
     return
   }
-  state.page = 'clean'
+  state.page = 'scanning'
   await nextTick()
   try {
     if (!(await startScan(taskIds))) {
+      if (state.page === 'scanning') state.page = 'plugins'
       ElMessage.info('已有扫描正在进行')
       return
     }
-    ElMessage.success(`已扫描「${plugin.name}」的 ${taskIds.length} 个任务，结果在清理页`)
+    // 结果在专门的扫描结果页展示，用户可从那里进入清理选择
   } catch (error) {
+    if (state.page === 'scanning') state.page = 'plugins'
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }

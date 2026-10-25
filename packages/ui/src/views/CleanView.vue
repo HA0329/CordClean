@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import WorkflowSteps from '../components/WorkflowSteps.vue'
 import {
   CATEGORIES,
   RISK_META,
@@ -506,11 +507,14 @@ async function runScanWith(ids: string[]) {
       return
     }
     const report = state.scan as { cancelled?: boolean; items?: unknown[] } | null | undefined
-    if (state.page === 'scanning') state.page = 'clean'
-    if (report?.cancelled) {
-      ElNotification({ title: '扫描已取消', message: '已保留部分扫描结果', type: 'warning' })
-    } else if (state.page !== 'clean') {
-      ElNotification({ title: '扫描完成', message: `发现 ${report?.items?.length ?? 0} 个可清理项`, type: 'success' })
+    // 扫描完成后停留在专门的扫描结果页；用户点“去选择可清理项”再回清理页。
+    // 只有用户主动切走页面时才用通知告知结果，避免把用户强行拽回。
+    if (state.page !== 'scanning') {
+      if (report?.cancelled) {
+        ElNotification({ title: '扫描已取消', message: '已保留部分扫描结果', type: 'warning' })
+      } else {
+        ElNotification({ title: '扫描完成', message: `发现 ${report?.items?.length ?? 0} 个可清理项`, type: 'success' })
+      }
     }
   } catch (error) {
     if (state.page === 'scanning') state.page = 'clean'
@@ -641,6 +645,8 @@ async function handleBulkCommand(command: string) {
         </el-button>
       </div>
     </div>
+
+    <WorkflowSteps active="select" />
 
     <!-- 任务列表 -->
     <div class="cc-card">

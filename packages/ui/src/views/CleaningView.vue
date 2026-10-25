@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatBytes, formatDuration } from '@cordclean/shared'
+import WorkflowSteps from '../components/WorkflowSteps.vue'
 import { cancelClean, state } from '../api/store.ts'
 
 const cleaning = computed(() => state.cleaning)
@@ -113,6 +114,8 @@ function failureMessage(message: string): string {
         <el-button v-if="!cleaning && report" @click="openHistory">查看历史</el-button>
       </div>
     </div>
+
+    <WorkflowSteps active="clean" />
 
     <div v-if="cleaning" class="cc-card cleaning-running">
       <div class="cleaning-head">

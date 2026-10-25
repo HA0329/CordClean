@@ -57,3 +57,4 @@ node scripts/e2e-ui.mjs     6 页面 + 扫描全链路成功，0 JS 异常
 - 取消发生在单个递归 `fs.rm` 内部时，Node 本身无法中断这一次系统调用；当前保证不启动新的删除项、返回 partial report，但已进入的那次递归删除可能完成。
 - 隔离区 manifest 若被本机高权限用户篡改，仍可影响恢复目标；当前已限制 session/文件名不能穿越，但 manifest 的 `originalPath` 属于用户可写数据。
 - AI 工坊取消仍只使前端等待失效，无法保证取消已发出的模型 HTTP 请求。
+

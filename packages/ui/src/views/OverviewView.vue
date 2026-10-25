@@ -29,14 +29,16 @@ async function quickScan() {
     ElMessage.info('正在扫描或清理中，请稍候')
     return
   }
-  state.page = 'clean'
+  state.page = 'scanning'
   try {
     if (!(await startScan())) {
+      if (state.page === 'scanning') state.page = 'overview'
       ElMessage.info('已有扫描正在进行')
       return
     }
-    ElMessage.success('扫描完成')
+    // 结果在专门的扫描结果页展示，用户从那里再进入选择/清理
   } catch (error) {
+    if (state.page === 'scanning') state.page = 'overview'
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }

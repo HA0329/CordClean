@@ -132,7 +132,7 @@
       <span class="tag tag-plain">受保护目录的祖目录</span>
     </div>
 
-    <div class="subhead">最新进展（v0.5.15）：清理选择 v2 + 安全加固</div>
+    <div class="subhead">最新进展（v0.5.16）：清理选择 v2 + 安全加固</div>
     <div class="grid g3" style="margin-top:8px">
       <div class="card">
         <div class="card-kicker">清理选择 v2</div>
@@ -153,7 +153,7 @@
     <div class="table-wrap" style="margin-top:16px">
       <img src="__SHOT_SELECT__" alt="清理选择 v2：分组总览与智能推荐" style="width:100%;height:auto;border-radius:14px;border:1px solid var(--line-2)">
     </div>
-    <p class="table-note">图：清理选择 v2 的分组总览——安全项默认推荐、谨慎 / 高风险项不默认勾选，可展开说明或下钻到逐项明细；截图来自 v0.5.15 的 3000 条 mock 验收数据。</p>
+    <p class="table-note">图：清理选择 v2 的分组总览——安全项默认推荐、谨慎 / 高风险项不默认勾选，可展开说明或下钻到逐项明细；截图来自 v0.5.16 的 3000 条 mock 验收数据。</p>
   </div>
 </section>
 
@@ -299,7 +299,7 @@
 
     <div class="grid g2" style="margin-top:16px">
       <div class="card">
-        <div class="card-kicker">v0.5.15 修复</div>
+        <div class="card-kicker">v0.5.16 修复</div>
         <h3>流式输出与可取消</h3>
         <p><code>ai/analyze</code> 优先走 SSE：逐块累积文本与思维链，实时发出 <code>ai/stream</code> 事件；取消按钮通过 <code>AbortSignal</code> 立即中断请求。</p>
         <ul>
@@ -371,7 +371,7 @@
       <h2 class="sec-title">工程与验证：用数据回答「做完没有、靠不靠谱」</h2>
       <p class="sec-lede">
         项目从第一天起就把测试、审计、基准与缺陷记录当作交付物：<b>385 个自动化测试全绿</b>，
-        <b>规则审计 0 错误</b>，性能基准可复现，自测阶段<b>发现并修复 64 个缺陷</b>（含 1 个高危越界删除）。
+        <b>规则审计 0 错误</b>，性能基准可复现，自测阶段<b>发现并修复 65 个缺陷</b>（含 1 个高危越界删除）。
       </p>
     </div>
 
@@ -434,7 +434,7 @@
       <div class="card">
         <div class="card-kicker">交付形态</div>
         <h3>双外壳 + 单文件发布</h3>
-        <p>浏览器版与 Electron 桌面版共用内核与 UI；提供一键启动脚本与 v0.5.15 源码 / zip 包，MIT 许可。</p>
+        <p>浏览器版与 Electron 桌面版共用内核与 UI；提供一键启动脚本与 v0.5.16 源码 / zip 包，MIT 许可。</p>
       </div>
       <div class="card">
         <div class="card-kicker">质量门禁</div>
@@ -444,11 +444,12 @@
       <div class="card">
         <div class="card-kicker">工作量</div>
         <h3>3.13 万行，151 次提交</h3>
-        <p>源码 1.93 万行、测试 0.63 万行、脚本 0.57 万行；13 份文档与 64 条缺陷记录。</p>
+        <p>源码 1.93 万行、测试 0.63 万行、脚本 0.57 万行；13 份文档与 65 条缺陷记录。</p>
       </div>
     </div>
   </div>
 </section>
+
 
 
 
