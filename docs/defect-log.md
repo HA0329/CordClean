@@ -113,6 +113,8 @@
 
 | D-66 | 🟡 中（扫描错误弹窗/关于信息） | 错误详情表格长路径触发超大 tooltip、弹窗被卡片裁剪且无关闭按钮；关于页显示 Node 平台标识 `win32`，易被误解为 32 位 | 已修复 |
 
+| D-67 | 🟢 低（依赖升级） | Cordis 4.0.0-rc.12 发布，项目仍停留在 rc.11；rc.12 包含 Windows 盘符路径、HMR 与 fiber 生命周期修复 | 已升级 |
+
 ## 详细说明
 
 ### D-01 联接点穿越导致越界删除（高）
@@ -878,6 +880,19 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 - 说明 win32 是 Node 的 OS 标识（Windows API 平台），不是 32 位。
 
 **验证**：E2E 打开扫描错误详情，弹窗完整显示表格与关闭按钮，截图确认不再被裁剪；全量 54 文件 / 385 用例通过。
+
+### D-67 Cordis 4.0.0-rc.12 升级
+
+**背景**：Cordis 发布 4.0.0-rc.12，包含 service intercept metadata 合并机制调整、配置错误 file:line:column、Windows 盘符路径/HMR 修复、fiber DISPOSED 状态等。
+
+**影响评估**：
+- 本项目使用 Cordis 的 Service/Context/Fiber、ctx.plugin、ctx.effect、inject 与 logger API；未直接依赖 rc.12 改名的 `Service.resolveConfig` / `Config.merge` 内部接口，因此无需改写插件代码；
+- 类型声明改为显式扩展名/NodeNext，本项目 typecheck 通过；
+- Windows drive-letter path 与 HMR 修复对桌面外壳有正向收益。
+
+**变更**：根 package、core/host/shared 依赖统一升级到 `cordis@4.0.0-rc.12`，更新 pnpm-lock；README/dependency-policy 同步。
+
+**验证**：typecheck、typecheck:ui、54 文件 / 385 用例、UI build、desktop build、6 页面 E2E 全部通过。
 
 ## 未修复但已知的限制
 

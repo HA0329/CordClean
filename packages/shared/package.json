@@ -1,6 +1,6 @@
 {
   "name": "@cordclean/shared",
-  "version": "0.5.17",
+  "version": "0.5.18",
   "private": true,
   "type": "module",
   "exports": {
@@ -10,6 +10,6 @@
     "./services": "./src/services.ts"
   },
   "peerDependencies": {
-    "cordis": "4.0.0-rc.11"
+    "cordis": "4.0.0-rc.12"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "cordclean",
-  "version": "0.5.17",
+  "version": "0.5.18",
   "private": true,
   "type": "module",
   "description": "CordClean - 基于 Cordis 插件框架的模块化电脑清理工具",
@@ -45,7 +45,7 @@
     "vue-tsc": "^3.0.0"
   },
   "dependencies": {
-    "cordis": "4.0.0-rc.11",
+    "cordis": "4.0.0-rc.12",
     "schemastery": "^3.18.0",
     "ws": "^8.22.0"
   }

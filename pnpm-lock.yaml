@@ -167,8 +167,8 @@ importers:
   .:
     dependencies:
       cordis:
-        specifier: 4.0.0-rc.11
-        version: 4.0.0-rc.11
+        specifier: 4.0.0-rc.12
+        version: 4.0.0-rc.12
       schemastery:
         specifier: ^3.18.0
         version: 3.18.0
@@ -276,8 +276,8 @@ importers:
         specifier: workspace:*
         version: link:../utils
       cordis:
-        specifier: 4.0.0-rc.11
-        version: 4.0.0-rc.11
+        specifier: 4.0.0-rc.12
+        version: 4.0.0-rc.12
       schemastery:
         specifier: ^3.18.0
         version: 3.18.0
@@ -294,8 +294,8 @@ importers:
         specifier: workspace:*
         version: link:../utils
       cordis:
-        specifier: 4.0.0-rc.11
-        version: 4.0.0-rc.11
+        specifier: 4.0.0-rc.12
+        version: 4.0.0-rc.12
       ws:
         specifier: ^8.22.0
         version: 8.22.0
@@ -438,8 +438,8 @@ importers:
   packages/shared:
     dependencies:
       cordis:
-        specifier: 4.0.0-rc.11
-        version: 4.0.0-rc.11
+        specifier: 4.0.0-rc.12
+        version: 4.0.0-rc.12
 
   packages/ui:
     dependencies:
@@ -1158,12 +1158,12 @@ packages:
   clone-response@1.0.3:
     resolution: {integrity: sha512-ROoL94jJH2dUVML2Y/5PEDNaSHgeOdSDicUyS7izcF63G6sTc/FTjLub4b8Il9S8S0beOfYt0TaA5qvFK+w0wA==}
 
-  cordis@4.0.0-rc.11:
-    resolution: {integrity: sha512-03PHbcYJzp84XRKnW7jd17g26bPvG5UvSyhyjxGIu/1VQs3bweNMACo3t1W0ikzoZ7q+wytHyk8jJsaIQOkPkA==}
+  cordis@4.0.0-rc.12:
+    resolution: {integrity: sha512-/ZtRivYxr5sffTULPewHuX5kEy5sWi8oADHSpnt0KjAd8uKRIj+kv4fh3lxtutIfVlgwJVFVXWOQp/gYa+kIOQ==}
     hasBin: true
     peerDependencies:
-      '@cordisjs/plugin-include': ^1.1.1
-      '@cordisjs/plugin-loader': ^1.0.0-rc.8
+      '@cordisjs/plugin-include': ^1.2.0
+      '@cordisjs/plugin-loader': ^1.0.0-rc.9
     peerDependenciesMeta:
       '@cordisjs/plugin-include':
         optional: true
@@ -2191,7 +2191,7 @@ snapshots:
     dependencies:
       mimic-response: 1.0.1
 
-  cordis@4.0.0-rc.11:
+  cordis@4.0.0-rc.12:
     dependencies:
       '@standard-schema/spec': 1.1.0
       cosmokit: 1.8.1

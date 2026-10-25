@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.5.17`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；54 个测试文件 / 385 个用例。
+当前版本 `0.5.18`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法；54 个测试文件 / 385 个用例。
 
 ## 快速开始
 
@@ -40,7 +40,7 @@ pnpm start:desktop    # Electron 桌面应用
 
 ## 2. 技术栈
 
-- **内核**：Node.js 22+ / TypeScript / [Cordis](https://github.com/cordiverse/cordis) 4（`cordis@4.0.0-rc.11`）插件框架
+- **内核**：Node.js 22+ / TypeScript / [Cordis](https://github.com/cordiverse/cordis) 4（`cordis@4.0.0-rc.12`）插件框架
 - **配置校验**：Schemastery（Cordis 生态的 schema 库）+ zod（RPC 参数校验）
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 55 个方法）
