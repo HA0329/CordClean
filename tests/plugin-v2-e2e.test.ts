@@ -121,6 +121,10 @@ describe('插件系统 v2 端到端', () => {
       expect(app.ctx.cleaner.list().some((task) => task.id === 'e2e-demo-task')).toBe(true)
 
       // 客户端页面：静态路由 + CSP；穿越被拒
+      // 源码按钮必须拿到可打开的文件，而不是包目录
+      const sourceInfo = await rpc('plugins/source', { id: 'external:e2e-demo' })
+      expect(sourceInfo.result.path.endsWith('index.mjs')).toBe(true)
+
       const pageUrl = await rpc('plugins/client-url', { id: 'external:e2e-demo' })
       expect(pageUrl.result.url).toBe('/plugin-assets/e2e-demo/index.html')
       const page = await fetch(base + pageUrl.result.url)
@@ -238,6 +242,8 @@ describe('插件系统 v2 端到端', () => {
     try {
       const plugins = app.ctx.plugins.list()
       expect(plugins.length).toBe(11)
+      const builtinSource = app.ctx.plugins.sourcePath('rule-pack')
+      expect(builtinSource?.endsWith('rule-pack')).toBe(true)
       expect(plugins.filter((item) => item.status === 'error')).toEqual([])
       expect(app.ctx.cleaner.list().length).toBeGreaterThanOrEqual(30)
     } finally {

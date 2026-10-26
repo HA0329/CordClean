@@ -340,7 +340,12 @@ async function run() {
   }
   // running 是 state.busy 的只读派生值，由 analyzeAi 内部维护，这里不再手动赋值
   try {
-    await analyzeAi(undefined, [...form.contextProviders], visionImage.value ? { ...visionImage.value } : undefined)
+    await analyzeAi(
+      undefined,
+      [...form.contextProviders],
+      visionImage.value ? { ...visionImage.value } : undefined,
+      extra.value.trim() || undefined,
+    )
     ElMessage.success('AI 分析完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -896,34 +901,13 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <pre class="stream-box">{{ state.aiStream }}</pre>
       </div>
 
-      <!-- AI 插件工坊：不依赖分析结果，进页面即可使用 -->
       <div class="cc-card">
-        <div class="cc-card-title"><h3>🛠️ AI 插件工坊</h3><span class="cc-faint">无需先分析：生成原生 Cordis 插件 → 校验 → 你审阅代码后安装</span></div>
-        <p class="cc-hint">插件会以完整 Node 权限运行，无法沙箱隔离，所以必须人工审阅代码后才安装。支持生成 cleaner / widget / active / desktop 四类原生 Cordis 插件：可注册清理任务、概览卡片、iframe 页面、状态栏/命令，active 插件可主动推送事件，desktop 插件可用悬浮窗/托盘。可声明 npm 第三方依赖（安装前需你确认，下载时禁用 lifecycle scripts）；安装失败会自动清理本次生成的文件与依赖目录，卸载插件也会清理。不通过的代码不会进入安装步骤。</p>
-        <el-input v-model="workshopRequirement" type="textarea" :rows="2" placeholder="例如：写一个 widget 插件，在概览页显示当前时间；或写一个 cleaner 插件清理 %TEMP% 下超过 7 天的 .log" />
-        <el-button style="margin-top: 10px" type="primary" :loading="workshopBusy" :disabled="workshopBusy" @click="generateWorkshopDraft">生成插件草稿</el-button>
-      </div>
-
-      <!-- 生成任务不随弹窗关闭而丢失：后台继续时、草稿待审阅时都保留入口 -->
-      <div v-if="workshopBusy && !workshopOpen" class="cc-card workshop-pending">
-        <div>
-          <strong>⏳ 正在生成插件草稿</strong>
-          <p class="cc-hint">已等待 {{ workshopElapsed }} 秒；可以随时查看进度或取消。</p>
-        </div>
-        <div class="cc-actions">
-          <el-button type="primary" plain @click="workshopOpen = true">查看进度</el-button>
-          <el-button @click="cancelWorkshopGeneration">取消生成</el-button>
-        </div>
-      </div>
-      <div v-else-if="workshopDraft && !workshopOpen" class="cc-card workshop-pending">
-        <div>
-          <strong>📝 插件草稿待审阅：{{ workshopDraft.name }}</strong>
-          <p class="cc-hint">插件已生成，等待你阅读代码后安装；关闭弹窗不会自动安装。</p>
-        </div>
-        <div class="cc-actions">
-          <el-button type="primary" plain @click="workshopOpen = true">查看草稿</el-button>
-          <el-button @click="discardWorkshopDraft">放弃草稿</el-button>
-        </div>
+        <div class="cc-card-title"><h3>🧪 AI 插件工坊</h3><span class="cc-faint">已独立为单独页面</span></div>
+        <p class="cc-hint">
+          生成原生 Cordis 插件、产出 v2 插件包（清单 + 入口 + 可选 client 页面）与安装审阅已移到「AI 插件工坊」页面；
+          本页只负责清理建议分析。两页都可以直接使用，不需要先分析。
+        </p>
+        <el-button type="primary" plain @click="state.page = 'workshop'">前往 AI 插件工坊</el-button>
       </div>
 
       <!-- 分析结果 -->
@@ -1065,70 +1049,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <p v-if="!(egress?.records?.length)" class="cc-empty">还没有外发记录：发起一次分析或测试连接后即可看到。</p>
     </el-dialog>
 
-    <el-dialog
-      v-model="workshopOpen"
-      title="插件草稿审阅"
-      width="900px"
-      :close-on-click-modal="!workshopBusy"
-      :close-on-press-escape="!workshopBusy"
-      :show-close="!workshopBusy"
-    >
-      <template v-if="workshopDraft">
-        <p class="cc-hint">名称：{{ workshopDraft.name }} · {{ workshopDraft.notes }}</p>
-        <p class="cc-hint">
-          类型：<code>{{ workshopDraft.kind ?? 'cleaner' }}</code> · 原生 Cordis 通用插件
-          <span class="cc-faint">（完整权限，安装前请审阅代码）</span>
-        </p>
-        <p v-if="workshopDraft.format === 'package'" class="cc-hint">
-          安装形态：v2 插件包
-          <template v-if="workshopDraft.manifest">
-            · id <code>{{ workshopDraft.manifest.id ?? workshopDraft.name }}</code>
-            · v{{ workshopDraft.manifest.version ?? '1.0.0' }}
-            · 兼容 <code>{{ workshopDraft.manifest.engines?.cordclean ?? '—' }}</code>
-            · 权限 {{ (workshopDraft.manifest.permissions?.services ?? []).join(', ') || '无服务' }}
-            <span v-if="workshopDraft.manifest.permissions?.network"> · 网络</span>
-            <span v-if="workshopDraft.manifest.permissions?.subprocess"> · 子进程</span>
-          </template>
-          <template v-if="workshopDraft.files?.length">
-            · 文件 {{ workshopDraft.files.length }} 个：{{ workshopDraft.files.map((file) => file.path).join('、') }}
-          </template>
-          <span class="cc-faint">（安装会走 staging → 校验 → 原子落盘，失败自动回滚；多文件包当前只支持编辑入口代码）</span>
-        </p>
-        <div v-if="workshopValidation">
-          <p v-if="workshopValidation.errors.length" class="error-text">校验未通过：{{ workshopValidation.errors.join('；') }}</p>
-          <p v-else class="cc-hint">✓ 语法与契约校验通过</p>
-          <p v-if="workshopValidation.warnings.length" class="cc-faint">提示：{{ workshopValidation.warnings.join('；') }}</p>
-        </div>
-        <div v-if="workshopDraft.dependencies && Object.keys(workshopDraft.dependencies).length" style="margin: 10px 0; padding: 10px; border: 1px solid var(--cc-border); border-radius: 8px">
-          <p class="cc-hint">该插件声明了第三方依赖，安装时会下载到插件目录的 node_modules（已禁用 lifecycle scripts）：</p>
-          <ul style="margin: 6px 0; padding-left: 20px">
-            <li v-for="(version, name) in workshopDraft.dependencies" :key="name"><code>{{ name }}</code> · {{ version }}</li>
-          </ul>
-          <el-checkbox v-model="workshopDependenciesAccepted">我确认下载并运行这些第三方依赖（它们拥有与插件相同的完整 Node 权限）</el-checkbox>
-        </div>
-        <el-input v-model="workshopDraft.code" type="textarea" :rows="18" class="cc-mono" spellcheck="false" @input="scheduleRevalidateWorkshopDraft" />
-        <el-checkbox v-model="workshopReviewed" style="margin-top: 8px">我已阅读上述代码，理解它会以完整权限运行</el-checkbox>
-      </template>
-      <div v-else-if="workshopBusy" style="padding: 32px 12px; text-align: center">
-        <p style="font-size: 15px">⏳ AI 正在生成插件草稿…（已等待 {{ workshopElapsed }} 秒）</p>
-        <p class="cc-hint">生成后还会做静态契约与语法校验；大模型慢时可能需要 30~90 秒，请勿重复点击。</p>
-      </div>
-      <div v-else-if="workshopError" class="error-text" style="padding: 24px 12px">生成失败：{{ workshopError }}</div>
-      <template #footer>
-        <template v-if="workshopBusy">
-          <el-button @click="cancelWorkshopGeneration">取消生成</el-button>
-        </template>
-        <template v-else>
-          <el-button @click="workshopOpen = false">关闭</el-button>
-          <el-button
-            type="primary"
-            :loading="workshopInstalling"
-            :disabled="workshopInstalling || !workshopDraft || !workshopValidation?.ok || !workshopReviewed || (workshopDraft && Object.keys(workshopDraft.dependencies ?? {}).length > 0 && !workshopDependenciesAccepted)"
-            @click="installWorkshopDraft"
-          >{{ workshopInstalling ? '正在安装依赖…' : '安装并启用' }}</el-button>
-        </template>
-      </template>
-    </el-dialog>
+
 
     </template>
     <div class="cc-card">

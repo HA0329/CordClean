@@ -603,7 +603,14 @@ export class AiService extends Service implements AiLike {
       ? '\n\n补充上下文（脱敏摘要）：\n' +
         contextSections.map((section) => `【${section.title}】\n` + section.lines.join('\n')).join('\n\n')
       : ''
-    const request = buildRequest(config, key, buildSystemPrompt(config), buildUserPrompt(profile, options.extraContext) + contextText + candidateHint + rootHint + SELECTION_HINT + ROOT_HINT + RULE_HINT)
+    const request = buildRequest(
+      config,
+      key,
+      buildSystemPrompt(config),
+      buildUserPrompt(profile, options.extraContext) + contextText + candidateHint + rootHint + SELECTION_HINT + ROOT_HINT + RULE_HINT,
+      undefined,
+      options.image,
+    )
     this.gate('analyze', request.url, request.body)
 
 

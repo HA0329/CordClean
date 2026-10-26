@@ -6,7 +6,7 @@
  * 2. 界面由 BrowserWindow 直接加载本地构建产物，无需 HTTP 服务器。
  */
 import path from 'node:path'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain, Menu, protocol, shell } from 'electron'
 import { createApp, defaultDataDir, resolvePluginClientAsset } from '@cordclean/core'
@@ -67,7 +67,15 @@ function isAllowedNavigation(rawUrl: string): boolean {
 const shellAdapter: ShellAdapter = {
   electron: true,
   async openPath(target: string) {
-    await shell.openPath(target)
+    const info = await stat(target).catch(() => undefined)
+    if (!info) throw new Error('路径不存在：' + target)
+    // 文件用「在资源管理器中定位」，目录直接用资源管理器打开；错误必须回传给界面
+    if (info.isFile()) {
+      shell.showItemInFolder(target)
+      return
+    }
+    const error = await shell.openPath(target)
+    if (error) throw new Error(error)
   },
   async openDataDir(target: string) {
     await shell.openPath(target)

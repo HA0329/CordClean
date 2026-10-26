@@ -8,6 +8,7 @@ import CleanView from './views/CleanView.vue'
 import PluginsView from './views/PluginsView.vue'
 import HistoryView from './views/HistoryView.vue'
 import AiView from './views/AiView.vue'
+import AiWorkshopView from './views/AiWorkshopView.vue'
 import SettingsView from './views/SettingsView.vue'
 import CleaningView from './views/CleaningView.vue'
 import ScanningView from './views/ScanningView.vue'
@@ -19,6 +20,7 @@ const nav = [
   { id: 'plugins', label: '插件', icon: '🧩' },
   { id: 'history', label: '历史与隔离区', icon: '🗂️' },
   { id: 'ai', label: 'AI 建议', icon: '🤖' },
+  { id: 'workshop', label: 'AI 插件工坊', icon: '🧪' },
   { id: 'settings', label: '设置', icon: '⚙️' },
 ]
 
@@ -28,6 +30,7 @@ const views: Record<string, any> = {
   plugins: PluginsView,
   history: HistoryView,
   ai: AiView,
+  workshop: AiWorkshopView,
   settings: SettingsView,
   cleaning: CleaningView,
   scanning: ScanningView,

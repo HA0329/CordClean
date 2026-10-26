@@ -5,7 +5,7 @@ import { folderSize } from '@cordclean/utils'
 import { spawn } from 'node:child_process'
 import { execFile } from 'node:child_process'
 import os from 'node:os'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 /**
  * RPC 方法实现。
  *
@@ -157,7 +157,12 @@ export function createHandlers(api: ApiContext): HandlerMap {
     'plugins/source': ({ id }) => {
       const source = ctx.plugins.sourcePath(id)
       if (!source) throw new Error('找不到该插件的源码路径（可能来自打包文件）')
-      return { path: source }
+      // 优先返回可打开的源码文件；只有目录时才交给资源管理器
+      const candidates = /\.(mjs|js|ts)$/i.test(source)
+        ? [source]
+        : [path.join(source, 'src', 'index.ts'), path.join(source, 'index.mjs'), path.join(source, 'index.js'), source]
+      const target = candidates.find((item) => existsSync(item)) ?? source
+      return { path: target }
     },
     'app/logs/recent': ({ limit }) => ({ lines: recentLogs(limit ?? 200) }),
     'app/logs/open': async () => {

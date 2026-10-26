@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.0`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、60 个 RPC 方法；62 个测试文件 / 455 个用例。
+当前版本 `0.6.0`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、60 个 RPC 方法；62 个测试文件 / 456 个用例。
 
 ## 快速开始
 
@@ -36,7 +36,7 @@ pnpm start:desktop    # Electron 桌面应用
 | 扫描结果选择 v2 | 千条级结果按「分类 → 任务」聚合；安全项智能推荐，谨慎/高风险项显式确认；支持风险/大小/任务筛选、三态整组勾选、逐项明细 + 详情说明 + 打开位置、受保护只读视图、清理确认摘要 |
 | 双外壳 | 同一内核与界面，可运行在浏览器（HTTP + WebSocket）或 Electron（IPC）中 |
 | AI 顾问插件 | 把脱敏的本机画像交给 DeepSeek 等 OpenAI 兼容接口，产出结构化清理建议 |
-| AI 插件工坊 | 生成原生 Cordis 通用插件（cleaner/widget/active/desktop），并**直接产出 v2 插件包**（清单 + 入口 + 可选 `client/` 页面 + 权限清单）；安装走 staging 校验、原子落盘与回滚；第三方依赖在 staging 内安装 `node_modules`（用户确认、禁用 lifecycle scripts）；生成后静态契约 + 语法校验，失败自动重试 |
+| AI 插件工坊 | 独立页面：生成原生 Cordis 通用插件（cleaner/widget/active/desktop），并**直接产出 v2 插件包**（清单 + 入口 + 可选 `client/` 页面 + 权限清单）；安装走 staging 校验、原子落盘与回滚；第三方依赖在 staging 内安装 `node_modules`（用户确认、禁用 lifecycle scripts）；生成后静态契约 + 语法校验，失败自动重试 |
 | 可观测 | 扫描/清理进度事件、结构化日志、清理历史、失败归因 |
 
 ## 2. 技术栈
@@ -46,7 +46,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 60 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（455 个用例 / 62 个文件）
+- **测试**：Vitest（456 个用例 / 62 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -262,7 +262,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 455 个用例 / 62 个文件
+pnpm test          # 456 个用例 / 62 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）

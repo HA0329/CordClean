@@ -418,7 +418,7 @@ async function openSource(plugin: PluginRuntime) {
   try {
     const path = await pluginSource(plugin.id)
     await openEditor(path)
-    ElMessage.success('已用编辑器打开：' + path)
+    ElMessage.success('已打开源码：' + path)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }

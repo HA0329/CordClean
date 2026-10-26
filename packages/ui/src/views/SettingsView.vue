@@ -14,6 +14,7 @@ import {
   openLogDir,
   clearHistory,
   openDataDir,
+  openPath,
   patchSettings,
   purgeQuarantine,
   state,
@@ -54,6 +55,17 @@ const saving = ref(false)
 const importText = ref('')
 const importOpen = ref(false)
 const schedulerPlugin = computed(() => state.plugins.find((plugin) => plugin.id === 'scheduler'))
+
+/** 插件目录 = 数据目录/plugins */
+const pluginsDir = computed(() => {
+  const dir = state.app?.dataDir
+  if (!dir) return ''
+  return dir.replace(/[\\/]+$/, '') + '\\plugins'
+})
+const enabledPluginCount = computed(() => state.plugins.filter((plugin) => plugin.enabled).length)
+const packagePluginCount = computed(
+  () => state.plugins.filter((plugin) => plugin.manifest && plugin.id.startsWith('external:')).length,
+)
 
 /** 定时计划（新格式为 settings.plugins.scheduler.config.plans；旧配置回退为单计划） */
 interface SchedulerPlan {
@@ -427,6 +439,36 @@ async function pickImportFile(event: Event) {
   importText.value = await file.text()
 }
 
+async function openPluginsDirectory() {
+  try {
+    await openPath(pluginsDir.value)
+    ElMessage.success('已打开插件目录')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function copyEnvInfo() {
+  const app = state.app
+  const lines = [
+    `CordClean ${app?.version ?? 'unknown'}`,
+    `shell=${app?.shell ?? (state.transport?.kind === 'electron' ? 'desktop' : 'web')}`,
+    `platform=${app?.platformLabel ?? app?.platform ?? 'unknown'} ${app?.osVersion ?? ''} ${app?.arch ?? ''}`.trim(),
+    `node=${app?.node ?? 'unknown'}${app?.systemNode ? ` (system ${app.systemNode})` : ''}`,
+    app?.electron ? `electron=${app.electron}` : '',
+    `protocol=${app?.protocolVersion ?? 'unknown'}`,
+    `bootMs=${app?.bootMs ?? 'unknown'}`,
+    `dataDir=${app?.dataDir ?? 'unknown'}`,
+    `plugins=${state.plugins.length} (enabled ${enabledPluginCount.value}, packages ${packagePluginCount.value})`,
+  ].filter(Boolean)
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'))
+    ElMessage.success('环境信息已复制到剪贴板')
+  } catch (error) {
+    ElMessage.error('复制失败：' + (error instanceof Error ? error.message : String(error)))
+  }
+}
+
 async function revealDataDir() {
   try {
     const dir = await openDataDir()
@@ -681,6 +723,40 @@ async function doClearEgress() {
       </div>
 
       <div class="cc-card">
+        <div class="cc-card-title"><h3>🧩 插件系统与扩展目录</h3><span class="cc-faint">v2 插件包 / 外部插件</span></div>
+        <div class="data-actions">
+          <div class="data-row">
+            <div>
+              <div class="data-title">插件目录</div>
+              <div class="cc-faint" style="word-break: break-all">{{ pluginsDir || '（未获取）' }}</div>
+            </div>
+            <el-button size="small" @click="openPluginsDirectory">打开</el-button>
+          </div>
+          <div class="data-row">
+            <div>
+              <div class="data-title">插件状态</div>
+              <div class="cc-faint">
+                已启用 {{ enabledPluginCount }} / {{ state.plugins.length }} 个 ·
+                v2 插件包 {{ packagePluginCount }} 个 · 清理任务 {{ state.tasks.length }} 个
+              </div>
+            </div>
+            <el-button size="small" @click="state.page = 'plugins'">插件页</el-button>
+          </div>
+          <div class="data-row">
+            <div>
+              <div class="data-title">AI 插件工坊</div>
+              <div class="cc-faint">生成 v2 插件包（清单 / 权限 / 安装事务）并审阅安装</div>
+            </div>
+            <el-button size="small" @click="state.page = 'workshop'">打开工坊</el-button>
+          </div>
+        </div>
+        <p class="cc-hint">
+          v2 插件包安装会先写入 <code>plugins/.staging</code>，校验通过后原子落盘；升级/卸载的旧目录保留在
+          <code>plugins/.trash</code>。权限清单用于审阅与展示，不是运行时沙箱 —— 插件仍以当前用户权限运行。
+        </p>
+      </div>
+
+      <div class="cc-card">
         <div class="cc-card-title"><h3>🧰 数据维护</h3><span class="cc-faint">不会删除你的文件</span></div>
         <div class="data-actions">
           <div class="data-row">
@@ -720,19 +796,26 @@ async function doClearEgress() {
       </div>
 
       <div class="cc-card">
-        <div class="cc-card-title"><h3>ℹ️ 关于</h3></div>
-        <p class="cc-hint">
-          CordClean v{{ state.app?.version ?? '0.1.0' }}
-          · {{ state.app?.platformLabel ?? 'Windows' }}
-          · {{ state.app?.arch ?? 'x64' }}
-          · {{ state.app?.shell === 'desktop' || state.transport?.kind === 'electron' ? '桌面外壳' : '浏览器外壳' }}
-          <br />
-          Node：{{ state.app?.systemNode ?? state.app?.node }}
-          <span v-if="state.app?.systemNode && state.app.systemNode !== state.app.node">（系统 Node）</span>
-          <span v-if="state.app?.node && state.app.node !== state.app.systemNode">；Electron 内置 Node：{{ state.app.node }}</span>
-          <br />
-          内核基于 Cordis 4 插件框架；清理规则来自内置规则库（PC-Cleaner 迁移 + 自定义）。
-        </p>
+        <div class="cc-card-title"><h3>ℹ️ 版本与运行环境</h3><span class="cc-faint">反馈问题时可直接复制</span></div>
+        <div class="data-actions">
+          <div class="data-row">
+            <div><div class="data-title">版本</div><div class="cc-faint">CordClean v{{ state.app?.version ?? '0.1.0' }} · 协议版本 {{ state.app?.protocolVersion ?? '—' }}</div></div>
+            <el-button size="small" @click="copyEnvInfo">复制环境信息</el-button>
+          </div>
+          <div class="data-row">
+            <div><div class="data-title">运行外壳</div><div class="cc-faint">{{ state.app?.shell === 'desktop' || state.transport?.kind === 'electron' ? '桌面外壳（Electron）' : '浏览器外壳（HTTP + WebSocket）' }}</div></div>
+            <div class="cc-faint">启动耗时 {{ state.app?.bootMs ?? '—' }} ms</div>
+          </div>
+          <div class="data-row">
+            <div><div class="data-title">运行时</div><div class="cc-faint">Node {{ state.app?.node ?? '—' }}{{ state.app?.electron ? ' · Electron ' + state.app.electron : '' }}</div></div>
+            <div class="cc-faint">{{ state.app?.arch ?? 'x64' }}</div>
+          </div>
+          <div class="data-row">
+            <div><div class="data-title">系统</div><div class="cc-faint">{{ state.app?.platformLabel ?? 'Windows' }} {{ state.app?.osVersion ?? '' }} · {{ state.app?.elevated ? '管理员权限' : '普通用户权限' }}</div></div>
+            <div class="cc-faint">数据目录已在上方</div>
+          </div>
+        </div>
+        <p class="cc-hint">内核基于 Cordis 4 插件框架；清理规则来自内置规则库（PC-Cleaner 迁移 + 自定义）。</p>
       </div>
     </div>
 

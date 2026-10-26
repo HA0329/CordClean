@@ -370,13 +370,13 @@
       <div class="sec-kicker"><span class="sec-num">08</span><span>Engineering &amp; Verification</span></div>
       <h2 class="sec-title">工程与验证：用数据回答「做完没有、靠不靠谱」</h2>
       <p class="sec-lede">
-        项目从第一天起就把测试、审计、基准与缺陷记录当作交付物：<b>455 个自动化测试全绿</b>，
+        项目从第一天起就把测试、审计、基准与缺陷记录当作交付物：<b>456 个自动化测试全绿</b>，
         <b>规则审计 0 错误</b>，性能基准可复现，自测阶段<b>发现并修复 67 个缺陷</b>（含 1 个高危越界删除）。
       </p>
     </div>
 
     <div class="kpi-row">
-      <div class="kpi"><div class="k">自动化测试</div><div class="v">455<small>用例</small></div><div class="d">62 个测试文件 · 全部通过</div></div>
+      <div class="kpi"><div class="k">自动化测试</div><div class="v">456<small>用例</small></div><div class="d">62 个测试文件 · 全部通过</div></div>
       <div class="kpi"><div class="k">修复缺陷</div><div class="v">14<small>个</small></div><div class="d">含 1 个高危数据安全缺陷</div></div>
       <div class="kpi"><div class="k">代码提交</div><div class="v">151<small>次</small></div><div class="d">源码 + 测试 + 脚本约 3.13 万行</div></div>
       <div class="kpi"><div class="k">规则审计</div><div class="v">0<small>错误</small></div><div class="d">结构 / 死目标 / 重复 / 策略拦截</div></div>
@@ -387,7 +387,7 @@
       <table>
         <thead><tr><th style="width:24%">层次</th><th style="width:31%">方式</th><th>覆盖重点</th></tr></thead>
         <tbody>
-          <tr><td><b>单元 / 集成</b></td><td>Vitest，62 文件 / 455 用例</td><td>路径策略与攻击面、文件系统安全、引擎、插件管理、隔离区、设置 / 历史、RPC、AI、规则纯逻辑</td></tr>
+          <tr><td><b>单元 / 集成</b></td><td>Vitest，62 文件 / 456 用例</td><td>路径策略与攻击面、文件系统安全、引擎、插件管理、隔离区、设置 / 历史、RPC、AI、规则纯逻辑</td></tr>
           <tr><td><b>安全专项</b></td><td><code>path-attack</code> / <code>fs-safety</code> / <code>compensate</code></td><td>尾点、8.3 短名、UNC、junction 穿透、受保护目录、预算与预览一致性</td></tr>
           <tr><td><b>插件审计</b></td><td><code>scripts/audit-plugins.ts</code></td><td>真实扫描 + 清理项契约不变量（只读，不删除）</td></tr>
           <tr><td><b>规则审计</b></td><td><code>scripts/audit-rules.ts</code></td><td>结构错误、未实现类型、死目标、重复目标、被策略拦截目标</td></tr>
