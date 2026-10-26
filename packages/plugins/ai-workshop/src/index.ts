@@ -21,6 +21,7 @@ import {
   buildRequest,
   checkPluginSyntax,
   extractPluginCode,
+  extractToolArgsFromText,
   fetchModelList,
   normalizeConfig,
   normalizeDependencies,
@@ -170,7 +171,7 @@ export class AiWorkshopService extends Service {
         feedback = '\n\n上一次输出被截断。请直接输出完整、可运行的代码，不要省略、不要 JSON 包装。'
         continue
       }
-      const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments
+      const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments ?? extractToolArgsFromText(parsed.text)
       const packageFiles = normalizePluginFiles(toolArgs?.files) as AiPluginFile[]
       const packageManifest = normalizePluginManifest(toolArgs?.manifest) as PluginManifest | undefined
       const entryName = packageManifest?.entry || 'index.mjs'
@@ -187,7 +188,16 @@ export class AiWorkshopService extends Service {
         continue
       }
       const allowRelativeImports = packageFiles.length > 0
-      const check = checkPluginSource(code, { dependencies, mode: 'native', allowRelativeImports })
+      // 模型偶尔会漏写 inject；对生成的草稿做一次保守的自动补全，避免静态校验/运行时失败
+      const injection = repairPluginInjections(code)
+      const contributions = repairPluginContributions(injection.code)
+      let repairedCode = contributions.code
+      if (injection.added.length) {
+        const entryFile = packageFiles.find((file) => file.path === entryName)
+        if (entryFile) entryFile.content = repairedCode
+      }
+      const addedServices = [...injection.added, ...contributions.added]
+      const check = checkPluginSource(repairedCode, { dependencies, mode: 'native', allowRelativeImports })
       if (!check.ok) {
         lastError = check.errors.slice(0, 2).join('；')
         feedback =
@@ -196,17 +206,19 @@ export class AiWorkshopService extends Service {
           '\n请修正后重新输出完整插件包：原生 Cordis 插件用 export function apply(ctx)；不要 import 框架包；第三方包必须在 dependencies 中声明。'
         continue
       }
-      const syntaxError = await checkPluginSyntax(code)
+      const syntaxError = await checkPluginSyntax(repairedCode)
       if (syntaxError) {
         lastError = '语法错误：' + syntaxError
         feedback = '\n\n上一次生成的插件代码有语法错误：\n' + syntaxError + '\n请输出语法完整、括号配对的代码。'
         continue
       }
-      const matched = code.match(/(?:export\s+const\s+name\s*=|name\s*:)\s*['"]([a-zA-Z0-9_-]+)['"]/)
+      const matched = repairedCode.match(/(?:export\s+const\s+name\s*=|name\s*:)\s*['"]([a-zA-Z0-9_-]+)['"]/)
       return {
         name: matched?.[1] ?? packageManifest?.id ?? 'ai-plugin',
-        code,
-        notes: parsed.text.slice(0, 200),
+        code: repairedCode,
+        notes:
+          parsed.text.slice(0, 200) +
+          (addedServices.length ? `（已自动补全：${addedServices.join(', ')}）` : ''),
         dependencies,
         mode: 'native',
         kind,
@@ -246,6 +258,50 @@ function extractDependenciesFromText(text: string): Record<string, string> {
 function extractKindFromCode(code: string): string {
   const matched = code.match(/export\s+const\s+kind\s*=\s*['"]([a-zA-Z-]+)['"]/)
   return matched?.[1] ?? ''
+}
+
+const KNOWN_SERVICES = new Set([
+  'ui', 'cleaner', 'system', 'settings', 'window', 'pathPolicy', 'rules', 'evaluator',
+  'history', 'quarantine', 'compensate', 'executor', 'recycleBin', 'ai', 'aiContext', 'egress',
+])
+
+/** 自动补全 inject：生成草稿偶尔使用了 ctx.X 但忘记声明；返回修正后的代码与新增服务 */
+function repairPluginInjections(code: string): { code: string; added: string[] } {
+  const used = new Set<string>()
+  for (const match of code.matchAll(/ctx\.([A-Za-z_$][\w$]*)/g)) {
+    if (KNOWN_SERVICES.has(match[1])) used.add(match[1])
+  }
+  if (!used.size) return { code, added: [] }
+  const injectMatch = code.match(/export\s+const\s+inject\s*=\s*\[([^\]]*)\]/)
+  const existing = injectMatch
+    ? [...injectMatch[1].matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1])
+    : []
+  const merged = [...new Set([...existing, ...used])].filter((service) => KNOWN_SERVICES.has(service))
+  const added = merged.filter((service) => !existing.includes(service))
+  if (!added.length) return { code, added: [] }
+  const declaration = 'export const inject = ' + JSON.stringify(merged) + ';'
+  let fixed = code
+  if (injectMatch) {
+    fixed = code.replace(injectMatch[0], declaration)
+  } else if (/export\s+function\s+apply\s*\(/.test(code)) {
+    fixed = code.replace(/(export\s+function\s+apply\s*\()/, declaration + '\n\n$1')
+  } else {
+    return { code, added: [] }
+  }
+  return { code: fixed, added }
+}
+
+/** 自动补全 active 等插件的 commands 贡献：模型可能只调用 ctx.ui.command 但忘记导出 contributes */
+function repairPluginContributions(code: string): { code: string; added: string[] } {
+  if (/export\s+const\s+contributes\s*=/.test(code)) return { code, added: [] }
+  const ids = [...code.matchAll(/ctx\.ui\.command\(\s*name\s*,\s*['"]([^'"]+)['"]/g)].map((match) => match[1])
+  if (!ids.length) return { code, added: [] }
+  const declaration =
+    'export const contributes = ' +
+    JSON.stringify({ commands: ids.map((id) => ({ id, title: id })) }) +
+    ';\n\n'
+  if (!/export\s+function\s+apply\s*\(/.test(code)) return { code, added: [] }
+  return { code: code.replace(/(export\s+function\s+apply\s*\()/, declaration + '$1'), added: ids.map((id) => `command:${id}`) }
 }
 
 export default defineCleanerPlugin<Partial<AiConfig> & { extraBodyText?: string; extraHeadersText?: string }>({

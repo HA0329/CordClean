@@ -47,7 +47,7 @@ const schemas: Record<string, z.ZodTypeAny> = {
   'plugins/config': z.object({ id: z.string().min(1), config: z.record(z.string(), z.unknown()) }).strict(),
   'plugins/install': z.object({ path: z.string().min(1), allowCustomClean: z.boolean().optional() }).strict(),
   'plugins/install-native': z.object({ path: z.string().min(1).max(500) }).strict(),
-  'ui/contributions': z.void().optional(),
+  'ui/contributions': z.object({}).strict().optional(),
   'ui/resolve': z
     .object({
       pluginId: z.string().min(1).max(120),
@@ -73,7 +73,7 @@ const schemas: Record<string, z.ZodTypeAny> = {
     })
     .strict(),
   'plugins/uninstall-package': z.object({ id: z.string().min(1) }).strict(),
-  'plugins/package-problems': z.void().optional(),
+  'plugins/package-problems': z.object({}).strict().optional(),
   'plugins/client-url': z.object({ id: z.string().min(1).max(120) }).strict(),
   'quarantine/restore': z.object({ ids: z.array(z.string()).max(10_000) }).strict(),
   'quarantine/purge': z.object({ ids: z.array(z.string()).max(10_000).optional() }).strict(),

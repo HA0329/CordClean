@@ -301,7 +301,7 @@ export class AiService extends Service implements AiLike {
         this.ctx.logger.info('插件草稿被截断，自动扩容重试')
         continue
       }
-      const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments
+      const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments ?? extractToolArgsFromText(parsed.text)
       // 多文件插件包：模型可额外输出 manifest（v2 清单）与 files（入口/页面/资源）
       const packageFiles = normalizePluginFiles(toolArgs?.files)
       const packageManifest = normalizePluginManifest(toolArgs?.manifest)
@@ -808,6 +808,18 @@ export function createAiService(ctx: Context, raw: Partial<AiConfig> | undefined
 /** 提示模型额外给出新规则建议（可选字段） */
 /** 让模型在候选列表内挑选清理项 */
 /** 让模型建议新增扫描根（只能从候选 rootId 中选） */
+export function extractToolArgsFromText(text: string): Record<string, any> | undefined {
+  try {
+    const data = extractJsonObject(text) as any
+    if (data && typeof data === 'object' && (typeof data.code === 'string' || Array.isArray(data.files) || data.manifest)) {
+      return data
+    }
+  } catch {
+    // 不是 JSON 就交给代码提取逻辑
+  }
+  return undefined
+}
+
 export function extractPluginCode(text: string): string {
   const fenced = text.match(/```(?:js|javascript|mjs)?\s*([\s\S]*?)```/i)
   const raw = (fenced ? fenced[1] : text).trim()
@@ -950,7 +962,7 @@ export const PLUGIN_TOOL = {
       },
       code: {
         type: 'string',
-        description: '完整单文件 ESM 源码；必须 export function apply(ctx)，用 Cordis 上下文注册能力',
+        description: '可选：入口文件源码副本；推荐直接放在 files 的入口文件中，code 可省略',
       },
       notes: { type: 'string', description: '简要说明' },
       dependencies: {
@@ -965,7 +977,7 @@ export const PLUGIN_TOOL = {
       },
       files: {
         type: 'array',
-        description: '推荐：多文件插件包内容（不含 plugin.json），path 相对包目录；入口与 client 页面都放这里',
+        description: '必填：多文件插件包内容（不含 plugin.json），path 相对包目录；必须包含入口文件 index.mjs（或 manifest.entry），页面放 client/index.html',
         items: {
           type: 'object',
           properties: {
@@ -976,12 +988,12 @@ export const PLUGIN_TOOL = {
         },
       },
     },
-    required: ['name', 'code'],
+    required: ['name', 'files'],
   },
 }
 
 export const PLUGIN_SYSTEM_PROMPT = [
-  '你是 Cordis 通用插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "description": "一句话说明插件功能", "kind": "cleaner|widget|active|desktop", "code": "完整 ESM 源码", "notes": "简要说明", "dependencies": {"包名":"版本"} }。',
+  '你是 Cordis 通用插件工程师。必须调用 emit_plugin 工具，输出 JSON 对象：{ "name": "kebab-case", "description": "一句话说明插件功能", "kind": "cleaner|widget|active|desktop", "manifest": {...v2 清单...}, "files": [{"path":"index.mjs","content":"完整 ESM 源码"}, ...], "dependencies": {"包名":"版本"}, "notes": "简要说明" }。',
   'code 是原生 Cordis 插件，必须是完整单文件 ESM：export const name = "kebab-case"; export const description = "一句话"; export const kind = "cleaner|widget|active|desktop"; 按需 export const inject = ["ui"] / ["cleaner"] / ["window"]; export function apply(ctx) { ... }。不要使用 export default 普通对象，也不要使用 setup()。',
   'widget/active/desktop 必须提供至少一个 commands 项（例如“刷新数据”“运行自检”），并在 apply 中用 ctx.ui.command(name, rpcID, handler) 注册；插件页没有手动命令时用户无法触发插件功能。cleaner 可不提供命令。',
   '插件按需声明 inject：用 ctx.ui 必须 inject 包含 "ui"；注册清理任务必须 inject 包含 "cleaner"；桌面窗口/托盘必须 inject 包含 "window"；使用 ctx.settings/system/pathPolicy 也必须分别 inject。Cordis 在未声明 inject 时读取 ctx 属性会直接抛错，禁止用 if (ctx.cleaner) / if (ctx.system) 这种方式探测能力；只使用 inject 中声明的服务。',
@@ -992,7 +1004,8 @@ export const PLUGIN_SYSTEM_PROMPT = [
   '如确实需要自定义页面，可在 contributes.pages 中提供 mode:"iframe" 的自包含 HTML；页面内不能访问宿主 DOM，只能通过 postMessage 的 cordclean/plugin-page 协议请求 resolve 数据。',
   '【默认多文件 v2 插件包】优先输出 manifest（v2 清单：apiVersion:2、engines.cordclean、kind、entry、permissions{services,fsRoots,network,subprocess}、client、dependencies）与 files 数组（[{path,content}]），而不是只给单文件 code；即使只有入口文件也建议输出 files:[{path:"index.mjs",content:code}]。path 用 / 分隔且必须在包内；manifest.entry 必须出现在 files 中；code 字段与入口文件内容保持一致。',
   '【需要自定义 UI 时必须多文件】只要插件需要独立客户端页面（图表、表单、iframe 页面），必须输出 client/index.html（自包含 HTML，不引用外部资源）并在 manifest.client 写 { "mode":"page","entry":"client/index.html" }；页面通过 postMessage 的 cordclean/plugin-page 协议取数据，不能访问宿主 DOM。不要用单文件 code 里拼接 HTML 代替 client/index.html。',
-  '不输出 manifest/files 时，宿主仍会把单文件 code 自动包成 v2 插件包安装，但会失去自定义页面与显式权限声明；因此默认应输出完整插件包。',
+  '【强制】files 数组必填：至少包含入口文件 index.mjs（如 manifest.entry 指定其他文件名则必须包含该文件）；即使只有一个文件也必须用 files 输出。manifest 必须提供 apiVersion:2、engines.cordclean、kind、entry、permissions；需要页面时必须再放 client/index.html 并写 manifest.client {"mode":"page","entry":"client/index.html"}。禁止只输出单文件 code 而不给 files。',
+  '【命令注册必须完全匹配】contributes.commands 里每一项的 id（不是 title、不是 rpc 字段）就是命令 ID；在 apply 中必须用 ctx.ui.command(name, "同一个 id", handler) 注册，第一个参数是插件 name，第二个参数必须与 contributes.commands[].id 一字不差。不要用命令的中文标题或 rpc 字段作为 ctx.ui.command 的第二个参数。示例：contributes.commands=[{id:"run-selfcheck",title:"运行自检"}]; apply 中 ctx.ui.command(name,"run-selfcheck",handler)。',
   'active 类型：在 apply 中用 ctx.effect(() => { const timer = setInterval(...); return () => clearInterval(timer) }) 注册后台逻辑，并用 ctx.ui.emit(name, 事件名, 数据) 主动刷新界面、ctx.ui.notify(name, { title, message, level }) 弹通知；通过 ctx.on/ctx.emit 订阅事件。',
   'desktop 类型：用 ctx.window.open(name, { id, html, width, height, transparent, alwaysOnTop, clickThrough }) 打开独立悬浮窗口（仅 Electron 桌面壳可用）；用 ctx.window.createTray(name, { tooltip, items, onSelect }) 创建托盘。窗口 HTML 是自包含的，不能用 Node/宿主 DOM。',
   'dependencies 为空对象 {} 表示零依赖；需要第三方能力时声明 npm 包（最多 8 个），版本必须是 semver（如 "^3.3.2"），安装时由用户确认并下载。禁止 file:/git/URL/路径规格；优先纯 JS 包，避免需要本地编译的原生模块。',

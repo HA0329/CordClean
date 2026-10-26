@@ -99,9 +99,12 @@ describe('AI 工坊 → v2 插件包', () => {
     expect(withDeps.ok).toBe(true)
     expect(withDeps.manifest?.dependencies).toEqual({ 'is-number': '^7.0.0' })
     expect((await validateAiPluginPackage(draft({ files: [{ path: '../evil.mjs', content: CODE }] }), '0.5.18')).ok).toBe(false)
-    expect(
-      (await validateAiPluginPackage(draft({ manifest: { apiVersion: 1 } as any }), '0.5.18')).errors.length,
-    ).toBeGreaterThan(0)
+    // AI 生成清单不完整/版本不匹配时会被自动补齐并提示，而不是直接判失败
+    const repaired = await validateAiPluginPackage(draft({ manifest: { apiVersion: 1 } as any }), '0.5.18')
+    expect(repaired.ok).toBe(true)
+    expect(repaired.manifest?.apiVersion).toBe(2)
+    expect(repaired.manifest?.engines.cordclean).toBe('^0.5.18')
+    expect(repaired.warnings.some((warning) => warning.includes('修正') || warning.includes('补齐'))).toBe(true)
   })
 
   it('解析模型输出的 files / manifest', () => {

@@ -12,6 +12,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   checkPluginSource,
+  isSafePluginFsRoot,
   isSafeRelativePath,
   validatePluginManifest,
   type AiPluginDraft,
@@ -25,6 +26,11 @@ const MAX_FILES = 50
 const MAX_FILE_BYTES = 256 * 1024
 const MAX_TOTAL_BYTES = 4 * 1024 * 1024
 const PLUGIN_ID_RE = /^(?=.{2,40}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
+
+const KNOWN_PERMISSION_SERVICES = new Set([
+  'ui', 'cleaner', 'window', 'settings', 'system', 'pathPolicy', 'rules', 'evaluator',
+  'history', 'quarantine', 'compensate', 'executor', 'recycleBin', 'ai', 'aiContext', 'egress',
+])
 
 export interface AiPackageValidation {
   ok: boolean
@@ -132,7 +138,64 @@ export async function validateAiPluginPackage(
   }
   if (totalBytes > MAX_TOTAL_BYTES) errors.push(`插件包总体积超过上限（${MAX_TOTAL_BYTES} 字节）`)
 
-  const rawManifest = draft.manifest ?? synthesizePluginManifest(draft, appVersion, files)
+  let rawManifest = draft.manifest ?? synthesizePluginManifest(draft, appVersion, files)
+  if (draft.manifest) {
+    // AI 生成包面向当前应用，且模型清单字段经常不完整：
+    // 统一补齐 id/name/version/entry/kind/permissions，修正 engines，丢弃不可信的 contributes。
+    const expectedEngine = `^${appVersion}`
+    const repaired: Record<string, any> = { ...draft.manifest }
+    repaired.id = typeof repaired.id === 'string' && repaired.id.trim() ? repaired.id.trim() : normalizePluginId(draft.name)
+    repaired.name = typeof repaired.name === 'string' && repaired.name.trim() ? repaired.name.trim() : String(draft.name || repaired.id)
+    repaired.version = typeof repaired.version === 'string' && repaired.version.trim() ? repaired.version.trim() : '1.0.0'
+    repaired.description = typeof repaired.description === 'string' && repaired.description.trim() ? repaired.description : 'AI 工坊生成的插件包'
+    repaired.apiVersion = 2
+    repaired.engines = { cordclean: expectedEngine }
+    repaired.kind = repaired.kind ?? draft.kind ?? 'cleaner'
+    repaired.entry =
+      typeof repaired.entry === 'string' && repaired.entry.trim()
+        ? repaired.entry
+        : files['index.mjs']
+          ? 'index.mjs'
+          : Object.keys(files)[0] ?? 'index.mjs'
+    if (!repaired.permissions || typeof repaired.permissions !== 'object') {
+      repaired.permissions = { services: [], fsRoots: [], network: false, subprocess: false }
+    }
+    const permissions = repaired.permissions as Record<string, any>
+    permissions.services = Array.isArray(permissions.services)
+      ? permissions.services.filter(
+          (service: unknown) => typeof service === 'string' && KNOWN_PERMISSION_SERVICES.has(service),
+        )
+      : []
+    permissions.fsRoots = Array.isArray(permissions.fsRoots)
+      ? permissions.fsRoots.filter((root: unknown) => isSafePluginFsRoot(root))
+      : []
+    permissions.network = permissions.network === true
+    permissions.subprocess = permissions.subprocess === true
+    const clientValue = repaired.client
+    if (
+      clientValue !== undefined &&
+      (clientValue === null ||
+        typeof clientValue !== 'object' ||
+        Array.isArray(clientValue) ||
+        !['declarative', 'page'].includes(String((clientValue as any).mode ?? '')))
+    ) {
+      repaired.client = files['client/index.html']
+        ? { mode: 'page', entry: 'client/index.html' }
+        : { mode: 'declarative' }
+      warnings.push('已修正清单 client 字段')
+    }
+    if (!/^[a-z0-9][a-z0-9._-]*$/.test(String(repaired.id))) {
+      repaired.id = normalizePluginId(draft.name)
+      warnings.push('已修正清单 id')
+    }
+    if (files['client/index.html'] && !repaired.client) {
+      repaired.client = { mode: 'page', entry: 'client/index.html' }
+    }
+    if (Object.keys(draft.dependencies ?? {}).length) repaired.dependencies = draft.dependencies
+    delete repaired.contributes
+    rawManifest = repaired as typeof rawManifest
+    warnings.push(`已自动补齐 AI 清单必需字段（id/name/version/entry/engines 等）`)
+  }
   const manifestValidation = validatePluginManifest(rawManifest)
   if (!manifestValidation.ok) {
     for (const issue of manifestValidation.errors) errors.push(`清单校验失败：${issue.message}`)
