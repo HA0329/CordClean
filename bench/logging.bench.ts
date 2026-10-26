@@ -13,7 +13,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { appendLogLine, configureLogFile, flushLogFile, readLogLines, redactLogText } from '@cordclean/utils'
+import { appendLogEvent, configureLogFile, flushLogFile, readLogEntries, redactLogText } from '@cordclean/utils'
 import { summarizeRpcParams } from '@cordclean/host'
 
 const rows: Array<[string, string, string]> = []
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   const writes = 20_000
 
   const writeStart = performance.now()
-  for (let index = 0; index < writes; index += 1) appendLogLine(line)
+  for (let index = 0; index < writes; index += 1) appendLogEvent({ level: 'info', scope: 'bench', message: line })
   flushLogFile()
   const writeMs = performance.now() - writeStart
   log('日志写入', '行数', String(writes))
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   log('日志写入', '字节吞吐', formatMB((lineBytes * writes) / (writeMs / 1000)) + '/秒')
 
   const readStart = performance.now()
-  const tail = readLogLines(1000)
+  const tail = readLogEntries(1000)
   const readMs = performance.now() - readStart
   log('日志读取', '末尾 1000 行', readMs.toFixed(2) + ' ms')
   log('日志读取', '实际行数', String(tail.length))
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
   for (const [section, metric, value] of rows) console.log(`| ${section} | ${metric} | ${value} |`)
 
   const markdown = [
-    '# CordClean 日志系统基准（v0.6.1）',
+    '# CordClean 日志系统基准（v0.6.2）',
     '',
     `生成时间：${new Date().toLocaleString('zh-CN')}`,
     `运行环境：${os.platform()} ${os.release()} · Node ${process.versions.node}`,

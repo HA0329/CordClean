@@ -8,6 +8,7 @@
  */
 import type { Context } from 'cordis'
 import type { PluginKind } from './plugin-api.ts'
+import type { LoggingSettings } from './logging.ts'
 import type {
   PluginManifest,
   PluginManifestIssue,
@@ -129,6 +130,8 @@ export interface Settings {
       externalType?: 'native' | 'worker' | 'package'
     }
   >
+  /** 日志设置（运行时生效） */
+  logging: LoggingSettings
   /** 界面设置 */
   /** 定时任务运行状态（lastRuns 按计划持久化） */
   scheduler: {

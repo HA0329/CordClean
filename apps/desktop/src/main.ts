@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain, Menu, protocol, shell } from 'electron'
 import { createApp, defaultDataDir, resolvePluginClientAsset } from '@cordclean/core'
 import { createHandlers, type ShellAdapter } from '@cordclean/host'
+import { onLogEvent } from '@cordclean/utils'
 import { createElectronWindowBackend } from './window-backend.ts'
 
 /**
@@ -135,7 +136,16 @@ async function createKernel() {
     logForward: true,
     windowBackend: createElectronWindowBackend(),
   })
-  disposeApp = () => instance.dispose()
+  // 日志总线 → 所有窗口的 'log' 事件（实时 tail）
+  const unbindLogBus = onLogEvent((entry) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('cordclean:event', 'log', entry)
+    }
+  })
+  disposeApp = async () => {
+    unbindLogBus()
+    await instance.dispose()
+  }
 
   // 崩溃/未处理拒绝也写入统一日志，避免主进程退出后没有诊断线索
   process.on('uncaughtException', (error) => {
@@ -180,7 +190,6 @@ async function createKernel() {
     // AI 流式增量必须转发，否则桌面外壳要等分析结束才有输出（看起来“不是流式”）
     ['ai/stream', 'ai/stream'],
     ['scheduler/scan', 'scheduler/scan'],
-    ['system/log', 'log'],
   ]
   for (const [internal, external] of events) {
     instance.ctx.on(internal as any, (payload: unknown) => {

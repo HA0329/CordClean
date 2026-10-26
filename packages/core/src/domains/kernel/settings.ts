@@ -55,6 +55,12 @@ export const DEFAULT_SETTINGS: Settings = {
   scheduler: {
     lastRuns: {},
   },
+  logging: {
+    level: 'info',
+    maxBytes: 5 * 1024 * 1024,
+    keep: 2,
+    retainDays: 14,
+  },
   ui: {
     theme: 'dark',
     lastPage: 'overview',

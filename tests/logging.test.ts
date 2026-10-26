@@ -4,15 +4,19 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createApp } from '@cordclean/core'
 import {
-  appendLogLine,
+  appendLogEvent,
   configureLogFile,
   flushLogFile,
   logFilePath,
+  onLogEvent,
+  readLogEntries,
   readLogLines,
   redactLogText,
 } from '@cordclean/utils'
-import { shouldLogRpc, summarizeRpcParams } from '@cordclean/host'
-import { exportDiagnostics, recentLogs } from '../packages/host/src/diagnostics.ts'
+import { createHandlers, shouldLogRpc, startHostServer, summarizeRpcParams, type ShellAdapter } from '@cordclean/host'
+import { exportDiagnostics, recentLogEntries, recentLogs } from '../packages/host/src/diagnostics.ts'
+
+const shell: ShellAdapter = { electron: false, async openPath() {}, async openDataDir() {} }
 
 function tempDir(): string {
   return mkdtempSync(path.join(os.tmpdir(), 'cordclean-logging-'))
@@ -24,12 +28,12 @@ describe('统一日志文件', () => {
     try {
       configureLogFile({ dir, maxBytes: 1024, keep: 2, retainDays: 0 })
       // 写入足够多数据以触发多次缓冲 flush 与轮转
-      for (let index = 0; index < 5000; index += 1) appendLogLine(`line-${index}-${'x'.repeat(40)}`)
+      for (let index = 0; index < 5000; index += 1) appendLogEvent({ level: 'info', scope: 'test', message: `line-${index}-${'x'.repeat(40)}` })
       flushLogFile()
       const file = logFilePath()!
       expect(existsSync(file)).toBe(true)
       expect(existsSync(`${file}.1`)).toBe(true)
-      for (let index = 0; index < 5000; index += 1) appendLogLine(`line2-${index}-${'y'.repeat(40)}`)
+      for (let index = 0; index < 5000; index += 1) appendLogEvent({ level: 'info', scope: 'test', message: `line2-${index}-${'y'.repeat(40)}` })
       flushLogFile()
       expect(existsSync(`${file}.2`)).toBe(true)
       expect(existsSync(`${file}.3`)).toBe(false)
@@ -90,6 +94,88 @@ describe('RPC 日志降噪', () => {
     expect(summary.taskIds).toBe('<array:2>')
     expect(summary.limit).toBe(20)
     expect(summary.query).toBe('small')
+  })
+})
+
+describe('结构化日志（Phase 2）', () => {
+  it('JSONL：每行一个结构化对象，字段脱敏并可通过 onLogEvent 实时订阅', () => {
+    const dir = tempDir()
+    try {
+      configureLogFile({ dir, maxBytes: 4 * 1024 * 1024, keep: 2, retainDays: 0 })
+      const events: unknown[] = []
+      const off = onLogEvent((entry) => events.push(entry))
+      const entry = appendLogEvent({
+        level: 'warn',
+        scope: 'test',
+        message: 'apiKey=sk-abcdefghijklmnop 测试',
+        fields: { apiKey: 'sk-abcdefghijklmnop', count: 2, code: 'x'.repeat(2000) },
+        requestId: 'rpc-test-1',
+      })
+      off()
+      expect(events).toHaveLength(1)
+      expect(entry.fields?.apiKey).toBe('<redacted>')
+      expect(entry.fields?.count).toBe(2)
+      expect(String(entry.fields?.code)).toContain('…')
+      const file = logFilePath()!
+      flushLogFile()
+      const lastLine = readFileSync(file, 'utf8').trim().split('\n').at(-1)!
+      const parsed = JSON.parse(lastLine)
+      expect(parsed.level).toBe('warn')
+      expect(parsed.scope).toBe('test')
+      expect(parsed.requestId).toBe('rpc-test-1')
+      expect(parsed.fields.apiKey).toBe('<redacted>')
+      expect(readLogEntries(5).at(-1)?.requestId).toBe('rpc-test-1')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('运行时日志级别：settings.logging.level=error 时 info 不落盘', async () => {
+    const dir = tempDir()
+    const app = await createApp({
+      dataDir: dir,
+      logger: true,
+      logLevel: 'info',
+      logForward: false,
+      settingsOverrides: { logging: { level: 'error', maxBytes: 5 * 1024 * 1024, keep: 2, retainDays: 0 } },
+    })
+    try {
+      app.ctx.logger.info('SHOULD-NOT-BE-WRITTEN')
+      app.ctx.logger.error('SHOULD-BE-WRITTEN')
+      const entries = recentLogEntries(100)
+      expect(entries.some((entry) => entry.message.includes('SHOULD-BE-WRITTEN'))).toBe(true)
+      expect(entries.some((entry) => entry.message.includes('SHOULD-NOT-BE-WRITTEN'))).toBe(false)
+    } finally {
+      await app.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('RPC requestId 关联：错误请求日志带 requestId，app/logs/entries 可读', async () => {
+    const dir = tempDir()
+    const app = await createApp({ dataDir: dir, logger: true, logLevel: 'info', logForward: false })
+    const handlers = createHandlers({ ctx: app.ctx, dataDir: dir, version: app.version, bootMs: app.bootMs, shell })
+    const server = await startHostServer({ ctx: app.ctx, handlers, dataDir: dir, port: 0 })
+    try {
+      const response = await fetch(new URL(`/api/rpc?token=${server.token}`, server.url), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'plugins/source', params: { id: 'missing-plugin' } }),
+      })
+      const payload = await response.json()
+      expect(payload.error).toBeTruthy()
+      const entries = recentLogEntries(200)
+      const rpcError = entries.find((entry) => entry.scope === 'rpc' && entry.level === 'error')
+      expect(rpcError).toBeTruthy()
+      expect(rpcError?.requestId).toMatch(/^rpc-\d+$/)
+      const apiEntries = await handlers['app/logs/entries']({ limit: 100 })
+      expect(Array.isArray(apiEntries)).toBe(true)
+      expect(apiEntries.some((entry) => entry.requestId === rpcError?.requestId)).toBe(true)
+    } finally {
+      await server.close()
+      await app.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

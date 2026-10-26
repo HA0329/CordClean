@@ -17,6 +17,7 @@ import type {
   CleanProgressEvent,
   CleanReport,
   HistoryEntry,
+  LogEntry,
   PluginRuntime,
   PluginRuntimeInfo,
   PluginManifest,
@@ -75,7 +76,7 @@ export interface UiState {
   aiModelsSource?: 'remote' | 'fallback'
   /** 最近一次连通性探测结果 */
   aiProbe?: AiProbeResult
-  logs: Array<{ level: string; message: string; time: number }>
+  logs: LogEntry[]
   page: string
 }
 
@@ -672,6 +673,10 @@ export async function fetchLogs(limit = 200): Promise<string[]> {
 
 export async function fetchLogInfo(): Promise<{ file: string; bytes: number }> {
   return requireTransport().request('app/logs/info', undefined)
+}
+
+export async function fetchLogEntries(limit = 500): Promise<LogEntry[]> {
+  return requireTransport().request('app/logs/entries', { limit })
 }
 
 export async function openLogDir(): Promise<void> {

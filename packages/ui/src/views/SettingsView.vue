@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { LogEntry } from '@cordclean/shared'
 import {
   authorizeScheduler,
   clearEgress,
@@ -10,7 +11,7 @@ import {
   savePluginConfig,
   setPluginEnabled,
   exportDiagnostics,
-  fetchLogs,
+  fetchLogEntries,
   fetchLogInfo,
   openLogDir,
   clearHistory,
@@ -261,22 +262,38 @@ async function runScheduleNow() {
 }
 
 const logsOpen = ref(false)
-const logLines = ref<string[]>([])
+const logEntries = ref<LogEntry[]>([])
 const loadingLogs = ref(false)
 const logLevelFilter = ref<'all' | 'error' | 'warn' | 'info' | 'debug'>('all')
+const logScopeFilter = ref('all')
 const logSearch = ref('')
 const logPaused = ref(false)
+const logLive = ref(false)
 const logAutoRefresh = ref(false)
 const logInfo = ref<{ file: string; bytes: number } | null>(null)
 let logTimer: ReturnType<typeof setInterval> | undefined
 
-const filteredLogs = computed(() => {
+const logScopes = computed(() => {
+  const scopes = new Set<string>()
+  for (const entry of logEntries.value) scopes.add(entry.scope)
+  return [...scopes].sort()
+})
+
+const displayEntries = computed<LogEntry[]>(() => (logLive.value ? state.logs.slice(0, 1000) : logEntries.value))
+
+const filteredEntries = computed(() => {
   const keyword = logSearch.value.trim().toLowerCase()
   const level = logLevelFilter.value
-  return logLines.value
-    .filter((line) => (level === 'all' ? true : line.includes(`[${level}]`)))
-    .filter((line) => (keyword ? line.toLowerCase().includes(keyword) : true))
-    .slice(-800)
+  const scope = logScopeFilter.value
+  return displayEntries.value
+    .filter((entry) => (level === 'all' ? true : entry.level === level))
+    .filter((entry) => (scope === 'all' ? true : entry.scope === scope))
+    .filter((entry) => {
+      if (!keyword) return true
+      const haystack = `${entry.message} ${entry.scope} ${JSON.stringify(entry.fields ?? {})}`.toLowerCase()
+      return haystack.includes(keyword)
+    })
+    .slice(-1000)
 })
 
 const logBytesText = computed(() => {
@@ -285,18 +302,26 @@ const logBytesText = computed(() => {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${(bytes / 1024).toFixed(1)} KB`
 })
 
-function logLineClass(line: string): string {
-  if (line.includes('[error]')) return 'log-error'
-  if (line.includes('[warn]')) return 'log-warn'
-  if (line.includes('[debug]')) return 'log-debug'
-  return 'log-info'
+function levelClass(level: LogEntry['level']): string {
+  return level === 'error' ? 'log-error' : level === 'warn' ? 'log-warn' : level === 'debug' ? 'log-debug' : 'log-info'
+}
+
+function formatFields(entry: LogEntry): string {
+  if (!entry.fields || !Object.keys(entry.fields).length) return ''
+  const text = JSON.stringify(entry.fields)
+  return text.length > 180 ? text.slice(0, 180) + '…' : text
+}
+
+function formatEntry(entry: LogEntry): string {
+  const fields = entry.fields && Object.keys(entry.fields).length ? ' ' + JSON.stringify(entry.fields) : ''
+  return `${entry.ts} [${entry.level}] [${entry.scope}]${entry.requestId ? ` [${entry.requestId}]` : ''} ${entry.message}${fields}`
 }
 
 async function refreshLogs(): Promise<void> {
   if (logPaused.value) return
   try {
-    const [lines, info] = await Promise.all([fetchLogs(1000), fetchLogInfo()])
-    logLines.value = lines
+    const [entries, info] = await Promise.all([fetchLogEntries(1000), fetchLogInfo()])
+    logEntries.value = entries
     logInfo.value = info
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -315,17 +340,65 @@ function toggleLogAutoRefresh(): void {
     return
   }
   logAutoRefresh.value = true
+  logLive.value = false
   logTimer = setInterval(() => {
     if (document.visibilityState !== 'hidden' && !logPaused.value) void refreshLogs()
   }, 3000)
 }
 
+function toggleLogLive(): void {
+  if (logLive.value) {
+    stopLogTimer()
+    logEntries.value = state.logs.slice(0, 1000)
+  } else {
+    void refreshLogs()
+  }
+}
+
 async function copyLogs(): Promise<void> {
   try {
-    await navigator.clipboard.writeText(filteredLogs.value.join('\n'))
-    ElMessage.success(`已复制 ${filteredLogs.value.length} 行日志`)
+    await navigator.clipboard.writeText(filteredEntries.value.map(formatEntry).join('\n'))
+    ElMessage.success(`已复制 ${filteredEntries.value.length} 条日志`)
   } catch (error) {
     ElMessage.error('复制失败：' + (error instanceof Error ? error.message : String(error)))
+  }
+}
+
+/* 日志设置（运行时生效） */
+const logConfig = reactive({
+  level: 'info' as 'debug' | 'info' | 'warn' | 'error',
+  maxBytesMb: 5,
+  keep: 2,
+  retainDays: 14,
+})
+const savingLogConfig = ref(false)
+
+function syncLogConfig(): void {
+  const settings = state.settings?.logging
+  if (!settings) return
+  logConfig.level = settings.level
+  logConfig.maxBytesMb = Math.round((settings.maxBytes / 1024 / 1024) * 10) / 10
+  logConfig.keep = settings.keep
+  logConfig.retainDays = settings.retainDays
+}
+
+async function applyLogSettings(): Promise<void> {
+  savingLogConfig.value = true
+  try {
+    await patchSettings({
+      logging: {
+        level: logConfig.level,
+        maxBytes: Math.round(logConfig.maxBytesMb * 1024 * 1024),
+        keep: logConfig.keep,
+        retainDays: logConfig.retainDays,
+      },
+    })
+    ElMessage.success('日志设置已应用（立即生效）')
+    syncLogConfig()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    savingLogConfig.value = false
   }
 }
 
@@ -334,6 +407,7 @@ onUnmounted(stopLogTimer)
 function syncFromSettings() {
   const s = state.settings
   if (!s) return
+  syncLogConfig()
   form.cleanMode = s.clean.mode
   form.highRiskQuarantine = s.clean.highRiskQuarantine
   form.quarantineFallback = s.clean.quarantineFallback
@@ -570,9 +644,10 @@ async function viewLogs() {
   logsOpen.value = true
   loadingLogs.value = true
   logPaused.value = false
+  syncLogConfig()
   try {
-    const [lines, info] = await Promise.all([fetchLogs(1000), fetchLogInfo()])
-    logLines.value = lines
+    const [entries, info] = await Promise.all([fetchLogEntries(1000), fetchLogInfo()])
+    logEntries.value = entries
     logInfo.value = info
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -867,6 +942,35 @@ async function doClearEgress() {
       </div>
 
       <div class="cc-card">
+        <div class="cc-card-title"><h3>🧾 日志设置</h3><span class="cc-faint">运行时生效，无需重启</span></div>
+        <div class="log-settings">
+          <label>
+            <span>日志级别</span>
+            <el-select v-model="logConfig.level" size="small" style="width: 150px">
+              <el-option label="debug（最详细）" value="debug" />
+              <el-option label="info（默认）" value="info" />
+              <el-option label="warn（安静）" value="warn" />
+              <el-option label="error（只记错误）" value="error" />
+            </el-select>
+          </label>
+          <label>
+            <span>单文件上限（MB）</span>
+            <el-input-number v-model="logConfig.maxBytesMb" size="small" :min="1" :max="100" :step="1" />
+          </label>
+          <label>
+            <span>轮转保留份数</span>
+            <el-input-number v-model="logConfig.keep" size="small" :min="1" :max="10" />
+          </label>
+          <label>
+            <span>旧日志保留天数</span>
+            <el-input-number v-model="logConfig.retainDays" size="small" :min="0" :max="365" />
+          </label>
+          <el-button size="small" type="primary" :loading="savingLogConfig" @click="applyLogSettings">应用日志设置</el-button>
+        </div>
+        <p class="cc-hint">日志级别/轮转/保留会立即应用到统一日志；旧版 app-*.log 会在启动时按保留天数清理。</p>
+      </div>
+
+      <div class="cc-card">
         <div class="cc-card-title"><h3>ℹ️ 版本与运行环境</h3><span class="cc-faint">反馈问题时可直接复制</span></div>
         <div class="data-actions">
           <div class="data-row">
@@ -890,7 +994,7 @@ async function doClearEgress() {
       </div>
     </div>
 
-    <el-dialog v-model="logsOpen" title="运行日志" width="980px" @closed="stopLogTimer">
+    <el-dialog v-model="logsOpen" title="运行日志" width="1080px" @closed="stopLogTimer">
       <div class="log-toolbar">
         <el-select v-model="logLevelFilter" size="small" style="width: 112px">
           <el-option label="全部级别" value="all" />
@@ -899,7 +1003,11 @@ async function doClearEgress() {
           <el-option label="info" value="info" />
           <el-option label="debug" value="debug" />
         </el-select>
-        <el-input v-model="logSearch" size="small" placeholder="搜索日志…" clearable style="width: 220px" />
+        <el-select v-model="logScopeFilter" size="small" style="width: 132px">
+          <el-option label="全部来源" value="all" />
+          <el-option v-for="scope in logScopes" :key="scope" :label="scope" :value="scope" />
+        </el-select>
+        <el-input v-model="logSearch" size="small" placeholder="搜索日志（消息/来源/字段）…" clearable style="width: 230px" />
         <el-button size="small" :loading="loadingLogs" @click="refreshLogs">刷新</el-button>
         <el-button size="small" :type="logPaused ? 'warning' : 'default'" @click="logPaused = !logPaused">
           {{ logPaused ? '已暂停' : '暂停' }}
@@ -907,13 +1015,22 @@ async function doClearEgress() {
         <el-button size="small" :type="logAutoRefresh ? 'primary' : 'default'" @click="toggleLogAutoRefresh">
           {{ logAutoRefresh ? '自动刷新中' : '自动刷新' }}
         </el-button>
+        <span class="cc-faint">实时</span>
+        <el-switch v-model="logLive" size="small" @change="toggleLogLive" />
         <el-button size="small" @click="copyLogs">复制</el-button>
         <el-button size="small" @click="openLogDirectory">打开日志目录</el-button>
-        <span class="cc-faint">{{ filteredLogs.length }} 行 · {{ logBytesText }}</span>
+        <span class="cc-faint">{{ filteredEntries.length }} 条 · {{ logBytesText }}</span>
       </div>
       <div class="log-view">
-        <p v-if="!filteredLogs.length" class="cc-faint">{{ loadingLogs ? '正在读取…' : '（暂无匹配日志）' }}</p>
-        <div v-for="(line, index) in filteredLogs" :key="index" class="log-line" :class="logLineClass(line)">{{ line }}</div>
+        <p v-if="!filteredEntries.length" class="cc-faint">{{ loadingLogs ? '正在读取…' : '（暂无匹配日志）' }}</p>
+        <div v-for="(entry, index) in filteredEntries" :key="`${entry.ts}-${index}`" class="log-entry">
+          <span class="log-time">{{ entry.ts.slice(11, 23) }}</span>
+          <span class="log-level" :class="levelClass(entry.level)">{{ entry.level.toUpperCase() }}</span>
+          <span class="log-scope">{{ entry.scope }}</span>
+          <span v-if="entry.requestId" class="log-request">{{ entry.requestId }}</span>
+          <span class="log-message">{{ entry.message }}</span>
+          <span v-if="formatFields(entry)" class="log-fields">{{ formatFields(entry) }}</span>
+        </div>
       </div>
       <p class="cc-faint log-path">{{ logInfo?.file || '日志文件尚未初始化' }}</p>
       <template #footer>

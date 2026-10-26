@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.1`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、70 个 RPC 方法；65 个测试文件 / 468 个用例。
+当前版本 `0.6.2`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、71 个 RPC 方法；65 个测试文件 / 471 个用例。
 
 ## 快速开始
 
@@ -38,7 +38,7 @@ pnpm start:desktop    # Electron 桌面应用
 | AI 顾问插件 | 把脱敏的本机画像交给 DeepSeek 等 OpenAI 兼容接口，产出结构化清理建议 |
 | AI 插件工坊（独立插件） | 独立页面 + 独立插件：生成原生 Cordis 通用插件（cleaner/widget/active/desktop），**默认产出多文件 v2 插件包**（清单 + `index.mjs` + 可选 `client/` 页面 + 权限清单）；拥有独立 API 设置（Key / baseUrl / 接口形态 / 模型 / 思考等级 / JSON / extraBody），与 AI 建议互不影响；审阅页可增删改文件与清单后再安装；安装走 staging、原子落盘与回滚；模型输出不完整时自动修复清单/inject/commands 并给出 warning |
 | 可观测 | 扫描/清理进度事件、结构化日志、清理历史、失败归因 |
-| 日志与诊断 | 统一 `cordclean.log`：内核/插件/RPC 同一文件、失败/慢请求优先、参数摘要 + 脱敏、5MB 轮转与 14 天保留；界面支持级别过滤/搜索/暂停/自动刷新；一键诊断导出 |
+| 日志与诊断 | 统一 JSONL `cordclean.log`：内核/插件/RPC 同一文件、requestId 关联、失败/慢请求优先、参数摘要 + 脱敏、可配置轮转/保留；界面支持级别/来源筛选、搜索、暂停、自动刷新与**实时 tail**；一键诊断导出 |
 
 ## 2. 技术栈
 
@@ -47,7 +47,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 69 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（468 个用例 / 65 个文件）
+- **测试**：Vitest（471 个用例 / 65 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -61,7 +61,7 @@ pnpm start:desktop    # Electron 桌面应用
                             │ JSON-RPC │
 ┌───────────────────────────▼──────────▼───────────────────────────────┐
 │                     传输层 packages/host                             │
-│   api.ts：70 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
+│   api.ts：71 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
 │   Host/Origin/token 校验、CSP 注入、WS 1MB 上限、畸形 URL → 400       │
 └───────────────────────────┬──────────────────────────────────────────┘
                             │ 直接调用
@@ -263,7 +263,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 468 个用例 / 65 个文件
+pnpm test          # 471 个用例 / 65 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）
@@ -348,6 +348,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [威胁模型与信任边界](docs/threat-model.md) —— 本地服务鉴权、插件信任模型、已知残余风险
 - [插件开发规范](docs/plugin-authoring.md)
 - [v2 插件包规范](docs/plugin-package-v2.md) —— 目录 + `plugin.json`、权限与兼容检查、安装事务、`client/` 自定义协议、AI 工坊产出 v2 包
+- [v0.6.2 发布说明](docs/release-notes-v0.6.2.md) —— Phase 2：结构化 JSONL、运行时日志配置、实时 tail 与 requestId
 - [v0.6.1 发布说明](docs/release-notes-v0.6.1.md) —— 统一日志系统、RPC 降噪、日志查看器与性能基准
 - [日志系统设计](docs/logging.md) —— 统一日志文件、轮转/保留、脱敏、RPC 日志策略与基准
 - [日志系统基准](docs/benchmark-logging.md) —— 缓冲写入/读取/脱敏/RPC 摘要性能

@@ -8,6 +8,7 @@
  * - 界面静态资源由同一端口提供，无需额外的 Web 服务器。
  */
 import { randomBytes } from 'node:crypto'
+import { onLogEvent } from '@cordclean/utils'
 import { createReadStream, promises as fs } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import path from 'node:path'
@@ -71,7 +72,6 @@ const EVENT_BRIDGE: Array<[any, ServerEvent]> = [
   ['history/changed', 'history/changed'],
   ['scheduler/scan', 'scheduler/scan'],
   ['ai/stream', 'ai/stream'],
-  ['system/log', 'log'],
 ]
 
 /** 带状态码的 HTTP 错误 */
@@ -187,15 +187,21 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     unbinds.push(typeof unbind === 'function' ? unbind : () => {})
   }
 
+  // 所有日志（内核/插件/RPC）经过 utils 事件总线实时推送；界面据此做实时 tail
+  const unbindLogBus = onLogEvent((entry) => broadcast('log', entry))
+  unbinds.push(unbindLogBus)
+
+  let rpcSeq = 0
   const dispatch = async (request: RpcRequest): Promise<RpcResponse> => {
     const startedAt = Date.now()
+    const requestId = `rpc-${++rpcSeq}`
     const handler = (options.handlers as Record<string, (params: any) => any>)[request.method]
     if (!handler) {
       return { jsonrpc: '2.0', id: request.id, error: { code: RPC_ERRORS.METHOD_NOT_FOUND, message: `未知方法：${request.method}` } }
     }
     const validation = validateParams(request.method, request.params)
     if (!validation.ok) {
-      dlog('warn', 'rpc', request.method + ' 参数校验失败', { message: validation.message })
+      dlog('warn', 'rpc', request.method + ' 参数校验失败', { message: validation.message }, { requestId })
       return { jsonrpc: '2.0', id: request.id, error: { code: RPC_ERRORS.INVALID_PARAMS ?? -32602, message: '参数校验失败：' + validation.message } }
     }
     try {
@@ -203,7 +209,7 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
       const elapsedMs = Date.now() - startedAt
       if (shouldLogRpc(request.method, elapsedMs, true)) {
         const params = summarizeRpcParams(request.params)
-        dlog('info', 'rpc', request.method, { ms: elapsedMs, ...(params !== undefined ? { params } : {}) })
+        dlog('info', 'rpc', request.method, { ms: elapsedMs, ...(params !== undefined ? { params } : {}) }, { requestId })
       }
       return { jsonrpc: '2.0', id: request.id, result: result ?? null }
     } catch (error) {
@@ -213,7 +219,7 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
         ms: elapsedMs,
         error: (error as Error)?.message,
         ...(params !== undefined ? { params } : {}),
-      })
+      }, { requestId })
       const err = error as { code?: number; message?: string }
       return {
         jsonrpc: '2.0',
@@ -444,6 +450,7 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     url: `http://${host}:${port}/`,
     wsUrl: `ws://${host}:${port}/rpc`,
     async close() {
+      unbindLogBus()
       for (const unbind of unbinds) unbind()
       for (const client of clients) client.terminate()
       clients.clear()

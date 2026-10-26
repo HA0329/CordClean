@@ -8,7 +8,7 @@
 import { Context } from 'cordis'
 import type { DeepPartial, Settings } from '@cordclean/shared'
 import { createTaskEnv, defaultDataDir } from './env.ts'
-import { setupLogger } from './logger.ts'
+import { applyLoggingConfig, setupLogger } from './logger.ts'
 import { BUILTIN_MANIFEST } from './manifest.ts'
 import { CleanerService } from './domains/engine/cleaner.ts'
 import { AiContextService } from './domains/kernel/ai-context.ts'
@@ -29,7 +29,7 @@ import { PluginWindowService } from './domains/kernel/window.ts'
 import type { PluginWindowBackend } from './domains/kernel/window.ts'
 
 export const APP_NAME = 'CordClean'
-export const APP_VERSION = '0.6.1'
+export const APP_VERSION = '0.6.2'
 
 export interface AppOptions {
   /** 数据目录，默认 `%LOCALAPPDATA%\\CordClean` */
@@ -74,6 +74,15 @@ export async function createApp(options: AppOptions = {}): Promise<App> {
 
   // 依次装配核心服务：顺序即依赖顺序
   await ctx.plugin(SettingsService, { dataDir, overrides: options.settingsOverrides })
+
+  // 日志设置：启动时应用 + 运行中跟随 settings 变更（环境变量可覆盖级别，方便开发排查）
+  const loggingContext = () => {
+    const settings = (ctx as any).settings.get()
+    const envLevel = process.env.CORDCLEAN_LOG as any
+    applyLoggingConfig({ ...(settings.logging ?? {}), ...(envLevel ? { level: envLevel } : {}) })
+  }
+  loggingContext()
+  ctx.effect(() => (ctx as any).settings.onChange(loggingContext))
   await ctx.plugin(SystemService, { env })
   await ctx.plugin(PathPolicyService, {})
   await ctx.plugin(QuarantineService, { dataDir })

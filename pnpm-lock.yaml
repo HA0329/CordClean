@@ -478,7 +478,11 @@ importers:
         specifier: ^7.1.0
         version: 7.3.7(@types/node@24.19.2)(tsx@4.23.15)
 
-  packages/utils: {}
+  packages/utils:
+    dependencies:
+      '@cordclean/shared':
+        specifier: workspace:*
+        version: link:../shared
 
 packages:
 

@@ -11,6 +11,7 @@ import type {
   HistoryEntry,
   PluginInfo,
   QuarantineRecord,
+  LogEntry,
   ScanReport,
   Settings,
   SystemInfo,
@@ -84,7 +85,7 @@ export type ServerEventMap = {
   'plugin/notify': import('./plugin-api.ts').PluginNotifyEvent
   'ai/stream': { kind: 'delta' | 'done'; text?: string; reasoning?: string }
   'scheduler/scan': { at: number; items?: number; bytes?: number; elapsedMs?: number; errors?: number; error?: string; blocked?: boolean; reason?: string; autoCleaned?: boolean; cleaned?: number; freedBytes?: number; recycledBytes?: number; mode?: string }
-  log: { level: string; message: string; time: number; name?: string }
+  log: LogEntry
 }
 
 /** 方法参数 / 返回值类型表（客户端与服务端共用，保证类型安全） */
@@ -92,6 +93,8 @@ export interface ApiMap {
   'app/info': { params: void; result: AppInfo }
   'app/open-path': { params: { path: string }; result: void }
   'app/logs/info': { params: void; result: { file: string; bytes: number } }
+  /** 结构化日志条目（新日志查看器/实时 tail） */
+  'app/logs/entries': { params: { limit?: number }; result: LogEntry[] }
   'app/logs/recent': { params: { limit?: number }; result: { lines: string[] } }
   'app/logs/open': { params: void; result: void }
   'app/logs/export': { params: void; result: { path: string } }

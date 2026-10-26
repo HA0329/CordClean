@@ -1,12 +1,16 @@
 /**
- * 统一日志文件写入器（utils 层，无 Cordis 依赖）。
+ * 统一日志写入器（utils 层，无 Cordis 依赖）。
+ *
+ * Phase 2 起文件为 **JSONL**：每行一个 `LogEntry`，同时通过 `onLogEvent`
+ * 广播给 Web 服务端/Electron 主进程，供界面做实时 tail。
  *
  * 设计目标：
- * - **单一文件**：内核/插件日志与诊断日志都写 `<dataDir>/logs/cordclean.log`；
- * - **有界**：超过 maxBytes 轮转为 `.1`、`.2`，超出保留份数自动删除；
- * - **可迁移**：清理历史 `app-*.log`（旧版 Cordis 每日日志）避免目录越积越乱；
- * - **可读**：只负责按行追加，格式由调用方统一（ISO + [level] + [scope] + message）；
- * - **安全**：提供统一的脱敏函数，所有调用方共用一个规则。
+ * - 单一文件：内核/插件日志与诊断日志统一写 `<dataDir>/logs/cordclean.log`；
+ * - 结构化：ts / level / scope / message / fields / requestId / pluginId；
+ * - 有界：超过 maxBytes 轮转为 `.1`、`.2`，保留份数可配置；
+ * - 低开销：64KB / 100ms 缓冲写盘，进程退出前 flush；
+ * - 安全：message 与 fields 统一脱敏后再落盘/广播；
+ * - 兼容：旧版纯文本日志行在读取时会被包装成 legacy 条目，不会报错。
  */
 import {
   appendFileSync,
@@ -19,6 +23,7 @@ import {
   statSync,
 } from 'node:fs'
 import path from 'node:path'
+import type { LogEntry, LogLevel } from '@cordclean/shared'
 
 export interface LogFileOptions {
   /** 日志目录（通常是 <dataDir>/logs） */
@@ -37,19 +42,20 @@ const DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 const DEFAULT_KEEP = 2
 const DEFAULT_RETAIN_DAYS = 14
 
-let configured:
-  | { dir: string; file: string; maxBytes: number; keep: number }
-  | undefined
-
 /** 写入缓冲：日志是高频热路径，避免每行一次同步写盘；按大小/时间 flush */
 const FLUSH_BYTES = 64 * 1024
 const FLUSH_INTERVAL_MS = 100
+
+let configured:
+  | { dir: string; file: string; maxBytes: number; keep: number }
+  | undefined
 let buffer: string[] = []
 let bufferBytes = 0
 let flushTimer: ReturnType<typeof setTimeout> | undefined
 let exitHooked = false
+const listeners = new Set<(entry: LogEntry) => void>()
 
-/** 配置日志文件（重复调用会切换到新目录，测试/多实例可用） */
+/** 配置日志文件（重复调用会切换到新目录，测试/多实例/运行时调整可复用） */
 export function configureLogFile(options: LogFileOptions): void {
   flushLogFile()
   const dir = path.resolve(options.dir)
@@ -75,21 +81,53 @@ export function logDirPath(): string | undefined {
   return configured?.dir
 }
 
-/** 追加一行日志；未配置时静默忽略（日志失败不影响主流程） */
-export function appendLogLine(line: string): void {
-  if (!configured) return
-  const text = line.endsWith('\n') ? line : line + '\n'
-  buffer.push(text)
-  bufferBytes += Buffer.byteLength(text, 'utf8')
-  if (bufferBytes >= FLUSH_BYTES) {
-    flushLogFile()
-    return
+/** 订阅每一条日志（Web/Electron 实时通道），返回取消订阅函数 */
+export function onLogEvent(listener: (entry: LogEntry) => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+/**
+ * 追加一条结构化日志：脱敏 → 缓冲写盘 → 广播给实时订阅者。
+ * 即使日志文件尚未配置也会广播（例如早期启动日志仍可进界面）。
+ */
+export function appendLogEvent(input: {
+  level: LogLevel
+  scope: string
+  message: string
+  fields?: Record<string, unknown>
+  requestId?: string
+  pluginId?: string
+  ts?: string
+}): LogEntry {
+  const entry: LogEntry = {
+    ts: input.ts ?? new Date().toISOString(),
+    level: input.level,
+    scope: input.scope || 'app',
+    message: redactLogText(input.message ?? ''),
+    ...(input.fields ? { fields: sanitizeFields(input.fields) } : {}),
+    ...(input.requestId ? { requestId: input.requestId } : {}),
+    ...(input.pluginId ? { pluginId: input.pluginId } : {}),
   }
-  if (!flushTimer) {
-    flushTimer = setTimeout(() => flushLogFile(), FLUSH_INTERVAL_MS)
-    // 不要因为日志定时器阻止进程退出
-    ;(flushTimer as any).unref?.()
+  if (configured) {
+    const line = JSON.stringify(entry) + '\n'
+    buffer.push(line)
+    bufferBytes += Buffer.byteLength(line, 'utf8')
+    if (bufferBytes >= FLUSH_BYTES) {
+      flushLogFile()
+    } else if (!flushTimer) {
+      flushTimer = setTimeout(() => flushLogFile(), FLUSH_INTERVAL_MS)
+      ;(flushTimer as any).unref?.()
+    }
   }
+  for (const listener of listeners) {
+    try {
+      listener(entry)
+    } catch {
+      /* 单个订阅者异常不能影响日志主流程 */
+    }
+  }
+  return entry
 }
 
 /** 立即把缓冲区写入文件（轮转/读取/退出前调用） */
@@ -110,18 +148,35 @@ export function flushLogFile(): void {
   }
 }
 
-/** 读取末尾 N 行（界面/诊断报告用） */
-export function readLogLines(limit = 200): string[] {
+/** 读取末尾 N 条日志（自动将旧版纯文本行包装为 legacy 条目） */
+export function readLogEntries(limit = 200): LogEntry[] {
   flushLogFile()
   if (!configured) return []
   try {
     if (!existsSync(configured.file)) return []
     const count = Math.max(1, Math.min(5000, Math.trunc(limit)))
     const text = readFileSync(configured.file, 'utf8')
-    return text.trimEnd().split(/\r?\n/).slice(-count)
+    const lines = text.trimEnd().split(/\r?\n/).filter(Boolean).slice(-count)
+    const entries: LogEntry[] = []
+    for (const line of lines) {
+      const parsed = parseLegacyLine(line)
+      if (parsed) entries.push(parsed)
+    }
+    return entries
   } catch {
     return []
   }
+}
+
+/** 把一条日志格式化为人类可读文本（诊断报告/兼容接口使用） */
+export function formatLogEntry(entry: LogEntry): string {
+  const fields = entry.fields ? ' ' + JSON.stringify(entry.fields) : ''
+  return `${entry.ts} [${entry.level}] [${entry.scope}] ${entry.message}${fields}`
+}
+
+/** 读取末尾 N 条的纯文本形式（诊断报告/旧 RPC 兼容） */
+export function readLogLines(limit = 200): string[] {
+  return readLogEntries(limit).map(formatLogEntry)
 }
 
 /** 日志文件大小（字节） */
@@ -143,15 +198,77 @@ export function redactLogText(text: string): string {
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer <redacted>')
 }
 
+const SENSITIVE_KEY = /(api[-_]?key|token|authorization|password|secret)/i
+
+function sanitizeFields(fields: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(fields).slice(0, 60)) {
+    if (SENSITIVE_KEY.test(key)) {
+      result[key] = '<redacted>'
+      continue
+    }
+    result[key] = sanitizeValue(value, 0)
+  }
+  return result
+}
+
+function sanitizeValue(value: unknown, depth: number): unknown {
+  if (value === null || value === undefined) return value
+  if (typeof value === 'string') {
+    const redacted = redactLogText(value)
+    return redacted.length > 500 ? redacted.slice(0, 500) + '…' : redacted
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (depth >= 3) return '<object>'
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => sanitizeValue(item, depth + 1))
+  }
+  if (typeof value === 'object') {
+    return sanitizeFields(value as Record<string, unknown>)
+  }
+  return String(value)
+}
+
+function parseLegacyLine(line: string): LogEntry | undefined {
+  if (line.startsWith('{')) {
+    try {
+      const data = JSON.parse(line) as Partial<LogEntry>
+      if (data && typeof data === 'object' && typeof data.message === 'string') {
+        return {
+          ts: typeof data.ts === 'string' ? data.ts : new Date().toISOString(),
+          level: isLogLevel(data.level) ? data.level : 'info',
+          scope: String(data.scope ?? 'app'),
+          message: String(data.message),
+          ...(data.fields && typeof data.fields === 'object' ? { fields: data.fields } : {}),
+          ...(data.requestId ? { requestId: String(data.requestId) } : {}),
+          ...(data.pluginId ? { pluginId: String(data.pluginId) } : {}),
+        }
+      }
+    } catch {
+      /* 交给旧格式兜底 */
+    }
+  }
+  const timeMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\S+?)\s/)
+  const levelMatch = line.match(/\[(error|warn|info|debug)\]/i)
+  return {
+    ts: timeMatch?.[1] ?? new Date().toISOString(),
+    level: isLogLevel(levelMatch?.[1].toLowerCase()) ? (levelMatch![1].toLowerCase() as LogLevel) : 'info',
+    scope: 'legacy',
+    message: line,
+  }
+}
+
+function isLogLevel(value: unknown): value is LogLevel {
+  return value === 'debug' || value === 'info' || value === 'warn' || value === 'error'
+}
+
 function rotateIfNeeded(): void {
   if (!configured) return
   const { file, maxBytes, keep } = configured
   try {
     if (!existsSync(file) || statSync(file).size <= maxBytes) return
-    // 删除最老的一份
     const oldest = `${file}.${keep}`
     if (existsSync(oldest)) rmSync(oldest, { force: true })
-    // .n-1 → .n
     for (let index = keep - 1; index >= 1; index -= 1) {
       const from = `${file}.${index}`
       const to = `${file}.${index + 1}`
