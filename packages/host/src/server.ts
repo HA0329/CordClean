@@ -17,6 +17,7 @@ import { WebSocketServer, type WebSocket } from 'ws'
 import type { RpcRequest, RpcResponse, ServerEvent } from '@cordclean/shared'
 import { resolvePluginClientAsset } from '@cordclean/core'
 import { dlog } from './diagnostics.ts'
+import { shouldLogRpc, summarizeRpcParams } from './logging.ts'
 import { validateParams } from './validation.ts'
 import { RPC_ERRORS } from '@cordclean/shared'
 import type { HandlerMap } from './api.ts'
@@ -199,10 +200,20 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     }
     try {
       const result = await handler(request.params ?? {})
-      dlog('info', 'rpc', request.method, { ms: Date.now() - startedAt, params: request.params })
+      const elapsedMs = Date.now() - startedAt
+      if (shouldLogRpc(request.method, elapsedMs, true)) {
+        const params = summarizeRpcParams(request.params)
+        dlog('info', 'rpc', request.method, { ms: elapsedMs, ...(params !== undefined ? { params } : {}) })
+      }
       return { jsonrpc: '2.0', id: request.id, result: result ?? null }
     } catch (error) {
-      dlog('error', 'rpc', request.method + ' 失败', { ms: Date.now() - startedAt, error: (error as Error)?.message, params: request.params })
+      const elapsedMs = Date.now() - startedAt
+      const params = summarizeRpcParams(request.params)
+      dlog('error', 'rpc', request.method + ' 失败', {
+        ms: elapsedMs,
+        error: (error as Error)?.message,
+        ...(params !== undefined ? { params } : {}),
+      })
       const err = error as { code?: number; message?: string }
       return {
         jsonrpc: '2.0',

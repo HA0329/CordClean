@@ -185,6 +185,11 @@ const markdown = [
   '> 说明：扫描/清理数据均在临时目录中生成（4000 个 1KB 文件，40 个目录），避免受本机磁盘状态影响；',
   '> 重复检测使用 120 个 256KB 文件（每 3 个内容相同）。',
   '',
+  '## 日志系统（v0.6.1）',
+  '',
+  '日志系统单独基准见 [benchmark-logging.md](benchmark-logging.md)（`pnpm bench:logging`）：',
+  '缓冲写入约 51.5 万行/秒（89 MB/秒），读取末尾 1000 行约 7.7 ms。',
+  '',
 ].join('\n')
 
 const outFile = path.join(process.cwd(), 'docs', 'benchmark.md')

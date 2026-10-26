@@ -2,3 +2,4 @@
 export * from './api.ts'
 export * from './server.ts'
 export * from './ai-plugin-package.ts'
+export * from './logging.ts'

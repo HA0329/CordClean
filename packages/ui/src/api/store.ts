@@ -670,6 +670,10 @@ export async function fetchLogs(limit = 200): Promise<string[]> {
   return result.lines
 }
 
+export async function fetchLogInfo(): Promise<{ file: string; bytes: number }> {
+  return requireTransport().request('app/logs/info', undefined)
+}
+
 export async function openLogDir(): Promise<void> {
   await requireTransport().request('app/logs/open', undefined)
 }

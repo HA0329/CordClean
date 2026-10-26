@@ -137,6 +137,15 @@ async function createKernel() {
   })
   disposeApp = () => instance.dispose()
 
+  // 崩溃/未处理拒绝也写入统一日志，避免主进程退出后没有诊断线索
+  process.on('uncaughtException', (error) => {
+    instance.ctx.logger.error('未捕获异常：' + (error?.stack ?? String(error)))
+  })
+  process.on('unhandledRejection', (reason) => {
+    const text = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+    instance.ctx.logger.error('未处理的 Promise 拒绝：' + text)
+  })
+
   registerPluginProtocol(instance.dataDir)
 
   const handlers = createHandlers({

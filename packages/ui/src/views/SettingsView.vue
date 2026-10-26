@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   authorizeScheduler,
@@ -11,6 +11,7 @@ import {
   setPluginEnabled,
   exportDiagnostics,
   fetchLogs,
+  fetchLogInfo,
   openLogDir,
   clearHistory,
   openDataDir,
@@ -262,6 +263,73 @@ async function runScheduleNow() {
 const logsOpen = ref(false)
 const logLines = ref<string[]>([])
 const loadingLogs = ref(false)
+const logLevelFilter = ref<'all' | 'error' | 'warn' | 'info' | 'debug'>('all')
+const logSearch = ref('')
+const logPaused = ref(false)
+const logAutoRefresh = ref(false)
+const logInfo = ref<{ file: string; bytes: number } | null>(null)
+let logTimer: ReturnType<typeof setInterval> | undefined
+
+const filteredLogs = computed(() => {
+  const keyword = logSearch.value.trim().toLowerCase()
+  const level = logLevelFilter.value
+  return logLines.value
+    .filter((line) => (level === 'all' ? true : line.includes(`[${level}]`)))
+    .filter((line) => (keyword ? line.toLowerCase().includes(keyword) : true))
+    .slice(-800)
+})
+
+const logBytesText = computed(() => {
+  const bytes = logInfo.value?.bytes ?? 0
+  if (!bytes) return '—'
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${(bytes / 1024).toFixed(1)} KB`
+})
+
+function logLineClass(line: string): string {
+  if (line.includes('[error]')) return 'log-error'
+  if (line.includes('[warn]')) return 'log-warn'
+  if (line.includes('[debug]')) return 'log-debug'
+  return 'log-info'
+}
+
+async function refreshLogs(): Promise<void> {
+  if (logPaused.value) return
+  try {
+    const [lines, info] = await Promise.all([fetchLogs(1000), fetchLogInfo()])
+    logLines.value = lines
+    logInfo.value = info
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+function stopLogTimer(): void {
+  if (logTimer) clearInterval(logTimer)
+  logTimer = undefined
+  logAutoRefresh.value = false
+}
+
+function toggleLogAutoRefresh(): void {
+  if (logAutoRefresh.value) {
+    stopLogTimer()
+    return
+  }
+  logAutoRefresh.value = true
+  logTimer = setInterval(() => {
+    if (document.visibilityState !== 'hidden' && !logPaused.value) void refreshLogs()
+  }, 3000)
+}
+
+async function copyLogs(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(filteredLogs.value.join('\n'))
+    ElMessage.success(`已复制 ${filteredLogs.value.length} 行日志`)
+  } catch (error) {
+    ElMessage.error('复制失败：' + (error instanceof Error ? error.message : String(error)))
+  }
+}
+
+onUnmounted(stopLogTimer)
 
 function syncFromSettings() {
   const s = state.settings
@@ -501,8 +569,11 @@ async function doPurgeQuarantine() {
 async function viewLogs() {
   logsOpen.value = true
   loadingLogs.value = true
+  logPaused.value = false
   try {
-    logLines.value = await fetchLogs(300)
+    const [lines, info] = await Promise.all([fetchLogs(1000), fetchLogInfo()])
+    logLines.value = lines
+    logInfo.value = info
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   } finally {
@@ -819,8 +890,32 @@ async function doClearEgress() {
       </div>
     </div>
 
-    <el-dialog v-model="logsOpen" title="最近日志（末尾 300 行）" width="860px">
-      <pre class="log-view">{{ loadingLogs ? '正在读取…' : (logLines.join('\n') || '(暂无日志)') }}</pre>
+    <el-dialog v-model="logsOpen" title="运行日志" width="980px" @closed="stopLogTimer">
+      <div class="log-toolbar">
+        <el-select v-model="logLevelFilter" size="small" style="width: 112px">
+          <el-option label="全部级别" value="all" />
+          <el-option label="error" value="error" />
+          <el-option label="warn" value="warn" />
+          <el-option label="info" value="info" />
+          <el-option label="debug" value="debug" />
+        </el-select>
+        <el-input v-model="logSearch" size="small" placeholder="搜索日志…" clearable style="width: 220px" />
+        <el-button size="small" :loading="loadingLogs" @click="refreshLogs">刷新</el-button>
+        <el-button size="small" :type="logPaused ? 'warning' : 'default'" @click="logPaused = !logPaused">
+          {{ logPaused ? '已暂停' : '暂停' }}
+        </el-button>
+        <el-button size="small" :type="logAutoRefresh ? 'primary' : 'default'" @click="toggleLogAutoRefresh">
+          {{ logAutoRefresh ? '自动刷新中' : '自动刷新' }}
+        </el-button>
+        <el-button size="small" @click="copyLogs">复制</el-button>
+        <el-button size="small" @click="openLogDirectory">打开日志目录</el-button>
+        <span class="cc-faint">{{ filteredLogs.length }} 行 · {{ logBytesText }}</span>
+      </div>
+      <div class="log-view">
+        <p v-if="!filteredLogs.length" class="cc-faint">{{ loadingLogs ? '正在读取…' : '（暂无匹配日志）' }}</p>
+        <div v-for="(line, index) in filteredLogs" :key="index" class="log-line" :class="logLineClass(line)">{{ line }}</div>
+      </div>
+      <p class="cc-faint log-path">{{ logInfo?.file || '日志文件尚未初始化' }}</p>
       <template #footer>
         <el-button @click="logsOpen = false">关闭</el-button>
       </template>

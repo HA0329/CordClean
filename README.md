@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.0`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、69 个 RPC 方法；64 个测试文件 / 462 个用例。
+当前版本 `0.6.1`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、70 个 RPC 方法；65 个测试文件 / 468 个用例。
 
 ## 快速开始
 
@@ -38,6 +38,7 @@ pnpm start:desktop    # Electron 桌面应用
 | AI 顾问插件 | 把脱敏的本机画像交给 DeepSeek 等 OpenAI 兼容接口，产出结构化清理建议 |
 | AI 插件工坊（独立插件） | 独立页面 + 独立插件：生成原生 Cordis 通用插件（cleaner/widget/active/desktop），**默认产出多文件 v2 插件包**（清单 + `index.mjs` + 可选 `client/` 页面 + 权限清单）；拥有独立 API 设置（Key / baseUrl / 接口形态 / 模型 / 思考等级 / JSON / extraBody），与 AI 建议互不影响；审阅页可增删改文件与清单后再安装；安装走 staging、原子落盘与回滚；模型输出不完整时自动修复清单/inject/commands 并给出 warning |
 | 可观测 | 扫描/清理进度事件、结构化日志、清理历史、失败归因 |
+| 日志与诊断 | 统一 `cordclean.log`：内核/插件/RPC 同一文件、失败/慢请求优先、参数摘要 + 脱敏、5MB 轮转与 14 天保留；界面支持级别过滤/搜索/暂停/自动刷新；一键诊断导出 |
 
 ## 2. 技术栈
 
@@ -46,7 +47,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 69 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（462 个用例 / 63 个文件）
+- **测试**：Vitest（468 个用例 / 65 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -60,7 +61,7 @@ pnpm start:desktop    # Electron 桌面应用
                             │ JSON-RPC │
 ┌───────────────────────────▼──────────▼───────────────────────────────┐
 │                     传输层 packages/host                             │
-│   api.ts：69 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
+│   api.ts：70 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
 │   Host/Origin/token 校验、CSP 注入、WS 1MB 上限、畸形 URL → 400       │
 └───────────────────────────┬──────────────────────────────────────────┘
                             │ 直接调用
@@ -262,7 +263,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 462 个用例 / 63 个文件
+pnpm test          # 468 个用例 / 65 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）
@@ -284,6 +285,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 | `plugins` / `plugins-robust` / `external-proxy` / `external-install` | 启停、热重载、配置校验、异常隔离、外部插件信任边界 |
 | `quarantine` / `state` / `undo` | 隔离与恢复、设置边界、历史健壮性、撤销凭据 |
 | `rpc` / `host-server` / `batch1-hardening` | 鉴权、错误码、超大请求体、目录穿越、Host/Origin、原型污染、clearRoot 边界 |
+| `logging` | 统一日志文件、轮转/保留、脱敏、RPC 降噪策略、内核日志与诊断导出 |
 | `ai` / `ai-robust` / `ai-shapes` | 三种接口形态、推理等级映射、extraBody 逃生舱、模型列表、探测、重试、隐私约束 |
 | `ai-plugin-workshop` / `ai-workshop-plugin` | 工坊生成链路：清单字段修复、inject/commands 自动补全、多文件包、独立接口配置、真实模型生成-校验-安装-调用 |
 | `plugin-v2-e2e` / `ai-plugin-package` | v2 安装事务生命周期、client 资源、AI 草稿包安装、失败回滚 |
@@ -346,6 +348,9 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [威胁模型与信任边界](docs/threat-model.md) —— 本地服务鉴权、插件信任模型、已知残余风险
 - [插件开发规范](docs/plugin-authoring.md)
 - [v2 插件包规范](docs/plugin-package-v2.md) —— 目录 + `plugin.json`、权限与兼容检查、安装事务、`client/` 自定义协议、AI 工坊产出 v2 包
+- [v0.6.1 发布说明](docs/release-notes-v0.6.1.md) —— 统一日志系统、RPC 降噪、日志查看器与性能基准
+- [日志系统设计](docs/logging.md) —— 统一日志文件、轮转/保留、脱敏、RPC 日志策略与基准
+- [日志系统基准](docs/benchmark-logging.md) —— 缓冲写入/读取/脱敏/RPC 摘要性能
 - [v0.6.0 发布说明](docs/release-notes-v0.6.0.md) —— 插件系统 v2、独立 AI 插件工坊、真实模型验收与升级注意事项
 - [AI 插件工坊真实模型验收（2026-10-26）](docs/verification/ai-workshop-live-test-2026-10-26.md) —— cleaner/widget/active/多文件页面插件生成、安装、调用与卸载记录
 - [通用插件框架（P1 实施记录）](docs/generic-plugin-framework.md) —— 原生 Cordis 外部插件、`ctx.ui` 贡献、通用插件契约的当前进度
@@ -353,7 +358,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [AI 模型与接口兼容策略](docs/ai-model-compatibility.md) —— 官方模型 ID/版本对照、别名迁移、`/models` 元数据、未来接口变化应对清单
 - [扫描结果选择设计](docs/scan-selection-design.md) —— 分组/推荐/风险分层/批量选择/详情说明
 - [市面清理工具选择交互调研](docs/research/scan-selection-ux.md) —— 11 个产品的横向对比与可借鉴模式
-- [v2 选择体验验收报告](docs/verification/scan-selection-verify.md) —— 验收时的 289 条单测、真实 E2E、3000 条数据的语义与性能验收（历史快照；当前全量 462 条单测）
+- [v2 选择体验验收报告](docs/verification/scan-selection-verify.md) —— 验收时的 289 条单测、真实 E2E、3000 条数据的语义与性能验收（历史快照；当前全量 468 条单测）
 - [全项目复审（2026-10-24）](docs/verification/project-review-2026-10-24.md) —— 概览实时性、轻量 system/live 采样、插件/AI 工坊与文档一致性复核
 - [安全与正确性复审（2026-10-24 追加）](docs/verification/security-audit-2026-10-24.md) —— 隔离区恢复穿越、取消清理、inject 兼容、插件启停竞态等修复
 - [测试设计](docs/test-plan.md) —— 测试分层、命令与已知缺口

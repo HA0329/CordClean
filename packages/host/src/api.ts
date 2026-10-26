@@ -25,7 +25,7 @@ import type {
   ApiParams,
   ApiResult,
 } from '@cordclean/shared'
-import { dlog, exportDiagnostics, initDiagnostics, logDirPath, recentLogs } from './diagnostics.ts'
+import { dlog, exportDiagnostics, initDiagnostics, logDirPath, logFileStats, recentLogs } from './diagnostics.ts'
 import {
   cleanupGeneratedPlugin,
   cleanupGeneratedPlugins,
@@ -197,6 +197,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
       }
     },
     'app/logs/recent': ({ limit }) => ({ lines: recentLogs(limit ?? 200) }),
+    'app/logs/info': () => logFileStats(),
     'app/logs/open': async () => {
       await api.shell.openPath(logDirPath())
     },

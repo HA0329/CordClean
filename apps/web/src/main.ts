@@ -34,6 +34,15 @@ const app = await createApp({
   logForward: true,
 })
 
+// 崩溃/未处理拒绝也写入统一日志（避免进程“悄悄”退出后没有线索）
+process.on('uncaughtException', (error) => {
+  app.ctx.logger.error('未捕获异常：' + (error?.stack ?? String(error)))
+})
+process.on('unhandledRejection', (reason) => {
+  const text = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+  app.ctx.logger.error('未处理的 Promise 拒绝：' + text)
+})
+
 const handlers = createHandlers({
   ctx: app.ctx,
   dataDir: app.dataDir,

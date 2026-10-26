@@ -1,16 +1,18 @@
 /**
- * 日志：控制台输出 + 文件落盘 + 转发给界面。
+ * 统一日志：Cordis Logger 导出器 → 控制台 + 单一日志文件 + 界面实时事件。
  *
- * 使用 Cordis 内置的 Logger 体系（`ctx.logger.exporter()`），
- * 因此插件里调用 `ctx.logger.warn(...)` 的日志会自动出现在
- * 控制台、日志文件与界面「运行日志」中。
+ * 与旧实现的差别：
+ * - 不再自己维护 `app-YYYY-MM-DD.log`，内核/插件日志与诊断日志统一写
+ *   `<dataDir>/logs/cordclean.log`（utils/log-file.ts 负责轮转/保留/脱敏）；
+ * - 日志文本先脱敏再落盘/转发，避免插件把 Key 写进文件；
+ * - 每条日志带 `[level] [scope]`，插件日志用插件名作为 scope；
+ * - 实时事件仍然发 `system/log`，供界面 tail。
  */
-import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { appendLogLine, configureLogFile, logDirPath as getLogDir, logFilePath as getLogFile, redactLogText } from '@cordclean/utils'
 import { Logger, type Context, type Exporter, type Message } from 'cordis'
 
 const LEVELS: Record<string, number> = { error: 0, warn: 1, info: 2, debug: 3 }
-const MAX_LOG_BYTES = 4 * 1024 * 1024
 
 export interface LoggerSetupOptions {
   dataDir: string
@@ -22,43 +24,44 @@ export interface LoggerSetupOptions {
 
 export function setupLogger(ctx: Context, options: LoggerSetupOptions): void {
   const threshold = LEVELS[options.level ?? 'info'] ?? 2
-  mkdirSync(options.dataDir, { recursive: true })
-  const logDir = path.join(options.dataDir, 'logs')
-  mkdirSync(logDir, { recursive: true })
-  const today = () => path.join(logDir, `app-${new Date().toISOString().slice(0, 10)}.log`)
-  let writes = 0
+  configureLogFile({ dir: path.join(options.dataDir, 'logs') })
 
   const exporter: Exporter = {
     colors: 256,
     export(message: Message) {
       if (message.level > threshold) return
-      const text = Logger.format(this, message)
-      const line = `${new Date(message.ts).toISOString()} ${text}`
-      // 控制台
+      const text = redactLogText(Logger.format(this, message))
+      const level = message.type ?? 'info'
+      const scope = message.name || 'kernel'
+      const line = `${new Date(message.ts).toISOString()} [${level}] [${scope}] ${text}`
       if (message.type === 'error') console.error(text)
       else if (message.type === 'warn') console.warn(text)
       else console.log(text)
-      // 文件
-      try {
-        const file = today()
-        if (existsSync(file) && statSync(file).size > MAX_LOG_BYTES) {
-          renameSync(file, file.replace(/\.log$/, '.1.log'))
-        }
-        appendFileSync(file, line + '\n', 'utf8')
-      } catch {
-        /* 日志写入失败不应影响主流程 */
-      }
-      // 转发到界面
-      if (options.forward !== false && (++writes % 1 === 0)) {
+      appendLogLine(line)
+      if (options.forward !== false) {
         try {
-          ctx.emit('system/log', { level: message.type, message: text, time: message.ts, name: message.name })
+          ctx.emit('system/log', {
+            level,
+            message: text,
+            time: message.ts,
+            name: message.name,
+          } as any)
         } catch {
-          /* ignore */
+          /* 界面未连接等情况忽略 */
         }
       }
     },
   }
   ctx.logger.exporter(exporter)
+}
+
+/** 当前统一日志文件/目录（界面与诊断报告使用） */
+export function currentLogFile(): string | undefined {
+  return getLogFile()
+}
+
+export function currentLogDir(): string | undefined {
+  return getLogDir()
 }
 
 export type { Message }

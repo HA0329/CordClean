@@ -91,6 +91,7 @@ export type ServerEventMap = {
 export interface ApiMap {
   'app/info': { params: void; result: AppInfo }
   'app/open-path': { params: { path: string }; result: void }
+  'app/logs/info': { params: void; result: { file: string; bytes: number } }
   'app/logs/recent': { params: { limit?: number }; result: { lines: string[] } }
   'app/logs/open': { params: void; result: void }
   'app/logs/export': { params: void; result: { path: string } }
