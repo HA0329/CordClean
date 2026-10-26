@@ -148,7 +148,7 @@ onUnmounted(() => {
       <div class="cc-card">
         <div class="cc-card-title">
           <h3>💾 磁盘使用情况</h3>
-          <span class="cc-faint">实时读取</span>
+          <span class="cc-faint">每 5 秒自动采样 · 更新于 {{ formatTime(system?.collectedAt ?? 0) }}</span>
         </div>
         <div class="disk-list">
           <div v-for="disk in disks" :key="disk.mount" class="disk-row">

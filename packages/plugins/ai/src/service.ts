@@ -600,6 +600,55 @@ export class AiService extends Service implements AiLike {
       ...this.rawConfig,
       maxTokens: Math.min(limits.maxOutputTokens, Math.max(1, Number.isFinite(requestedTokens) ? requestedTokens : 3000)),
     }
+    // 用户在补充说明里明确要求「不要分析 / 只回复」时，走直答路径：
+    // 不再拼接清理画像与 JSON 约束，避免模型仍然输出整段清理建议。
+    const directReply = /不要分析|别分析|无需分析|(?:只|仅)回复|看到(?:补充说明|截图|图片).*回复|确认收到/.test(
+      String(options.extraContext ?? ''),
+    )
+    if (directReply) {
+      const plainConfig = { ...config, jsonMode: 'off' as const, stream: false as const }
+      const imageHint = options.image
+        ? '\n\n用户还附了一张截图（见图片内容块），请先说明你从截图中看到的内容，再按用户指令回复。'
+        : ''
+      const userPrompt =
+        '用户通过「补充说明」给出的唯一指令是：\n' +
+        options.extraContext +
+        '\n\n请直接按该指令回复，不要输出清理建议、JSON 对象或额外分析。' +
+        imageHint
+      const request = buildRequest(
+        plainConfig,
+        key,
+        '你是 CordClean 的 AI 助手。必须严格服从用户指令；用户要求只做某件事时，不要额外输出清理分析。',
+        userPrompt,
+        undefined,
+        options.image,
+      )
+      this.gate('analyze-reply', request.url, request.body)
+      const startedAt = Date.now()
+      const result = await requestJson(request.url, {
+        headers: request.headers,
+        body: request.body,
+        timeoutMs: config.timeoutMs,
+        retries: config.retries,
+        signal,
+      })
+      const parsed = parseResponse(plainConfig, result.payload)
+      const text = parsed.text.trim()
+      if (!text) throw new AiError('模型没有返回最终答案（可能只输出了思维链）', 'INVALID_RESPONSE', result.status, parsed.raw)
+      const analysis: AiAnalysis = {
+        model: config.model,
+        createdAt: Date.now(),
+        summary: text,
+        suggestions: [],
+        observations: [],
+        ...(parsed.reasoning ? { reasoning: parsed.reasoning } : {}),
+        ...(parsed.usage ? { usage: parsed.usage } : {}),
+        latencyMs: Date.now() - startedAt,
+        shape: config.apiShape,
+      }
+      this.cache = analysis
+      return analysis
+    }
     const profile = await this.buildProfile(options.extraContext)
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan
@@ -816,9 +865,9 @@ function extractDependenciesFromText(text: string): Record<string, string> {
   }
 }
 
-const PLUGIN_KINDS: PluginKind[] = ['cleaner', 'widget', 'active', 'desktop', 'integration']
+export const PLUGIN_KINDS: PluginKind[] = ['cleaner', 'widget', 'active', 'desktop', 'integration']
 
-function pickPluginKind(value: unknown): PluginKind {
+export function pickPluginKind(value: unknown): PluginKind {
   return PLUGIN_KINDS.includes(value as PluginKind) ? (value as PluginKind) : 'cleaner'
 }
 
@@ -840,7 +889,7 @@ function extractKindFromCode(code: string): string {
 }
 
 /** 与运行时同一个解析器做语法检查（异步，不阻塞主线程） */
-function checkPluginSyntax(text: string): Promise<string | null> {
+export function checkPluginSyntax(text: string): Promise<string | null> {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'cordclean-ai-plugin-'))
   const file = path.join(dir, 'check.mjs')
   writeFileSync(file, text, 'utf8')
@@ -886,7 +935,7 @@ function checkPluginSyntax(text: string): Promise<string | null> {
     })
   })
 }
-const PLUGIN_TOOL = {
+export const PLUGIN_TOOL = {
   name: 'emit_plugin',
   description: '输出一个完整可运行的原生 Cordis 通用插件源码与 npm 依赖声明；可选输出多文件插件包（manifest + files）',
   parameters: {
@@ -916,7 +965,7 @@ const PLUGIN_TOOL = {
       },
       files: {
         type: 'array',
-        description: '可选：多文件插件包内容（不含 plugin.json），path 相对包目录；entry 必须出现在其中',
+        description: '推荐：多文件插件包内容（不含 plugin.json），path 相对包目录；入口与 client 页面都放这里',
         items: {
           type: 'object',
           properties: {
@@ -931,7 +980,7 @@ const PLUGIN_TOOL = {
   },
 }
 
-const PLUGIN_SYSTEM_PROMPT = [
+export const PLUGIN_SYSTEM_PROMPT = [
   '你是 Cordis 通用插件工程师。只输出一个 JSON 对象：{ "name": "kebab-case", "description": "一句话说明插件功能", "kind": "cleaner|widget|active|desktop", "code": "完整 ESM 源码", "notes": "简要说明", "dependencies": {"包名":"版本"} }。',
   'code 是原生 Cordis 插件，必须是完整单文件 ESM：export const name = "kebab-case"; export const description = "一句话"; export const kind = "cleaner|widget|active|desktop"; 按需 export const inject = ["ui"] / ["cleaner"] / ["window"]; export function apply(ctx) { ... }。不要使用 export default 普通对象，也不要使用 setup()。',
   'widget/active/desktop 必须提供至少一个 commands 项（例如“刷新数据”“运行自检”），并在 apply 中用 ctx.ui.command(name, rpcID, handler) 注册；插件页没有手动命令时用户无法触发插件功能。cleaner 可不提供命令。',
@@ -941,7 +990,9 @@ const PLUGIN_SYSTEM_PROMPT = [
   'overviewCards 的数据返回格式必须匹配类型：metric → { value: string|number, unit? }；text → { text } 或字符串；list → string[] 或 { items: string[] }；progress → { value: number, max: number }。不要用 { value: string[] } 表示列表，否则卡片会空白。',
   '也可以贡献 statusItems（状态栏）与 commands（插件页按钮）：statusItems 项使用 { id, label, resolve, tone }（label 是显示文字，不要用 title）；commands 项必须使用 { id, title, rpc }，title 是按钮文字，不要用 label。',
   '如确实需要自定义页面，可在 contributes.pages 中提供 mode:"iframe" 的自包含 HTML；页面内不能访问宿主 DOM，只能通过 postMessage 的 cordclean/plugin-page 协议请求 resolve 数据。',
-  '多文件插件包（可选，推荐用于带独立客户端页面的插件）：额外输出 manifest（v2 清单，必须 apiVersion:2、engines.cordclean、kind、entry、permissions{services,network,subprocess}、client）与 files（[{path,content}]；path 用 / 分隔且必须在包内；入口文件必须出现在 files 中；客户端页面放 client/index.html，并在 manifest.client 写 { "mode":"page","entry":"client/index.html" }）。不输出 manifest/files 时，宿主会把单文件 code 自动包成 v2 插件包安装。',
+  '【默认多文件 v2 插件包】优先输出 manifest（v2 清单：apiVersion:2、engines.cordclean、kind、entry、permissions{services,fsRoots,network,subprocess}、client、dependencies）与 files 数组（[{path,content}]），而不是只给单文件 code；即使只有入口文件也建议输出 files:[{path:"index.mjs",content:code}]。path 用 / 分隔且必须在包内；manifest.entry 必须出现在 files 中；code 字段与入口文件内容保持一致。',
+  '【需要自定义 UI 时必须多文件】只要插件需要独立客户端页面（图表、表单、iframe 页面），必须输出 client/index.html（自包含 HTML，不引用外部资源）并在 manifest.client 写 { "mode":"page","entry":"client/index.html" }；页面通过 postMessage 的 cordclean/plugin-page 协议取数据，不能访问宿主 DOM。不要用单文件 code 里拼接 HTML 代替 client/index.html。',
+  '不输出 manifest/files 时，宿主仍会把单文件 code 自动包成 v2 插件包安装，但会失去自定义页面与显式权限声明；因此默认应输出完整插件包。',
   'active 类型：在 apply 中用 ctx.effect(() => { const timer = setInterval(...); return () => clearInterval(timer) }) 注册后台逻辑，并用 ctx.ui.emit(name, 事件名, 数据) 主动刷新界面、ctx.ui.notify(name, { title, message, level }) 弹通知；通过 ctx.on/ctx.emit 订阅事件。',
   'desktop 类型：用 ctx.window.open(name, { id, html, width, height, transparent, alwaysOnTop, clickThrough }) 打开独立悬浮窗口（仅 Electron 桌面壳可用）；用 ctx.window.createTray(name, { tooltip, items, onSelect }) 创建托盘。窗口 HTML 是自包含的，不能用 Node/宿主 DOM。',
   'dependencies 为空对象 {} 表示零依赖；需要第三方能力时声明 npm 包（最多 8 个），版本必须是 semver（如 "^3.3.2"），安装时由用户确认并下载。禁止 file:/git/URL/路径规格；优先纯 JS 包，避免需要本地编译的原生模块。',
@@ -950,7 +1001,7 @@ const PLUGIN_SYSTEM_PROMPT = [
   '清理目标的路径模板：%TEMP%、%USERPROFILE%、%LOCALAPPDATA%、%APPDATA%、%WINDIR%；代码里用 ctx.system.env.get("TEMP") 等取实际路径，不要硬编码用户名。',
   '用 ctx.logger 记录关键日志；除了 JSON 外不要输出解释性文字。',
 ].join('\n')
-const PLUGIN_USER_PREFIX = '需求：'
+export const PLUGIN_USER_PREFIX = '需求：'
 
 const ROOT_HINT =
   '\n\n如果发现「用户目录下某一级目录体积很大、但不在当前扫描根里」，请输出 roots 数组（最多 3 条）：' +

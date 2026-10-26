@@ -160,8 +160,27 @@ export function createHandlers(api: ApiContext): HandlerMap {
         await api.shell.openPath(target)
         return
       }
+      // 编辑器命令可能是 GUI 程序（常驻）也可能是错命令（立刻非 0 退出）。
+      // 等 spawn / error / 早期 exit：失败时回退到系统默认方式，避免“提示已打开但什么也没发生”。
       const child = spawn(command, [target], { detached: true, stdio: 'ignore', windowsHide: true })
-      child.unref()
+      const fallback = await new Promise<boolean>((resolve) => {
+        let settled = false
+        const finish = (needFallback: boolean) => {
+          if (settled) return
+          settled = true
+          resolve(needFallback)
+        }
+        child.once('error', () => finish(true))
+        child.once('spawn', () => setTimeout(() => finish(false), 300))
+        child.once('exit', (code) => {
+          if (code !== 0) finish(true)
+        })
+        setTimeout(() => finish(false), 800)
+      })
+      if (fallback) {
+        dlog('warn', 'open-editor', '编辑器命令不可用，回退系统默认打开', { command, target })
+        await api.shell.openPath(target)
+      }
     },
     'plugins/source': ({ id }) => ({ path: resolveSourceFile(id) }),
     'plugins/source-content': ({ id }) => {
@@ -416,9 +435,12 @@ export function createHandlers(api: ApiContext): HandlerMap {
           configured: false,
           model: '',
           aiModel: '',
-          inheritsModel: true,
-          maxTokens: 32_768,
-          retries: 2,
+          inheritsModel: false,
+          shape: '',
+          baseUrl: '',
+          maxTokens: 65_536,
+          retries: 1,
+          timeoutMs: 180_000,
           systemPromptExtra: '',
         }
       }
@@ -427,9 +449,16 @@ export function createHandlers(api: ApiContext): HandlerMap {
     'ai/workshop/draft': async ({ requirement }) => {
       const workshop = (ctx as unknown as { aiWorkshop?: { draftPlugin?(text: string): Promise<any> } }).aiWorkshop
       if (!workshop?.draftPlugin) {
-        throw new Error('「AI 插件工坊」插件未启用：请在插件页启用它（需要同时启用「AI 清理顾问」）')
+        throw new Error('「AI 插件工坊」插件未启用：请在插件页启用它')
       }
       return workshop.draftPlugin(String(requirement ?? ''))
+    },
+    'ai/workshop/models': async ({ refresh }) => {
+      const workshop = (
+        ctx as unknown as { aiWorkshop?: { models?(refresh: boolean): Promise<{ source: 'remote' | 'fallback'; models: any[] }> } }
+      ).aiWorkshop
+      if (!workshop?.models) return { source: 'fallback', models: [] }
+      return workshop.models(refresh === true)
     },
     'ai/plugin/validate': async ({ code, dependencies, native, format, manifest, files }) => {
       const wantsPackage = format === 'package' || Boolean(manifest) || Boolean(files?.length)

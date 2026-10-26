@@ -94,6 +94,7 @@ const schemas: Record<string, z.ZodTypeAny> = {
   'ai/plugin/draft': z.object({ requirement: z.string().min(1).max(2000) }).strict(),
   'ai/workshop/status': z.void().optional(),
   'ai/workshop/draft': z.object({ requirement: z.string().min(1).max(2000) }).strict(),
+  'ai/workshop/models': z.object({ refresh: z.boolean().optional() }).strict().optional(),
   'ai/plugin/validate': z
     .object({
       code: z.string().max(200_000),

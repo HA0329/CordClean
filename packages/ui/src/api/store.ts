@@ -252,6 +252,7 @@ export async function refreshSystemLive(): Promise<void> {
     memoryTotal: live.memoryTotal,
     memoryFree: live.memoryFree,
     uptimeSeconds: live.uptimeSeconds,
+    disks: live.disks,
     collectedAt: live.collectedAt,
   }
 }
@@ -548,6 +549,11 @@ export async function fetchAiWorkshopStatus(): Promise<AiWorkshopStatus> {
 /** 通过独立插件生成 v2 插件包草稿 */
 export async function draftAiWorkshopPlugin(requirement: string): Promise<AiPluginDraft> {
   return requireTransport().request('ai/workshop/draft', { requirement })
+}
+
+/** 工坊自己的模型列表（独立接口配置） */
+export async function fetchAiWorkshopModels(refresh = false): Promise<{ source: 'remote' | 'fallback'; models: AiModelInfo[] }> {
+  return requireTransport().request('ai/workshop/models', { refresh })
 }
 
 export async function validateAiPlugin(

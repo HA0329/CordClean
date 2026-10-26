@@ -254,7 +254,7 @@ export interface SystemLike {
   readonly env: TaskEnv
   info(): Promise<SystemInfo>
   /** 轻量采样：内存与运行时长，不枚举磁盘 */
-  live(): SystemLiveInfo
+  live(): Promise<SystemLiveInfo>
   disks(): Promise<DiskInfo[]>
   /** 关键目录占用 */
   hotspots(): Promise<Array<{ label: string; path: string; bytes: number }>>
@@ -351,16 +351,21 @@ export interface AiPluginDraft {
 export interface AiWorkshopStatus {
   /** 工坊插件是否已启用（服务已注册） */
   available: boolean
-  /** 是否复用「AI 清理顾问」的连接配置（需要 AI 插件启用且配置 Key） */
+  /** 工坊自己的 API Key 是否可用（Key 或环境变量） */
   configured: boolean
-  /** 实际使用的模型（工坊覆盖值或 AI 顾问模型） */
+  /** 工坊实际使用的模型 */
   model: string
-  /** AI 顾问模型（用于提示「跟随」关系） */
+  /** 兼容字段：旧版曾表示跟随 AI 顾问的模型，现在独立后为空 */
   aiModel: string
-  /** true=未覆盖模型，跟随 AI 顾问 */
+  /** 兼容字段：独立后恒为 false */
   inheritsModel: boolean
+  /** 工坊接口形态与根地址（独立配置） */
+  shape: string
+  baseUrl: string
   maxTokens: number
   retries: number
+  timeoutMs: number
+  /** 追加到工坊 system prompt 的额外要求（来自配置的 systemPrompt） */
   systemPromptExtra: string
 }
 

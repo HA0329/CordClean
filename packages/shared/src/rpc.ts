@@ -177,6 +177,8 @@ export interface ApiMap {
   'ai/workshop/status': { params: void; result: AiWorkshopStatus }
   /** AI 插件工坊生成 v2 插件包草稿（走独立的 ai-workshop 插件） */
   'ai/workshop/draft': { params: { requirement: string }; result: AiPluginDraft }
+  /** AI 插件工坊自己的模型列表（独立接口配置） */
+  'ai/workshop/models': { params: { refresh?: boolean }; result: { source: 'remote' | 'fallback'; models: AiModelInfo[] } }
   'ai/plugin/validate': {
     params: {
       code: string

@@ -6,15 +6,19 @@
  * 安装统一走 PluginManager.installPackage（staging → 校验 → 原子落盘 → 启用）。
  */
 defineOptions({ name: 'AiWorkshopView' })
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { AiPluginDraft, AiWorkshopStatus } from '@cordclean/shared'
+import type { AiModelInfo, AiPluginDraft, AiWorkshopStatus } from '@cordclean/shared'
 import {
   cancelAi,
   draftAiWorkshopPlugin,
+  fetchAiWorkshopModels,
   fetchAiWorkshopStatus,
   installAiPlugin,
   refreshAiStatus,
+  refreshPlugins,
+  savePluginConfig,
+  setPluginEnabled,
   state,
   validateAiPlugin,
 } from '../api/store.ts'
@@ -44,8 +48,41 @@ const workshopStatus = ref<AiWorkshopStatus | null>(null)
 const statusLoading = ref(false)
 const available = computed(() => workshopStatus.value?.available === true)
 const configured = computed(() => workshopStatus.value?.configured === true)
-const model = computed(() => workshopStatus.value?.model || state.aiStatus?.model || '未配置模型')
-const inheritsModel = computed(() => workshopStatus.value?.inheritsModel !== false)
+const model = computed(() => workshopStatus.value?.model || workshopConfig.model || '未配置模型')
+const shape = computed(() => workshopStatus.value?.shape || workshopConfig.apiShape)
+
+/** 工坊独立接口配置（保存在插件 ai-workshop 的 config 中，与 AI 清理顾问互不影响） */
+const workshopConfig = reactive({
+  apiKey: '',
+  baseUrl: 'https://api.deepseek.com',
+  apiShape: 'chat' as 'chat' | 'messages' | 'responses',
+  model: 'deepseek-flash',
+  maxTokens: 65_536,
+  temperature: -1,
+  timeoutMs: 180_000,
+  retries: 1,
+  systemPrompt: '',
+})
+const workshopModels = ref<AiModelInfo[]>([])
+const modelsSource = ref<'remote' | 'fallback'>('fallback')
+const savingConfig = ref(false)
+const enabling = ref(false)
+
+function loadWorkshopConfig(): void {
+  const plugin = state.plugins.find((item) => item.id === 'ai-workshop')
+  const config = (plugin?.config ?? {}) as Record<string, unknown>
+  workshopConfig.apiKey = String(config.apiKey ?? '')
+  workshopConfig.baseUrl = String(config.baseUrl ?? 'https://api.deepseek.com')
+  workshopConfig.apiShape = (['chat', 'messages', 'responses'] as const).includes(config.apiShape as any)
+    ? (config.apiShape as 'chat' | 'messages' | 'responses')
+    : 'chat'
+  workshopConfig.model = String(config.model ?? 'deepseek-flash')
+  workshopConfig.maxTokens = Number(config.maxTokens ?? 65_536) || 65_536
+  workshopConfig.temperature = Number(config.temperature ?? -1)
+  workshopConfig.timeoutMs = Number(config.timeoutMs ?? 180_000) || 180_000
+  workshopConfig.retries = Number(config.retries ?? 1)
+  workshopConfig.systemPrompt = String(config.systemPrompt ?? '')
+}
 
 async function loadWorkshopStatus(): Promise<void> {
   statusLoading.value = true
@@ -55,6 +92,51 @@ async function loadWorkshopStatus(): Promise<void> {
     workshopStatus.value = null
   } finally {
     statusLoading.value = false
+  }
+}
+
+async function enableWorkshop(): Promise<void> {
+  enabling.value = true
+  try {
+    await setPluginEnabled('ai-workshop', true)
+    await refreshPlugins()
+    await loadWorkshopStatus()
+    loadWorkshopConfig()
+    ElMessage.success('已启用「AI 插件工坊」插件')
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    enabling.value = false
+  }
+}
+
+async function loadModels(): Promise<void> {
+  try {
+    const result = await fetchAiWorkshopModels(true)
+    workshopModels.value = result.models
+    modelsSource.value = result.source
+    if (!result.models.some((item) => item.id === workshopConfig.model) && result.models[0]) {
+      workshopConfig.model = result.models[0].id
+    }
+  } catch (err) {
+    ElMessage.error('拉取模型失败：' + (err instanceof Error ? err.message : String(err)))
+  }
+}
+
+async function saveConfig(): Promise<void> {
+  savingConfig.value = true
+  try {
+    await savePluginConfig('ai-workshop', {
+      ...workshopConfig,
+      stream: false,
+    })
+    await refreshPlugins()
+    await loadWorkshopStatus()
+    ElMessage.success('工坊接口设置已保存（已生效）')
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    savingConfig.value = false
   }
 }
 const entryPath = computed(() => draft.value?.manifest?.entry ?? 'index.mjs')
@@ -158,6 +240,14 @@ function discard(): void {
   error.value = ''
 }
 
+function updateFileContent(path: string, value: string): void {
+  if (!draft.value) return
+  const file = draft.value.files?.find((item) => item.path === path)
+  if (file) file.content = value
+  if (path === entryPath.value) draft.value.code = value
+  scheduleRevalidate()
+}
+
 function updateEntry(value: string): void {
   if (!draft.value) return
   draft.value.code = value
@@ -197,9 +287,12 @@ async function install(): Promise<void> {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await refreshPlugins().catch(() => {})
+  loadWorkshopConfig()
+  await loadWorkshopStatus()
+  void loadModels().catch(() => {})
   void refreshAiStatus().catch(() => {})
-  void loadWorkshopStatus()
 })
 onUnmounted(stopTimer)
 </script>
@@ -219,22 +312,20 @@ onUnmounted(stopTimer)
           插件 {{ available ? '已启用' : '未启用' }}
         </span>
         <span class="cc-pill" :class="{ 'is-ok': configured, 'is-warn': !configured }">
-          {{ !available ? '等待启用插件' : (configured ? 'AI 已配置' : 'AI 未配置') }}
+          {{ !available ? '等待启用插件' : (configured ? 'API 已配置' : 'API 未配置') }}
         </span>
-        <span class="cc-pill" :title="inheritsModel ? '跟随 AI 清理顾问' : '工坊覆盖模型'">
-          {{ model }}{{ inheritsModel && available ? '（跟随顾问）' : '' }}
-        </span>
+        <span class="cc-pill">{{ shape }} · {{ model }}</span>
         <span class="cc-pill">v2 插件包</span>
       </div>
     </div>
 
     <el-alert v-if="workshopStatus && !available" type="warning" :closable="false" show-icon class="workshop-alert">
-      「AI 插件工坊」插件还没有启用：请到插件页启用它（需要同时启用「AI 清理顾问」）。
+      「AI 插件工坊」插件还没有启用：工坊是独立插件，启用后即可使用它自己的接口设置。
+      <el-button link type="primary" :loading="enabling" @click="enableWorkshop">立即启用</el-button>
       <el-button link type="primary" @click="openPlugins">去插件页</el-button>
     </el-alert>
-    <el-alert v-else-if="workshopStatus && !configured" type="warning" :closable="false" show-icon class="workshop-alert">
-      「AI 清理顾问」还没有配置 API Key：工坊复用它的连接与 Key，请先到「AI 建议」页填写。
-      <el-button link type="primary" @click="openAiSettings">去配置</el-button>
+    <el-alert v-else-if="available && !configured" type="warning" :closable="false" show-icon class="workshop-alert">
+      还没有配置工坊自己的 API Key：请在下面的「接口设置」中填写（或设置环境变量 DEEPSEEK_API_KEY）。
     </el-alert>
 
     <div class="workshop-grid">
@@ -269,22 +360,61 @@ onUnmounted(stopTimer)
 
       <section class="cc-card">
         <div class="cc-card-title">
-          <h3>工坊配置（独立）</h3>
-          <span class="cc-faint">与 AI 清理顾问分开，可在插件页的「AI 插件工坊」配置中修改</span>
+          <h3>接口设置（工坊独立）</h3>
+          <span class="cc-faint">与「AI 建议」互不影响；保存后立即生效</span>
         </div>
-        <div class="workshop-config">
-          <template v-if="available">
-            <div class="config-row"><span>模型</span><b>{{ model }}{{ inheritsModel ? '（跟随 AI 顾问）' : '（工坊覆盖）' }}</b></div>
-            <div class="config-row"><span>单次最大输出</span><b>{{ workshopStatus?.maxTokens ?? '—' }} tokens</b></div>
-            <div class="config-row"><span>失败重试</span><b>{{ workshopStatus?.retries ?? '—' }} 次</b></div>
-            <div class="config-row"><span>追加提示</span><b>{{ workshopStatus?.systemPromptExtra || '（无）' }}</b></div>
-          </template>
-          <p v-else class="cc-faint">插件未启用：启用后可在这里看到独立生成参数（模型覆盖 / maxTokens / 重试 / 追加提示）。</p>
+        <div class="config-grid">
+          <label class="config-field">
+            <span>接口形态</span>
+            <el-select v-model="workshopConfig.apiShape" size="small">
+              <el-option label="chat（OpenAI 兼容）" value="chat" />
+              <el-option label="messages（Anthropic 兼容）" value="messages" />
+              <el-option label="responses（OpenAI Responses）" value="responses" />
+            </el-select>
+          </label>
+          <label class="config-field">
+            <span>接口根地址</span>
+            <el-input v-model="workshopConfig.baseUrl" size="small" placeholder="https://api.deepseek.com" />
+          </label>
+          <label class="config-field">
+            <span>API Key</span>
+            <el-input v-model="workshopConfig.apiKey" size="small" type="password" show-password placeholder="留空则读取环境变量 DEEPSEEK_API_KEY" />
+          </label>
+          <label class="config-field">
+            <span>模型</span>
+            <el-select v-model="workshopConfig.model" size="small" filterable allow-create default-first-option>
+              <el-option v-for="item in workshopModels" :key="item.id" :label="item.id" :value="item.id" />
+            </el-select>
+            <small class="cc-faint">列表来源：{{ modelsSource === 'remote' ? '接口 /models' : '内置兜底' }}</small>
+          </label>
+          <label class="config-field">
+            <span>最大输出 token</span>
+            <el-input-number v-model="workshopConfig.maxTokens" size="small" :min="0" :max="1000000" :step="8192" />
+          </label>
+          <label class="config-field">
+            <span>失败重试</span>
+            <el-input-number v-model="workshopConfig.retries" size="small" :min="0" :max="5" />
+          </label>
+          <label class="config-field">
+            <span>超时（毫秒）</span>
+            <el-input-number v-model="workshopConfig.timeoutMs" size="small" :min="0" :max="600000" :step="10000" />
+          </label>
+          <label class="config-field">
+            <span>温度</span>
+            <el-input-number v-model="workshopConfig.temperature" size="small" :min="-1" :max="2" :step="0.1" />
+          </label>
         </div>
+        <label class="config-full">
+          <span>追加提示词（可选）</span>
+          <el-input v-model="workshopConfig.systemPrompt" type="textarea" :rows="2" placeholder="例如：入口固定 index.mjs；需要页面时输出 client/index.html；遵循团队编码规范" />
+        </label>
         <div class="workshop-actions">
-          <el-button size="small" @click="openPlugins">在插件页修改工坊配置</el-button>
+          <el-button type="primary" size="small" :loading="savingConfig" :disabled="!available" @click="saveConfig">保存接口设置</el-button>
+          <el-button size="small" :disabled="!available" @click="loadModels">拉取模型列表</el-button>
           <el-button size="small" link @click="loadWorkshopStatus">刷新状态</el-button>
+          <el-button v-if="!available" size="small" type="primary" plain :loading="enabling" @click="enableWorkshop">启用插件</el-button>
         </div>
+        <p class="cc-hint">这些配置保存在插件 <code>ai-workshop</code> 的 config 中，与「AI 建议」页的 AI 接口配置完全独立。</p>
       </section>
 
       <section class="cc-card">
@@ -336,10 +466,9 @@ onUnmounted(stopTimer)
             :rows="16"
             class="cc-mono"
             spellcheck="false"
-            :readonly="!canEditActive"
-            @update:model-value="canEditActive ? updateEntry($event) : undefined"
+            @update:model-value="updateFileContent(activeFile, $event)"
           />
-          <p class="cc-hint">{{ canEditActive ? '入口文件可直接编辑，修改后自动重新校验' : '非入口文件当前只读；如需修改请重新生成' }}</p>
+          <p class="cc-hint">所有文件都可直接编辑；修改入口文件会同步为草稿代码并自动重新校验。</p>
 
           <div v-if="dependencies.length" class="deps-box">
             <p class="cc-hint">该插件包声明了第三方依赖（在 staging 内安装，禁用 lifecycle scripts）：</p>
@@ -461,24 +590,26 @@ onUnmounted(stopTimer)
   border: 1px solid var(--cc-border);
   border-radius: 8px;
 }
-.workshop-config {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
   margin: 8px 0;
 }
-.config-row {
+.config-field {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 12.5px;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
   color: var(--cc-text-dim);
 }
-.config-row b {
-  color: var(--cc-text);
-  font-weight: 600;
-  text-align: right;
-  word-break: break-all;
+.config-full {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--cc-text-dim);
 }
 .deps-box ul {
   margin: 6px 0;

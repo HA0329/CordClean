@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.0`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、68 个 RPC 方法；63 个测试文件 / 459 个用例。
+当前版本 `0.6.0`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、69 个 RPC 方法；64 个测试文件 / 462 个用例。
 
 ## 快速开始
 
@@ -44,9 +44,9 @@ pnpm start:desktop    # Electron 桌面应用
 - **内核**：Node.js 22+ / TypeScript / [Cordis](https://github.com/cordiverse/cordis) 4（`cordis@4.0.0-rc.12`）插件框架
 - **配置校验**：Schemastery（Cordis 生态的 schema 库）+ zod（RPC 参数校验）
 - **界面**：Vue 3 + Vite + Element Plus
-- **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 68 个方法）
+- **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 69 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（459 个用例 / 63 个文件）
+- **测试**：Vitest（462 个用例 / 63 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -60,7 +60,7 @@ pnpm start:desktop    # Electron 桌面应用
                             │ JSON-RPC │
 ┌───────────────────────────▼──────────▼───────────────────────────────┐
 │                     传输层 packages/host                             │
-│   api.ts：68 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
+│   api.ts：69 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
 │   Host/Origin/token 校验、CSP 注入、WS 1MB 上限、畸形 URL → 400       │
 └───────────────────────────┬──────────────────────────────────────────┘
                             │ 直接调用
@@ -262,7 +262,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 459 个用例 / 63 个文件
+pnpm test          # 462 个用例 / 63 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）

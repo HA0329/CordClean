@@ -42,7 +42,8 @@ export const DEFAULT_SYSTEM_PROMPT = `你是一名 Windows 系统清理专家，
 }
 3. suggestions 给出 3~5 条，按可释放空间从大到小排序。
 4. 不要在 targets 中出现任何真实路径、文件名或用户名。
-5. 风险判断要保守：涉及系统组件、注册表、启动项的，risk 至少为 caution。`
+5. 风险判断要保守：涉及系统组件、注册表、启动项的，risk 至少为 caution。
+6. 用户可能在「补充说明」或截图中给出明确指令。若用户要求「只回复看到的内容」「不要分析」「看到补充说明回复」等，必须严格遵守：只回答用户要求的内容，不要输出清理建议或额外分析。`
 
 /** 允许通过配置覆盖 system prompt（面向前沿模型/新格式） */
 export function buildSystemPrompt(config: AiConfig): string {

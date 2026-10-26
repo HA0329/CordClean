@@ -320,6 +320,9 @@ importers:
 
   packages/plugins/ai-workshop:
     dependencies:
+      '@cordclean/plugin-ai':
+        specifier: workspace:*
+        version: link:../ai
       '@cordclean/shared':
         specifier: workspace:*
         version: link:../../shared

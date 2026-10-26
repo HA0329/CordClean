@@ -26,8 +26,8 @@ export class SystemService extends Service implements SystemLike {
   }
 
   /** 磁盘列表与占用 */
-  async disks(): Promise<DiskInfo[]> {
-    if (this.diskCache && Date.now() - this.diskCache.at < 10_000) return this.diskCache.value
+  async disks(force = false): Promise<DiskInfo[]> {
+    if (!force && this.diskCache && Date.now() - this.diskCache.at < 3_000) return this.diskCache.value
     const drives = this.env.drives.length ? this.env.drives : [this.env.systemDrive]
     const value = await Promise.all(
       drives.map(async (mount): Promise<DiskInfo> => {
@@ -45,12 +45,13 @@ export class SystemService extends Service implements SystemLike {
     return value
   }
 
-  /** 轻量系统采样：概览页按秒/5 秒刷新时不需要枚举磁盘 */
-  live(): SystemLiveInfo {
+  /** 轻量系统采样：内存/运行时长 + 磁盘占用（statfs 很快，5 秒级刷新不会造成压力） */
+  async live(): Promise<SystemLiveInfo> {
     return {
       memoryTotal: os.totalmem(),
       memoryFree: os.freemem(),
       uptimeSeconds: Math.round(os.uptime()),
+      disks: await this.disks(true),
       collectedAt: Date.now(),
     }
   }

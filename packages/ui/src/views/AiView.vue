@@ -377,19 +377,61 @@ watch(
 )
 
 const visionImage = ref<{ mime: string; data: string; name: string } | null>(null)
+const visionInput = ref<HTMLInputElement>()
 
-function onVisionFile(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  if (file.size > 3 * 1024 * 1024) { ElMessage.warning('图片请小于 3MB'); return }
+const visionSizeText = computed(() => {
+  if (!visionImage.value) return ''
+  const bytes = Math.round((visionImage.value.data.length * 3) / 4)
+  return bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+})
+
+function pickVisionFile(): void {
+  visionInput.value?.click()
+}
+
+function applyVisionFile(file: File): void {
+  if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
+    ElMessage.warning('只支持 PNG / JPEG / WebP / GIF 截图')
+    return
+  }
+  if (file.size > 3 * 1024 * 1024) {
+    ElMessage.warning('图片请小于 3MB')
+    return
+  }
   const reader = new FileReader()
   reader.onload = () => {
     const url = String(reader.result)
     const mime = url.match(/data:([^;]+);base64/)?.[1] ?? 'image/png'
     const data = url.split(',')[1] ?? ''
-    visionImage.value = { mime, data, name: file.name }
+    if (data.length > 4_000_000) {
+      ElMessage.warning('图片 base64 超过 4MB，请压缩后再试')
+      return
+    }
+    visionImage.value = { mime, data, name: file.name || '剪贴板截图.png' }
   }
   reader.readAsDataURL(file)
+}
+
+function onVisionFile(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) applyVisionFile(file)
+  input.value = ''
+}
+
+function onVisionDrop(event: DragEvent): void {
+  const file = event.dataTransfer?.files?.[0]
+  if (file) applyVisionFile(file)
+}
+
+function onVisionPaste(event: ClipboardEvent): void {
+  for (const item of event.clipboardData?.items ?? []) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) applyVisionFile(file)
+      return
+    }
+  }
 }
 
 const rootSuggestions = computed(() => analysis.value?.rootSuggestions ?? [])
@@ -879,13 +921,32 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <div class="cc-card">
         <div class="cc-card-title">
           <h3>🖼️ 截图诊断（可选）</h3>
-          <span class="cc-faint">仅 deepseek-flash 支持；截图会发送给模型，请勿包含隐私</span>
+          <span class="cc-faint">DeepSeek 官方仅 deepseek-flash 支持视觉；截图只发给模型，请勿包含隐私</span>
         </div>
-        <input type="file" accept="image/png,image/jpeg" @change="onVisionFile" />
-        <div v-if="visionImage" style="margin-top: 8px">
-          <el-tag closable @close="visionImage = null">{{ visionImage.name }}</el-tag>
-          <img :src="'data:' + visionImage.mime + ';base64,' + visionImage.data" style="max-height: 160px; margin-top: 8px; border-radius: 8px" />
+        <div
+          class="vision-drop"
+          tabindex="0"
+          @click="pickVisionFile"
+          @keydown.enter.prevent="pickVisionFile"
+          @dragover.prevent
+          @drop.prevent="onVisionDrop"
+          @paste.prevent="onVisionPaste"
+        >
+          <template v-if="visionImage">
+            <img class="vision-preview" :src="'data:' + visionImage.mime + ';base64,' + visionImage.data" alt="截图预览" />
+            <div class="vision-meta">
+              <el-tag closable @close.stop="visionImage = null">{{ visionImage.name }}</el-tag>
+              <span class="cc-faint">{{ visionSizeText }}</span>
+              <el-button size="small" link type="primary" @click.stop="pickVisionFile">重新选择</el-button>
+            </div>
+          </template>
+          <template v-else>
+            <div class="vision-empty">点击选择截图，或把图片拖到这里，也可以聚焦后 Ctrl+V 粘贴</div>
+            <div class="cc-faint">PNG / JPEG / WebP / GIF · ≤ 3MB</div>
+          </template>
         </div>
+        <input ref="visionInput" class="vision-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="onVisionFile" />
+        <p class="cc-hint">带截图分析时，模型会先描述截图里看到的内容；如果模型不支持视觉会明确报错。</p>
       </div>
 
     <div class="cc-card">
@@ -899,15 +960,6 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <div v-if="state.busy && state.aiStream" class="cc-card">
         <div class="cc-card-title"><h3>⏳ 正在生成…</h3><span class="cc-faint">流式输出，完成后自动解析</span></div>
         <pre class="stream-box">{{ state.aiStream }}</pre>
-      </div>
-
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>🧪 AI 插件工坊</h3><span class="cc-faint">已独立为单独页面</span></div>
-        <p class="cc-hint">
-          生成原生 Cordis 插件、产出 v2 插件包（清单 + 入口 + 可选 client 页面）与安装审阅已拆到独立的
-          「AI 插件工坊」页面和插件（独立的生成参数，需要在插件页启用）；本页只负责清理建议分析。
-        </p>
-        <el-button type="primary" plain @click="state.page = 'workshop'">前往 AI 插件工坊</el-button>
       </div>
 
       <!-- 分析结果 -->
@@ -1066,6 +1118,44 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
 </template>
 
 <style scoped>
+.vision-drop {
+  border: 1px dashed var(--cc-border);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 8px 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
+  transition: border-color 0.15s;
+}
+.vision-drop:hover,
+.vision-drop:focus {
+  border-color: var(--cc-accent, #4f7cff);
+  outline: none;
+}
+.vision-empty {
+  font-size: 13px;
+  color: var(--cc-text-dim);
+}
+.vision-preview {
+  max-height: 220px;
+  max-width: 100%;
+  border-radius: 8px;
+}
+.vision-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.vision-input {
+  display: none;
+}
+
 .rule-suggestion { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--cc-border); }
 .rule-suggestion p { margin: 4px 0; }
 .alert-body {

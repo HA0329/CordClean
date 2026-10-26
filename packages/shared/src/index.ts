@@ -265,6 +265,8 @@ export interface SystemLiveInfo {
   memoryTotal: number
   memoryFree: number
   uptimeSeconds: number
+  /** 磁盘占用（与内存一起做 5 秒级轻量采样，statfs 很快） */
+  disks: DiskInfo[]
   collectedAt: number
 }
 
