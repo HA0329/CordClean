@@ -39,8 +39,9 @@ for (const relative of tracked) {
   bytes += statSync(source).size
 }
 
+// 项目介绍 HTML 是带截图的营销页；只有显式传 --intro 才复制，避免把旧版本页面混进新包
 const intro = path.join(outRoot, 'CordClean-项目介绍.html')
-if (existsSync(intro)) {
+if (process.argv.includes('--intro') && existsSync(intro)) {
   copyFileSync(intro, path.join(target, 'CordClean-项目介绍.html'))
   console.log('copied project intro html')
 }
