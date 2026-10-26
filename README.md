@@ -6,6 +6,8 @@
 
 当前版本 `0.6.3`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；65 个测试文件 / 473 个用例。
 
+更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md)
+
 ## 快速开始
 
 **Windows 一键启动（推荐）**：双击仓库根目录的 `1-启动网页版-后台运行.bat`
@@ -348,6 +350,8 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [威胁模型与信任边界](docs/threat-model.md) —— 本地服务鉴权、插件信任模型、已知残余风险
 - [插件开发规范](docs/plugin-authoring.md)
 - [v2 插件包规范](docs/plugin-package-v2.md) —— 目录 + `plugin.json`、权限与兼容检查、安装事务、`client/` 自定义协议、AI 工坊产出 v2 包
+- [更新日志](CHANGELOG.md) —— 每个版本的变更摘要与更新说明入口
+- [发布流程](docs/release-process.md) —— 每次更新必须写说明、打 tag、确认 CI 的清单
 - [v0.6.3 发布说明](docs/release-notes-v0.6.3.md) —— Phase 3：重复日志合并、插件级日志级别、结构化诊断导出
 - [v0.6.2 发布说明](docs/release-notes-v0.6.2.md) —— Phase 2：结构化 JSONL、运行时日志配置、实时 tail 与 requestId
 - [v0.6.1 发布说明](docs/release-notes-v0.6.1.md) —— 统一日志系统、RPC 降噪、日志查看器与性能基准
