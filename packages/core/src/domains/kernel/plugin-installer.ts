@@ -184,7 +184,11 @@ async function assertEntrySource(
     throw new PluginInstallError('entry-too-large', `入口源码超过 ${limits.maxEntryBytes} 字节上限`)
   }
   const source = await readFile(entry.path, 'utf8')
-  const check = checkPluginSource(source, { mode: 'native', allowRelativeImports: true })
+  const check = checkPluginSource(source, {
+    mode: 'native',
+    allowRelativeImports: true,
+    dependencies: manifest.dependencies ?? {},
+  })
   if (!check.ok) {
     throw new PluginInstallError(
       'entry-check-failed',
@@ -258,7 +262,11 @@ export async function inspectPluginPackage(options: InspectPluginPackageOptions)
       errors.push({ code: 'entry-too-large', message: `入口源码超过 ${limits.maxEntryBytes} 字节上限` })
     } else {
       const source = await readFile(entry.path, 'utf8')
-      const check = checkPluginSource(source, { mode: 'native', allowRelativeImports: true })
+      const check = checkPluginSource(source, {
+        mode: 'native',
+        allowRelativeImports: true,
+        dependencies: manifest.dependencies ?? {},
+      })
       for (const message of check.errors) errors.push({ code: 'entry-check-failed', message })
     }
   }

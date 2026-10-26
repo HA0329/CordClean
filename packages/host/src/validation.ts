@@ -3,6 +3,22 @@ import { z } from 'zod'
 /** 插件工坊依赖声明：包名 → semver；具体合法性由 shared 静态校验再检查 */
 const pluginDependencies = z.record(z.string().min(1).max(100), z.string().min(1).max(40)).optional()
 
+/** AI 插件包文件：path 相对包目录，content 为文本 */
+const aiPluginFiles = z
+  .array(
+    z
+      .object({
+        path: z.string().min(1).max(240),
+        content: z.string().max(300_000),
+      })
+      .strict(),
+  )
+  .max(50)
+  .optional()
+
+/** AI 插件包清单（深度校验由 shared 的 validatePluginManifest 完成） */
+const aiPluginManifest = z.record(z.string(), z.unknown()).optional()
+
 /** 关键 RPC 的入参 schema；未列出的方法只要求 params 是对象 */
 const schemas: Record<string, z.ZodTypeAny> = {
   'settings/patch': z.object({ patch: z.record(z.string(), z.unknown()) }).strict(),
@@ -47,6 +63,17 @@ const schemas: Record<string, z.ZodTypeAny> = {
     })
     .strict(),
   'plugins/uninstall': z.object({ id: z.string().min(1) }).strict(),
+  'plugins/inspect-package': z.object({ path: z.string().min(1).max(500) }).strict(),
+  'plugins/install-package': z
+    .object({
+      path: z.string().min(1).max(500),
+      enable: z.boolean().optional(),
+      upgrade: z.boolean().optional(),
+    })
+    .strict(),
+  'plugins/uninstall-package': z.object({ id: z.string().min(1) }).strict(),
+  'plugins/package-problems': z.void().optional(),
+  'plugins/client-url': z.object({ id: z.string().min(1).max(120) }).strict(),
   'quarantine/restore': z.object({ ids: z.array(z.string()).max(10_000) }).strict(),
   'quarantine/purge': z.object({ ids: z.array(z.string()).max(10_000).optional() }).strict(),
   'history/list': z.object({ limit: z.number().int().positive().max(1000).optional() }).strict().optional(),
@@ -65,15 +92,26 @@ const schemas: Record<string, z.ZodTypeAny> = {
   'ai/rules/dry-run': z.object({ suggestion: z.record(z.string(), z.unknown()) }).strict(),
   'ai/plugin/draft': z.object({ requirement: z.string().min(1).max(2000) }).strict(),
   'ai/plugin/validate': z
-    .object({ code: z.string().min(1).max(200_000), dependencies: pluginDependencies, native: z.boolean().optional() })
+    .object({
+      code: z.string().max(200_000),
+      dependencies: pluginDependencies,
+      native: z.boolean().optional(),
+      format: z.enum(['single-file', 'package']).optional(),
+      manifest: aiPluginManifest,
+      files: aiPluginFiles,
+    })
     .strict(),
   'ai/plugin/install': z
     .object({
       name: z.string().min(1).max(80),
-      code: z.string().min(1).max(200_000),
+      code: z.string().max(200_000),
       dependencies: pluginDependencies,
       acknowledgeDependencies: z.boolean().optional(),
+      acknowledgePermissions: z.boolean().optional(),
       native: z.boolean().optional(),
+      format: z.enum(['single-file', 'package']).optional(),
+      manifest: aiPluginManifest,
+      files: aiPluginFiles,
     })
     .strict(),
   'scheduler/authorize': z

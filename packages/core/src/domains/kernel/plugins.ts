@@ -396,7 +396,11 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       if (entryPath) {
         const source = await readFile(entryPath, 'utf8').catch(() => '')
         if (source) {
-          const check = checkPluginSource(source, { mode: 'native', allowRelativeImports: true })
+          const check = checkPluginSource(source, {
+            mode: 'native',
+            allowRelativeImports: true,
+            dependencies: manifest.dependencies ?? {},
+          })
           if (!check.ok) throw new Error('插件入口校验失败：' + check.errors.join('；'))
         }
       }
@@ -722,13 +726,19 @@ export class PluginManagerService extends Service implements PluginManagerLike {
    */
   async installPackage(
     sourceDir: string,
-    options: { enable?: boolean; upgrade?: boolean } = {},
+    options: {
+      enable?: boolean
+      upgrade?: boolean
+      /** 暂存完成后的准备工作（例如在 staging 内安装 npm 依赖）；抛错即回滚 */
+      prepareStaging?: (stagingDir: string, manifest: PluginManifest) => Promise<void>
+    } = {},
   ): Promise<{ id: string; manifest: PluginManifest; warnings: PluginManifestIssue[] }> {
     const result = await installPluginPackage({
       pluginsDir: this.packagesDir(),
       sourceDir,
       appVersion: this.appVersion,
       upgrade: options.upgrade === true,
+      prepareStaging: options.prepareStaging,
     })
     const id = packagePluginId(result.id)
     const existing = this.records.get(id)

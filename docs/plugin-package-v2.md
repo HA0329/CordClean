@@ -192,7 +192,7 @@ AI 工坊的产物从“单文件”升级为“v2 插件包”，但保留旧�
   - 单文件草稿 → 自动合成清单：id 由 name 规范化，`apiVersion: 2`，`engines.cordclean: ^<当前版本>`，`kind` 取草稿，`entry: index.mjs`，权限服务从 `export const inject` 提取；
   - `files` 含 `client/index.html` → 自动声明 `client.mode=page`；
   - 校验：清单契约、文件路径安全（`/` 分隔、不越界）、单文件 ≤256 KB / 总数 ≤50 / 总体积 ≤4 MB、入口文件存在且通过静态契约、客户端页面存在、`plugin.json` 不允许出现在 files；
-  - **依赖限制**：v2 安装事务暂不安装 `node_modules`，因此声明第三方依赖的草稿自动退回旧单文件安装路径（仍带依赖下载确认）。
+  - **依赖安装**：声明第三方依赖时，安装事务在 staging 内写入 `package.json` 并通过 `prepareStaging` 钩子执行 `npm/pnpm install --ignore-scripts`，把 `node_modules` 一起提交；用户必须先确认依赖清单。
 - **安装**：写到 `dataDir/.ai-packages/<id>-<ts>/` → `PluginManager.installPackage()`（staging → commit → 登记 → 启用）→ 清理临时目录。安装前必须 `acknowledgePermissions: true`（UI 的“已阅读代码”勾选即视为权限确认）。
 - **RPC**：`ai/plugin/validate` 与 `ai/plugin/install` 新增 `format` / `manifest` / `files` / `acknowledgePermissions`；结果增加 `manifest`。
 - **UI**：插件草稿审阅弹窗显示“v2 插件包 / id / 版本 / 兼容范围 / 权限服务 / 文件列表”，安装按钮复用安装事务；多文件包当前只支持编辑入口代码。
@@ -210,9 +210,10 @@ AI 工坊的产物从“单文件”升级为“v2 插件包”，但保留旧�
 
 ## 11. 验收记录（v0.6.0）
 
-- 自动化测试：**61 个文件 / 450 个用例全部通过**（新增 v2 相关 31+16+6+5+7 个用例）；
+- 自动化测试：**62 个文件 / 455 个用例全部通过**（新增 v2 相关 31+16+6+5+8+4 个用例，含端到端生命周期与旧版插件重启兼容）；
 - 类型检查：`tsc -p tsconfig.json --noEmit`、`vue-tsc -p tsconfig.ui.json --noEmit` 均 0 错误；
 - 构建：`pnpm build`（UI + Electron 主进程）成功；
 - 发布包：`CordClean-v0.6.0/` + `CordClean-v0.6.0.zip`（源码 + 启动脚本 + 文档，不含 node_modules/dist）；
 - Web 外壳冒烟：启动后 `/api/ping` 与 `app/info` 正常，插件页可加载 v2 管理 UI；
-- 已知边界：Electron 自定义协议无法在无界面环境端到端验证（已验证编译与解析函数）；v2 安装事务暂不安装 `node_modules`，带第三方依赖的 AI 草稿继续走旧单文件安装。
+- 端到端：`tests/plugin-v2-e2e.test.ts` 走真实 HTTP RPC 覆盖 检查 → 安装 → client 资源 → 启停/重载 → 卸载、旧版单文件插件重启自动加载、AI 草稿包安装、11 个内置插件加载；
+- 已知边界：Electron 自定义协议无法在无界面环境端到端验证（已验证编译与解析函数）；第三方依赖安装依赖网络与 npm/pnpm 可用性。

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -9,6 +9,7 @@ import {
   normalizePluginId,
   synthesizePluginManifest,
   validateAiPluginPackage,
+  writeAiPluginPackage,
   type HandlerMap,
   type ShellAdapter,
 } from '@cordclean/host'
@@ -81,7 +82,7 @@ describe('AI 工坊 → v2 插件包', () => {
     expect(normalizePluginId('X'.repeat(100))).toBe('x'.repeat(40))
   })
 
-  it('校验：合法单文件/多文件通过，依赖、越界路径、坏清单被拒绝', async () => {
+  it('校验：合法单文件/多文件/带依赖通过，越界路径与坏清单被拒绝', async () => {
     const single = await validateAiPluginPackage(draft(), '0.5.18')
     expect(single.errors).toEqual([])
     expect(single.ok).toBe(true)
@@ -94,7 +95,9 @@ describe('AI 工坊 → v2 插件包', () => {
     expect(multi.errors).toEqual([])
     expect(multi.manifest?.client?.mode).toBe('page')
 
-    expect((await validateAiPluginPackage(draft({ dependencies: { 'is-number': '^7.0.0' } }), '0.5.18')).ok).toBe(false)
+    const withDeps = await validateAiPluginPackage(draft({ dependencies: { 'is-number': '^7.0.0' } }), '0.5.18')
+    expect(withDeps.ok).toBe(true)
+    expect(withDeps.manifest?.dependencies).toEqual({ 'is-number': '^7.0.0' })
     expect((await validateAiPluginPackage(draft({ files: [{ path: '../evil.mjs', content: CODE }] }), '0.5.18')).ok).toBe(false)
     expect(
       (await validateAiPluginPackage(draft({ manifest: { apiVersion: 1 } as any }), '0.5.18')).errors.length,
@@ -143,6 +146,53 @@ describe('AI 工坊 → v2 插件包', () => {
 
       await handlers['plugins/uninstall-package']({ id: 'external:ai-pkg-demo' })
       expect(app.ctx.plugins.list().some((item) => item.id === 'external:ai-pkg-demo')).toBe(false)
+    } finally {
+      await app.dispose()
+    }
+  })
+
+  it('依赖的 AI 草稿：校验通过、安装需确认依赖、staging 钩子在包内安装 node_modules', async () => {
+    const depCode = "import isNumber from 'is-number'\n" + CODE
+    const deps = { 'is-number': '^7.0.0' }
+    const { app, handlers, dataDir } = await boot('deps')
+    try {
+      const validation = await handlers['ai/plugin/validate']({
+        code: depCode,
+        dependencies: deps,
+        format: 'package',
+        native: true,
+      })
+      expect(validation.ok).toBe(true)
+
+      await expect(
+        handlers['ai/plugin/install']({
+          name: 'ai-pkg-deps',
+          code: depCode,
+          dependencies: deps,
+          format: 'package',
+          native: true,
+          acknowledgePermissions: true,
+        }),
+      ).rejects.toThrow(/依赖/)
+
+      const pkgValidation = await validateAiPluginPackage(
+        draft({ name: 'ai-pkg-deps', code: depCode, dependencies: deps }),
+        app.version,
+      )
+      expect(pkgValidation.ok).toBe(true)
+      const sourceDir = path.join(root, 'deps-src')
+      await writeAiPluginPackage(sourceDir, pkgValidation)
+      const installed = await app.ctx.plugins.installPackage!(sourceDir, {
+        enable: false,
+        prepareStaging: async (stagingDir) => {
+          const depDir = path.join(stagingDir, 'node_modules', 'is-number')
+          mkdirSync(depDir, { recursive: true })
+          writeFileSync(path.join(depDir, 'package.json'), JSON.stringify({ name: 'is-number', version: '7.0.0' }))
+          writeFileSync(path.join(depDir, 'index.js'), 'export default function () { return true }')
+        },
+      })
+      expect(installed.manifest.dependencies).toEqual(deps)
+      expect(existsSync(path.join(dataDir, 'plugins', installed.manifest.id, 'node_modules', 'is-number', 'index.js'))).toBe(true)
     } finally {
       await app.dispose()
     }

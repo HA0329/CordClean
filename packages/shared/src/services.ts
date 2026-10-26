@@ -291,7 +291,12 @@ export interface PluginManagerLike {
   /** 安装 v2 插件包目录（manifest/源码/兼容校验通过后原子落盘；依赖安装与审阅由宿主层完成） */
   installPackage?(
     sourceDir: string,
-    options?: { enable?: boolean; upgrade?: boolean },
+    options?: {
+      enable?: boolean
+      upgrade?: boolean
+      /** 暂存完成后的准备工作（例如在 staging 内安装 npm 依赖）；抛错即回滚 */
+      prepareStaging?: (stagingDir: string, manifest: PluginManifest) => Promise<void>
+    },
   ): Promise<{ id: string; manifest: PluginManifest; warnings: PluginManifestIssue[] }>
   /** 只读检查 v2 插件包目录（管理页审阅用，不落盘） */
   inspectPackage?(sourceDir: string): Promise<PluginPackageReview>

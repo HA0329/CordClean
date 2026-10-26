@@ -437,6 +437,10 @@ export function createHandlers(api: ApiContext): HandlerMap {
         if (acknowledgePermissions !== true) {
           throw new Error('该插件包以宿主用户权限运行，需要先确认清单与权限（acknowledgePermissions）')
         }
+        const dependencyCount = Object.keys(validation.manifest!.dependencies ?? {}).length
+        if (dependencyCount > 0 && acknowledgeDependencies !== true) {
+          throw new Error(`该插件包声明了 ${dependencyCount} 个第三方依赖，需要先确认依赖清单并勾选“允许下载依赖”`)
+        }
         if (typeof ctx.plugins.installPackage !== 'function') throw new Error('当前插件管理器不支持 v2 插件包')
         const installedId = 'external:' + validation.manifest!.id
         if (ctx.plugins.list().some((item) => item.id === installedId)) {
@@ -449,7 +453,31 @@ export function createHandlers(api: ApiContext): HandlerMap {
         )
         try {
           await writeAiPluginPackage(tempDir, validation)
-          const result = await ctx.plugins.installPackage(tempDir, { enable: true })
+          const result = await ctx.plugins.installPackage(tempDir, {
+            enable: true,
+            ...(dependencyCount > 0
+              ? {
+                  prepareStaging: async (stagingDir: string, stagingManifest: typeof validation.manifest) => {
+                    writeFileSync(
+                      path.join(stagingDir, 'package.json'),
+                      JSON.stringify(
+                        {
+                          name: 'cordclean-ai-' + stagingManifest!.id,
+                          version: '0.0.0',
+                          private: true,
+                          type: 'module',
+                          dependencies: stagingManifest!.dependencies,
+                        },
+                        null,
+                        2,
+                      ) + '\n',
+                      'utf8',
+                    )
+                    await installPluginDependencies(path.join(stagingDir, stagingManifest!.entry))
+                  },
+                }
+              : {}),
+          })
           return {
             path: path.join(api.dataDir, 'plugins', result.manifest.id),
             id: result.id,

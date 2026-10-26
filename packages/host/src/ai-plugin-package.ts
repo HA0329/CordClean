@@ -103,7 +103,7 @@ export function synthesizePluginManifest(
       network: false,
       subprocess: false,
     },
-    dependencies: {},
+    dependencies: { ...(draft.dependencies ?? {}) },
   }
 }
 
@@ -132,28 +132,25 @@ export async function validateAiPluginPackage(
   }
   if (totalBytes > MAX_TOTAL_BYTES) errors.push(`插件包总体积超过上限（${MAX_TOTAL_BYTES} 字节）`)
 
-  const dependencyCount = Object.keys(draft.dependencies ?? {}).length
-  if (dependencyCount > 0) {
-    errors.push('v2 插件包暂不支持第三方依赖；请改用单文件模式安装，或去掉 dependencies 后重试')
-  }
-
   const rawManifest = draft.manifest ?? synthesizePluginManifest(draft, appVersion, files)
-  if (rawManifest.dependencies && Object.keys(rawManifest.dependencies).length > 0) {
-    errors.push('v2 插件包 manifest 不能声明第三方依赖（当前安装事务不安装 node_modules）')
-  }
-  const manifestValidation = validatePluginManifest({ ...rawManifest, dependencies: undefined })
+  const manifestValidation = validatePluginManifest(rawManifest)
   if (!manifestValidation.ok) {
     for (const issue of manifestValidation.errors) errors.push(`清单校验失败：${issue.message}`)
   }
   warnings.push(...manifestValidation.warnings.map((issue) => issue.message))
   const manifest = manifestValidation.manifest
+  const declaredDependencies = manifest?.dependencies ?? draft.dependencies ?? {}
 
   if (manifest) {
     const entryContent = files[manifest.entry]
     if (!entryContent) {
       errors.push(`缺少入口文件：${manifest.entry}`)
     } else {
-      const check = checkPluginSource(entryContent, { mode: 'native', allowRelativeImports: true })
+      const check = checkPluginSource(entryContent, {
+        mode: 'native',
+        allowRelativeImports: true,
+        dependencies: declaredDependencies,
+      })
       for (const message of check.errors) errors.push(`入口源码：${message}`)
       warnings.push(...check.warnings)
     }

@@ -335,9 +335,8 @@ export class AiService extends Service implements AiLike {
         continue
       }
       const matched = code.match(/(?:export\s+const\s+name\s*=|name\s*:)\s*['"]([a-zA-Z0-9_-]+)['"]/)
-      // 零依赖草稿统一走 v2 插件包安装事务；声明了第三方依赖时退回旧单文件安装（v2 安装事务暂不装依赖）
-      const format: 'package' | 'single-file' =
-        Object.keys(dependencies).length > 0 ? 'single-file' : 'package'
+      // 原生草稿统一走 v2 插件包安装事务；第三方依赖在 staging 里安装 node_modules（用户确认后）
+      const format = 'package' as const
       return {
         name: matched?.[1] ?? packageManifest?.id ?? 'ai-plugin',
         code,
@@ -346,8 +345,8 @@ export class AiService extends Service implements AiLike {
         mode: 'native',
         kind,
         format,
-        ...(format === 'package' && packageManifest ? { manifest: packageManifest } : {}),
-        ...(format === 'package' && packageFiles.length ? { files: packageFiles } : {}),
+        ...(packageManifest ? { manifest: packageManifest } : {}),
+        ...(packageFiles.length ? { files: packageFiles } : {}),
       }
     }
     throw new AiError(lastError, 'INVALID_RESPONSE')
