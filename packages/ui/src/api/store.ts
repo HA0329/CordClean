@@ -679,6 +679,11 @@ export async function fetchLogEntries(limit = 500): Promise<LogEntry[]> {
   return requireTransport().request('app/logs/entries', { limit })
 }
 
+export async function exportDiagnosticsJson(): Promise<string> {
+  const result = await requireTransport().request('app/logs/export-json', undefined)
+  return result.path
+}
+
 export async function openLogDir(): Promise<void> {
   await requireTransport().request('app/logs/open', undefined)
 }

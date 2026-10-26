@@ -27,4 +27,8 @@ export interface LoggingSettings {
   keep: number
   /** 旧日志/旧 app-*.log 保留天数；0 表示不自动清理 */
   retainDays: number
+  /** 相同 level/scope/message 的合并窗口（毫秒）；0 表示关闭 */
+  dedupeWindowMs: number
+  /** 插件级别的日志覆盖，例如 { "rule-pack": "warn" }；空对象表示跟随全局 */
+  pluginLevels: Record<string, LogLevel>
 }

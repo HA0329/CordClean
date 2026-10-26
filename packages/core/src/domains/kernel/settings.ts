@@ -60,6 +60,8 @@ export const DEFAULT_SETTINGS: Settings = {
     maxBytes: 5 * 1024 * 1024,
     keep: 2,
     retainDays: 14,
+    dedupeWindowMs: 3000,
+    pluginLevels: {},
   },
   ui: {
     theme: 'dark',

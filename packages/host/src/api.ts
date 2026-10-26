@@ -25,7 +25,7 @@ import type {
   ApiParams,
   ApiResult,
 } from '@cordclean/shared'
-import { dlog, exportDiagnostics, initDiagnostics, logDirPath, logFileStats, recentLogEntries, recentLogs } from './diagnostics.ts'
+import { dlog, exportDiagnostics, exportDiagnosticsJson, initDiagnostics, logDirPath, logFileStats, recentLogEntries, recentLogs } from './diagnostics.ts'
 import {
   cleanupGeneratedPlugin,
   cleanupGeneratedPlugins,
@@ -201,6 +201,20 @@ export function createHandlers(api: ApiContext): HandlerMap {
     'app/logs/entries': ({ limit }) => recentLogEntries(limit ?? 500),
     'app/logs/open': async () => {
       await api.shell.openPath(logDirPath())
+    },
+    'app/logs/export-json': async () => {
+      const file = exportDiagnosticsJson({
+        version: api.version,
+        dataDir: api.dataDir,
+        platform: process.platform,
+        node: process.versions.node,
+        electron: process.versions.electron ?? null,
+        shell: api.shell.electron ? 'desktop' : 'web',
+        plugins: ctx.plugins.list().map((plugin) => ({ id: plugin.id, enabled: plugin.enabled, status: plugin.status, error: plugin.error })),
+        tasks: ctx.cleaner.list().length,
+        logging: ctx.settings.get().logging,
+      })
+      return { path: file }
     },
     'app/logs/export': async () => {
       const file = exportDiagnostics({

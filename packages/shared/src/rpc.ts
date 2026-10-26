@@ -95,6 +95,8 @@ export interface ApiMap {
   'app/logs/info': { params: void; result: { file: string; bytes: number } }
   /** 结构化日志条目（新日志查看器/实时 tail） */
   'app/logs/entries': { params: { limit?: number }; result: LogEntry[] }
+  /** 导出结构化诊断 JSON（日志条目 + 环境） */
+  'app/logs/export-json': { params: void; result: { path: string } }
   'app/logs/recent': { params: { limit?: number }; result: { lines: string[] } }
   'app/logs/open': { params: void; result: void }
   'app/logs/export': { params: void; result: { path: string } }

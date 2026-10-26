@@ -11,6 +11,7 @@ import {
   savePluginConfig,
   setPluginEnabled,
   exportDiagnostics,
+  exportDiagnosticsJson,
   fetchLogEntries,
   fetchLogInfo,
   openLogDir,
@@ -370,6 +371,8 @@ const logConfig = reactive({
   maxBytesMb: 5,
   keep: 2,
   retainDays: 14,
+  dedupeWindowMs: 3000,
+  pluginLevels: {} as Record<string, 'debug' | 'info' | 'warn' | 'error' | ''>,
 })
 const savingLogConfig = ref(false)
 
@@ -380,17 +383,28 @@ function syncLogConfig(): void {
   logConfig.maxBytesMb = Math.round((settings.maxBytes / 1024 / 1024) * 10) / 10
   logConfig.keep = settings.keep
   logConfig.retainDays = settings.retainDays
+  logConfig.dedupeWindowMs = settings.dedupeWindowMs ?? 3000
+  const nextLevels: Record<string, 'debug' | 'info' | 'warn' | 'error' | ''> = {}
+  for (const plugin of state.plugins) {
+    nextLevels[plugin.id] = (settings.pluginLevels?.[plugin.id] as any) ?? ''
+  }
+  logConfig.pluginLevels = nextLevels
 }
 
 async function applyLogSettings(): Promise<void> {
   savingLogConfig.value = true
   try {
+    const pluginLevels = Object.fromEntries(
+      Object.entries(logConfig.pluginLevels).filter(([, value]) => value !== ''),
+    )
     await patchSettings({
       logging: {
         level: logConfig.level,
         maxBytes: Math.round(logConfig.maxBytesMb * 1024 * 1024),
         keep: logConfig.keep,
         retainDays: logConfig.retainDays,
+        dedupeWindowMs: logConfig.dedupeWindowMs,
+        pluginLevels,
       },
     })
     ElMessage.success('日志设置已应用（立即生效）')
@@ -653,6 +667,15 @@ async function viewLogs() {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   } finally {
     loadingLogs.value = false
+  }
+}
+
+async function exportJsonDiagnostics() {
+  try {
+    const file = await exportDiagnosticsJson()
+    ElMessage.success('结构化诊断已导出：' + file)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
 
@@ -931,6 +954,10 @@ async function doClearEgress() {
             <el-button size="small" @click="viewLogs">查看最近日志</el-button>
           </div>
           <div class="data-row">
+            <div><div class="data-title">结构化诊断（JSON）</div><div class="cc-faint">环境 + 最近 2000 条结构化日志，便于机器分析</div></div>
+            <el-button size="small" @click="exportJsonDiagnostics">导出 JSON</el-button>
+          </div>
+          <div class="data-row">
             <div><div class="data-title">日志目录</div><div class="cc-faint">资源管理器打开 logs 目录</div></div>
             <el-button size="small" @click="openLogDirectory">打开</el-button>
           </div>
@@ -965,7 +992,23 @@ async function doClearEgress() {
             <span>旧日志保留天数</span>
             <el-input-number v-model="logConfig.retainDays" size="small" :min="0" :max="365" />
           </label>
+          <label>
+            <span>重复日志合并窗口（ms）</span>
+            <el-input-number v-model="logConfig.dedupeWindowMs" size="small" :min="0" :max="60000" :step="1000" />
+          </label>
           <el-button size="small" type="primary" :loading="savingLogConfig" @click="applyLogSettings">应用日志设置</el-button>
+        </div>
+        <div class="log-plugin-levels">
+          <span class="cc-faint">插件级别覆盖（留空表示跟随全局）</span>
+          <div v-for="plugin in state.plugins" :key="plugin.id" class="log-plugin-row">
+            <span>{{ plugin.name || plugin.id }}</span>
+            <el-select v-model="logConfig.pluginLevels[plugin.id]" size="small" placeholder="跟随全局" clearable style="width: 140px">
+              <el-option label="debug" value="debug" />
+              <el-option label="info" value="info" />
+              <el-option label="warn" value="warn" />
+              <el-option label="error" value="error" />
+            </el-select>
+          </div>
         </div>
         <p class="cc-hint">日志级别/轮转/保留会立即应用到统一日志；旧版 app-*.log 会在启动时按保留天数清理。</p>
       </div>

@@ -36,11 +36,14 @@ export interface LogFileOptions {
   keep?: number
   /** 旧 app-*.log / diagnostics-*.txt 的保留天数，默认 14；0 表示不清理 */
   retainDays?: number
+  /** 相同 level/scope/message 的日志合并窗口（毫秒）；0 表示关闭 */
+  dedupeWindowMs?: number
 }
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 const DEFAULT_KEEP = 2
 const DEFAULT_RETAIN_DAYS = 14
+const DEFAULT_DEDUPE_WINDOW_MS = 3000
 
 /** 写入缓冲：日志是高频热路径，避免每行一次同步写盘；按大小/时间 flush */
 const FLUSH_BYTES = 64 * 1024
@@ -53,10 +56,16 @@ let buffer: string[] = []
 let bufferBytes = 0
 let flushTimer: ReturnType<typeof setTimeout> | undefined
 let exitHooked = false
+let dedupeWindowMs = 0
+const dedupePending = new Map<
+  string,
+  { count: number; last: LogEntry; timer: ReturnType<typeof setTimeout> }
+>()
 const listeners = new Set<(entry: LogEntry) => void>()
 
 /** 配置日志文件（重复调用会切换到新目录，测试/多实例/运行时调整可复用） */
 export function configureLogFile(options: LogFileOptions): void {
+  flushLogDedupe()
   flushLogFile()
   const dir = path.resolve(options.dir)
   mkdirSync(dir, { recursive: true })
@@ -64,12 +73,13 @@ export function configureLogFile(options: LogFileOptions): void {
   const maxBytes = Math.max(4 * 1024, Math.trunc(options.maxBytes ?? DEFAULT_MAX_BYTES))
   const keep = Math.max(1, Math.trunc(options.keep ?? DEFAULT_KEEP))
   configured = { dir, file, maxBytes, keep }
+  dedupeWindowMs = Math.max(0, Math.trunc(options.dedupeWindowMs ?? DEFAULT_DEDUPE_WINDOW_MS))
   rotateIfNeeded()
   cleanupLegacyLogs(dir, options.retainDays ?? DEFAULT_RETAIN_DAYS, file)
   if (!exitHooked) {
     exitHooked = true
     // 进程退出前把缓冲区落盘（exit 回调里只能做同步操作）
-    process.once('exit', () => flushLogFile())
+    process.once('exit', () => { flushLogDedupe(); flushLogFile() })
   }
 }
 
@@ -109,6 +119,45 @@ export function appendLogEvent(input: {
     ...(input.requestId ? { requestId: input.requestId } : {}),
     ...(input.pluginId ? { pluginId: input.pluginId } : {}),
   }
+
+  // Phase 3：短窗口内相同 level/scope/message 合并，只保留首条 + 汇总重复次数
+  if (dedupeWindowMs > 0) {
+    const key = `${entry.level}\u0000${entry.scope}\u0000${entry.message}`
+    const pending = dedupePending.get(key)
+    if (pending) {
+      pending.count += 1
+      pending.last = entry
+      return entry
+    }
+    const timer = setTimeout(() => flushDedupeKey(key), dedupeWindowMs)
+    ;(timer as any).unref?.()
+    dedupePending.set(key, { count: 1, last: entry, timer })
+  }
+
+  writeAndEmit(entry)
+  return entry
+}
+
+/** 立即输出所有待合并的重复日志（读取/退出/切换配置前调用） */
+export function flushLogDedupe(): void {
+  for (const key of [...dedupePending.keys()]) flushDedupeKey(key)
+}
+
+function flushDedupeKey(key: string): void {
+  const pending = dedupePending.get(key)
+  if (!pending) return
+  dedupePending.delete(key)
+  clearTimeout(pending.timer)
+  if (pending.count <= 1) return
+  const summary: LogEntry = {
+    ...pending.last,
+    ts: new Date().toISOString(),
+    fields: { ...(pending.last.fields ?? {}), repeat: pending.count },
+  }
+  writeAndEmit(summary)
+}
+
+function writeAndEmit(entry: LogEntry): void {
   if (configured) {
     const line = JSON.stringify(entry) + '\n'
     buffer.push(line)
@@ -127,7 +176,6 @@ export function appendLogEvent(input: {
       /* 单个订阅者异常不能影响日志主流程 */
     }
   }
-  return entry
 }
 
 /** 立即把缓冲区写入文件（轮转/读取/退出前调用） */
@@ -150,6 +198,7 @@ export function flushLogFile(): void {
 
 /** 读取末尾 N 条日志（自动将旧版纯文本行包装为 legacy 条目） */
 export function readLogEntries(limit = 200): LogEntry[] {
+  flushLogDedupe()
   flushLogFile()
   if (!configured) return []
   try {

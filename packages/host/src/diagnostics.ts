@@ -76,6 +76,21 @@ export function logFileStats(): { file: string; bytes: number } {
   return { file: getLogFilePath() ?? '', bytes: logFileSize() }
 }
 
+/** 导出结构化诊断 JSON（环境 + 结构化日志条目，便于机器分析/反馈） */
+export function exportDiagnosticsJson(extra: Record<string, unknown>): string {
+  const targetDir = getLogDirPath() ?? path.dirname(getLogFilePath() ?? '.')
+  const target = path.join(targetDir, `diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    logFile: getLogFilePath(),
+    logBytes: logFileSize(),
+    environment: extra,
+    entries: readLogEntries(2000),
+  }
+  writeFileSync(target, JSON.stringify(payload, null, 2), 'utf8')
+  return target
+}
+
 /** 导出诊断包：系统信息 + 设置摘要 + 最近日志，写成一个 txt */
 export function exportDiagnostics(extra: Record<string, unknown>): string {
   const targetDir = getLogDirPath() ?? path.dirname(getLogFilePath() ?? '.')

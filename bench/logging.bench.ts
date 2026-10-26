@@ -29,7 +29,7 @@ function formatMB(bytes: number): string {
 }
 
 async function main(): Promise<void> {
-  configureLogFile({ dir: path.join(root, 'logs'), maxBytes: 64 * 1024 * 1024, keep: 2, retainDays: 0 })
+  configureLogFile({ dir: path.join(root, 'logs'), maxBytes: 64 * 1024 * 1024, keep: 2, retainDays: 0, dedupeWindowMs: 0 })
   const line = `${new Date().toISOString()} [info] [bench] 日志写入基准：` + 'x'.repeat(120)
   const lineBytes = Buffer.byteLength(line, 'utf8')
   const writes = 20_000
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
   for (const [section, metric, value] of rows) console.log(`| ${section} | ${metric} | ${value} |`)
 
   const markdown = [
-    '# CordClean 日志系统基准（v0.6.2）',
+    '# CordClean 日志系统基准（v0.6.3）',
     '',
     `生成时间：${new Date().toLocaleString('zh-CN')}`,
     `运行环境：${os.platform()} ${os.release()} · Node ${process.versions.node}`,

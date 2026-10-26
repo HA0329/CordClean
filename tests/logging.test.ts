@@ -2,10 +2,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSyn
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createApp } from '@cordclean/core'
+import { applyLoggingConfig, createApp, isLevelEnabled } from '@cordclean/core'
 import {
   appendLogEvent,
   configureLogFile,
+  flushLogDedupe,
   flushLogFile,
   logFilePath,
   onLogEvent,
@@ -14,7 +15,7 @@ import {
   redactLogText,
 } from '@cordclean/utils'
 import { createHandlers, shouldLogRpc, startHostServer, summarizeRpcParams, type ShellAdapter } from '@cordclean/host'
-import { exportDiagnostics, recentLogEntries, recentLogs } from '../packages/host/src/diagnostics.ts'
+import { exportDiagnostics, exportDiagnosticsJson, recentLogEntries, recentLogs } from '../packages/host/src/diagnostics.ts'
 
 const shell: ShellAdapter = { electron: false, async openPath() {}, async openDataDir() {} }
 
@@ -151,6 +152,36 @@ describe('结构化日志（Phase 2）', () => {
     }
   })
 
+  it('重复日志合并：窗口内相同 level/scope/message 只保留首条 + 汇总次数', () => {
+    const dir = tempDir()
+    try {
+      configureLogFile({ dir, maxBytes: 4 * 1024 * 1024, keep: 2, retainDays: 0, dedupeWindowMs: 30 })
+      const events: unknown[] = []
+      const off = onLogEvent((entry) => events.push(entry))
+      for (let index = 0; index < 5; index += 1) {
+        appendLogEvent({ level: 'warn', scope: 'plugin-demo', message: '相同的告警消息' })
+      }
+      flushLogDedupe()
+      const matched = readLogEntries(50).filter((entry) => entry.message === '相同的告警消息')
+      off()
+      expect(matched).toHaveLength(2)
+      expect(matched[0]?.fields?.repeat).toBeUndefined()
+      expect(matched[1]?.fields?.repeat).toBe(5)
+      expect(events.length).toBe(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('插件级别覆盖：只对指定插件放宽/收紧级别', () => {
+    applyLoggingConfig({ level: 'warn', pluginLevels: { 'plugin-demo': 'debug' }, dedupeWindowMs: 0 })
+    expect(isLevelEnabled('plugin-demo', 'debug')).toBe(true)
+    expect(isLevelEnabled('plugin-demo', 'info')).toBe(true)
+    expect(isLevelEnabled('other-plugin', 'info')).toBe(false)
+    expect(isLevelEnabled('other-plugin', 'warn')).toBe(true)
+    applyLoggingConfig({ level: 'info', pluginLevels: {}, dedupeWindowMs: 0 })
+  })
+
   it('RPC requestId 关联：错误请求日志带 requestId，app/logs/entries 可读', async () => {
     const dir = tempDir()
     const app = await createApp({ dataDir: dir, logger: true, logLevel: 'info', logForward: false })
@@ -194,6 +225,12 @@ describe('内核/插件日志与诊断统一', () => {
       expect(content).toContain('CordClean 诊断报告')
       expect(content).toContain('统一日志集成测试：插件消息可见')
       expect(content).toContain('最近日志')
+
+      const jsonFile = exportDiagnosticsJson({ version: 'test' })
+      const payload = JSON.parse(readFileSync(jsonFile, 'utf8'))
+      expect(payload.environment.version).toBe('test')
+      expect(Array.isArray(payload.entries)).toBe(true)
+      expect(payload.entries.some((entry: any) => entry.message.includes('统一日志集成测试'))).toBe(true)
     } finally {
       await app.dispose()
       rmSync(dir, { recursive: true, force: true })

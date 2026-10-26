@@ -24,17 +24,27 @@ export interface LoggerSetupOptions {
 
 let dataDir = ''
 let threshold = 2
+let pluginLevels: Record<string, LogLevel> = {}
 
 /** 运行时应用日志设置：级别 + 轮转大小/份数 + 保留天数 */
 export function applyLoggingConfig(settings: Partial<LoggingSettings> & { level?: LogLevel }): void {
   if (settings.level && settings.level in LEVELS) threshold = LEVELS[settings.level]
+  if (settings.pluginLevels) pluginLevels = { ...settings.pluginLevels }
   if (!dataDir) return
   configureLogFile({
     dir: path.join(dataDir, 'logs'),
     maxBytes: settings.maxBytes,
     keep: settings.keep,
     retainDays: settings.retainDays,
+    dedupeWindowMs: settings.dedupeWindowMs,
   })
+}
+
+/** 当前 scope（插件名）是否允许输出该级别（供导出器/单测使用） */
+export function isLevelEnabled(scope: string, level: LogLevel): boolean {
+  const scopeLevel = pluginLevels[scope]
+  const limit = scopeLevel ? LEVELS[scopeLevel] : threshold
+  return LEVELS[level] <= limit
 }
 
 export function setupLogger(ctx: Context, options: LoggerSetupOptions): void {
@@ -44,10 +54,10 @@ export function setupLogger(ctx: Context, options: LoggerSetupOptions): void {
   const exporter: Exporter = {
     colors: 256,
     export(message: Message) {
-      if (message.level > threshold) return
-      const text = Logger.format(this, message)
-      const level = (message.type ?? 'info') as LogLevel
       const scope = message.name || 'kernel'
+      const level = (message.type ?? 'info') as LogLevel
+      if (!isLevelEnabled(scope, level)) return
+      const text = Logger.format(this, message)
       if (level === 'error') console.error(text)
       else if (level === 'warn') console.warn(text)
       else console.log(text)
