@@ -442,6 +442,7 @@ export function createHandlers(api: ApiContext): HandlerMap {
           retries: 1,
           timeoutMs: 180_000,
           systemPromptExtra: '',
+          apiKeySource: 'none',
         }
       }
       return workshop.status()

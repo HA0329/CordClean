@@ -80,6 +80,11 @@ export class AiWorkshopService extends Service {
       retries: this.config.retries,
       timeoutMs: this.config.timeoutMs || 180_000,
       systemPromptExtra: this.config.systemPrompt,
+      apiKeySource: this.config.apiKey?.trim()
+        ? 'config'
+        : String(process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || '').trim()
+          ? 'env'
+          : 'none',
     }
   }
 

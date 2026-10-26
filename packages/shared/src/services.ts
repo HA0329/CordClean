@@ -367,6 +367,8 @@ export interface AiWorkshopStatus {
   timeoutMs: number
   /** 追加到工坊 system prompt 的额外要求（来自配置的 systemPrompt） */
   systemPromptExtra: string
+  /** API Key 来源：config=工坊配置；env=环境变量；none=未配置 */
+  apiKeySource?: 'config' | 'env' | 'none'
 }
 
 export interface AiLike {

@@ -156,6 +156,7 @@ describe('AI 插件工坊独立插件 + 独立接口配置', () => {
       expect(status.shape).toBe('chat')
       expect(status.baseUrl).toContain(`127.0.0.1:${port}`)
       expect(status.systemPromptExtra).toContain('团队插件规范')
+      expect(status.apiKeySource).toBe('config')
     } finally {
       await app.dispose()
     }
@@ -200,6 +201,7 @@ describe('AI 插件工坊独立插件 + 独立接口配置', () => {
     try {
       const service = (app.ctx as any).aiWorkshop
       expect(service.status().configured).toBe(false)
+      expect(service.status().apiKeySource).toBe('none')
       await expect(service.draftPlugin('写一个插件')).rejects.toThrow(/API Key/)
     } finally {
       await app.dispose()
@@ -223,6 +225,7 @@ describe('AI 插件工坊独立插件 + 独立接口配置', () => {
       expect(status.available).toBe(true)
       expect(status.model).toBe('mock-model')
       const models = await handlers['ai/workshop/models']({ refresh: true })
+      expect(models.source).toBe('remote')
       expect(models.models.some((item: any) => item.id === 'mock-model')).toBe(true)
       const draft = await handlers['ai/workshop/draft']({ requirement: '写一个清理临时文件的插件' })
       expect(draft.format).toBe('package')
