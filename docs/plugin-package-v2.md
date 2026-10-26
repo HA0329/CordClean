@@ -215,5 +215,6 @@ AI 工坊的产物从“单文件”升级为“v2 插件包”，但保留旧�
 - 构建：`pnpm build`（UI + Electron 主进程）成功；
 - 发布包：`CordClean-v0.6.0/` + `CordClean-v0.6.0.zip`（源码 + 启动脚本 + 文档，不含 node_modules/dist）；
 - Web 外壳冒烟：启动后 `/api/ping` 与 `app/info` 正常，插件页可加载 v2 管理 UI；
-- 端到端：`tests/plugin-v2-e2e.test.ts` 走真实 HTTP RPC 覆盖 检查 → 安装 → client 资源 → 启停/重载 → 卸载、旧版单文件插件重启自动加载、AI 草稿包安装、11 个内置插件加载；
+- 端到端：`tests/plugin-v2-e2e.test.ts` 走真实 HTTP RPC 覆盖 检查 → 安装 → client 资源 → 启停/重载 → 卸载、旧版单文件插件重启自动加载、AI 草稿包安装、12 个内置插件加载；
+- 真实模型验收（2026-10-26）：cleaner / widget / active / 多文件 client 页面 4 类插件真实生成、安装、调用、卸载全部通过；desktop 草稿生成+校验通过（Web 外壳无 window 服务）；详见 [验收报告](verification/ai-workshop-live-test-2026-10-26.md)；
 - 已知边界：Electron 自定义协议无法在无界面环境端到端验证（已验证编译与解析函数）；第三方依赖安装依赖网络与 npm/pnpm 可用性。

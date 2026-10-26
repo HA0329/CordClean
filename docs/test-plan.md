@@ -1,6 +1,8 @@
 # 测试设计（全量测试分层）
 
-当前规模：**64 个测试文件 / 462 个用例**（2026-10-26，含插件系统 v2 端到端）；总耗时约 50 s（`pool: 'forks'`）。
+当前规模：**64 个测试文件 / 462 个用例**（2026-10-26，含插件系统 v2 端到端）
+
+真实模型验收：`docs/verification/ai-workshop-live-test-2026-10-26.md`（非 CI，手工执行；覆盖 cleaner/widget/active/多文件 client 页面 + desktop 草稿）；总耗时约 50 s（`pool: 'forks'`）。
 
 ## 分层
 
