@@ -443,6 +443,8 @@ export function createHandlers(api: ApiContext): HandlerMap {
           timeoutMs: 180_000,
           systemPromptExtra: '',
           apiKeySource: 'none',
+          effort: 'auto',
+          jsonMode: 'auto',
         }
       }
       return workshop.status()

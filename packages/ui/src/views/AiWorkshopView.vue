@@ -45,7 +45,8 @@ const reviewed = ref(false)
 const dependenciesAccepted = ref(false)
 const elapsed = ref(0)
 const activeFile = ref('')
-const showAdvanced = ref(false)
+const showAdvanced = ref(true)
+const settingsOpen = ref(false)
 const manifestText = ref('')
 const manifestError = ref('')
 let timer: ReturnType<typeof setInterval> | undefined
@@ -67,6 +68,10 @@ const workshopConfig = reactive({
   timeoutMs: 180_000,
   retries: 1,
   systemPrompt: '',
+  reasoningEffort: 'auto' as 'auto' | 'off' | 'low' | 'medium' | 'high' | 'max',
+  jsonMode: 'auto' as 'auto' | 'on' | 'off',
+  extraBodyText: '',
+  extraHeadersText: '',
 })
 const workshopModels = ref<AiModelInfo[]>([])
 const modelsSource = ref<'remote' | 'fallback'>('fallback')
@@ -141,6 +146,16 @@ function loadWorkshopConfig(): void {
   workshopConfig.timeoutMs = Number(config.timeoutMs ?? 180_000) || 180_000
   workshopConfig.retries = Number(config.retries ?? 1)
   workshopConfig.systemPrompt = String(config.systemPrompt ?? '')
+  workshopConfig.reasoningEffort = (['auto', 'off', 'low', 'medium', 'high', 'max'] as const).includes(
+    config.reasoningEffort as any,
+  )
+    ? (config.reasoningEffort as typeof workshopConfig.reasoningEffort)
+    : 'auto'
+  workshopConfig.jsonMode = (['auto', 'on', 'off'] as const).includes(config.jsonMode as any)
+    ? (config.jsonMode as typeof workshopConfig.jsonMode)
+    : 'auto'
+  workshopConfig.extraBodyText = String(config.extraBodyText ?? '')
+  workshopConfig.extraHeadersText = String(config.extraHeadersText ?? '')
 }
 
 async function loadWorkshopStatus(silent = true): Promise<void> {
@@ -396,6 +411,7 @@ onUnmounted(stopTimer)
           {{ available ? (configured ? `API 已配置（${keySourceLabel}）` : 'API 未配置') : '等待启用插件' }}
         </span>
         <span class="cc-pill">{{ shape }} · {{ model }}</span>
+        <span class="cc-pill">思考 {{ workshopConfig.reasoningEffort }}</span>
         <span class="cc-pill">v2 多文件插件包</span>
       </div>
     </div>
@@ -406,7 +422,8 @@ onUnmounted(stopTimer)
       <el-button link type="primary" @click="openPlugins">去插件页</el-button>
     </el-alert>
     <el-alert v-else-if="available && !configured" type="warning" :closable="false" show-icon class="workshop-alert">
-      还没有配置工坊自己的 API Key：请在下面「接口设置」中填写，或设置环境变量 DEEPSEEK_API_KEY。
+      还没有配置工坊自己的 API Key：打开接口设置填写，或设置环境变量 DEEPSEEK_API_KEY。
+      <el-button link type="primary" @click="settingsOpen = true">打开接口设置</el-button>
     </el-alert>
 
     <div class="workshop-grid">
@@ -440,84 +457,28 @@ onUnmounted(stopTimer)
         </p>
       </section>
 
-      <section class="cc-card">
+      <section class="cc-card workflow-card">
         <div class="cc-card-title">
-          <h3>接口设置（工坊独立）</h3>
-          <span class="cc-faint">与「AI 建议」的接口配置互不影响</span>
+          <h3>工作流</h3>
+          <span class="cc-faint">配置 → 生成 → 审阅安装</span>
         </div>
-        <el-form label-position="top" class="setting-form">
-          <div class="form-section-title">连接与凭据</div>
-          <el-form-item label="接口形态">
-            <el-select v-model="workshopConfig.apiShape" style="width: 100%">
-              <el-option v-for="item in SHAPES" :key="item.value" :label="item.label" :value="item.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <template #label>
-              <span>接口地址 baseUrl</span>
-              <el-button text size="small" class="inline-btn" @click="workshopConfig.baseUrl = 'https://api.deepseek.com'">填入推荐地址</el-button>
-            </template>
-            <el-input v-model="workshopConfig.baseUrl" placeholder="https://api.deepseek.com" />
-          </el-form-item>
-          <el-form-item label="API Key">
-            <el-input v-model="workshopConfig.apiKey" type="password" show-password placeholder="留空则读取环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY" />
-            <div class="cc-hint">当前 Key 来源：{{ keySourceLabel }}</div>
-          </el-form-item>
-          <el-form-item>
-            <template #label>
-              <span>模型</span>
-              <el-button text size="small" class="inline-btn" :loading="modelsLoading" @click="loadModels(true)">获取模型</el-button>
-            </template>
-            <el-select v-model="workshopConfig.model" filterable allow-create default-first-option style="width: 100%" placeholder="选择或输入模型名">
-              <el-option v-for="item in modelOptions" :key="item.id" :label="item.id" :value="item.id">
-                <span>{{ item.id }}</span>
-                <span v-if="item.name" class="option-hint">{{ item.name }}</span>
-              </el-option>
-            </el-select>
-            <div class="cc-hint">候选来源：{{ modelsSource === 'remote' ? '接口 /models' : '内置兜底列表' }}；生成长代码建议 deepseek-flash。</div>
-          </el-form-item>
-          <div class="form-section-title">生成参数</div>
-          <div class="config-grid">
-            <el-form-item label="最大输出 token">
-              <el-input-number v-model="workshopConfig.maxTokens" :min="4096" :max="131072" :step="8192" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="失败重试">
-              <el-input-number v-model="workshopConfig.retries" :min="0" :max="5" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="超时（毫秒）">
-              <el-input-number v-model="workshopConfig.timeoutMs" :min="0" :max="600000" :step="10000" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="温度">
-              <el-input-number v-model="workshopConfig.temperature" :min="-1" :max="2" :step="0.1" style="width: 100%" />
-            </el-form-item>
+        <div class="workflow-steps">
+          <div class="workflow-step" :class="{ done: configured }">
+            <b>1</b><span>接口设置</span><small>{{ available ? (configured ? '已配置（' + keySourceLabel + '）' : '待配置 Key') : '插件未启用' }}</small>
           </div>
-          <div class="form-section-title">提示词与高级参数</div>
-          <el-form-item label="追加提示词（可选）">
-            <el-input v-model="workshopConfig.systemPrompt" type="textarea" :rows="2" placeholder="例如：入口固定 index.mjs；需要页面时输出 client/index.html；遵循团队编码规范" />
-          </el-form-item>
-          <el-form-item>
-            <el-button text size="small" @click="showAdvanced = !showAdvanced">
-              {{ showAdvanced ? '收起高级接口参数' : '高级接口参数（聊天路径 / 模型列表路径）' }}
-            </el-button>
-          </el-form-item>
-          <template v-if="showAdvanced">
-            <el-form-item label="聊天路径 chatPath（可空）">
-              <el-input v-model="workshopConfig.chatPath" placeholder="留空按接口形态取默认值" />
-            </el-form-item>
-            <el-form-item label="模型列表路径 modelsPath">
-              <el-input v-model="workshopConfig.modelsPath" placeholder="/models" />
-            </el-form-item>
-            <el-form-item label="模型列表完整 URL modelsUrl（可空）">
-              <el-input v-model="workshopConfig.modelsUrl" placeholder="便于代理/反代场景" />
-            </el-form-item>
-          </template>
-        </el-form>
-        <div class="workshop-actions">
-          <el-button type="primary" :loading="savingConfig" :disabled="!available" @click="saveConfig">保存接口设置</el-button>
-          <el-button :loading="statusLoading" @click="loadWorkshopStatus(false)">刷新状态</el-button>
-          <el-button v-if="!available" type="primary" plain :loading="enabling" @click="enableWorkshop">启用插件</el-button>
+          <div class="workflow-step">
+            <b>2</b><span>生成草稿</span><small>{{ busy ? '生成中…' : (draft ? '已生成，待审阅' : '描述需求后生成') }}</small>
+          </div>
+          <div class="workflow-step">
+            <b>3</b><span>审阅安装</span><small>右侧工作区：编辑 / 校验 / 安装</small>
+          </div>
         </div>
-        <p class="cc-hint">配置保存在插件 <code>ai-workshop</code> 的 config 中，与「AI 建议」页的 AI 接口配置完全独立。</p>
+        <div class="workshop-actions">
+          <el-button type="primary" plain @click="settingsOpen = true">打开接口设置</el-button>
+          <el-button :loading="statusLoading" @click="loadWorkshopStatus(false)">刷新状态</el-button>
+          <el-button v-if="!available" type="primary" :loading="enabling" @click="enableWorkshop">启用插件</el-button>
+        </div>
+        <p class="cc-hint">设置保存在独立插件 <code>ai-workshop</code> 中；生成结果进入右侧审阅区，不会自动安装。</p>
       </section>
       </div>
 
@@ -628,6 +589,107 @@ onUnmounted(stopTimer)
         </div>
       </section>
     </div>
+
+    <el-drawer v-model="settingsOpen" title="接口设置（工坊独立）" size="560px" :close-on-click-modal="false">
+      <p class="cc-hint" style="margin-top: 0">
+        这些配置保存在插件 <code>ai-workshop</code> 的 config 中，与「AI 建议」页的 AI 接口配置完全独立。
+      </p>
+        <el-form label-position="top" class="setting-form">
+          <div class="form-section-title">连接与凭据</div>
+          <el-form-item label="接口形态">
+            <el-select v-model="workshopConfig.apiShape" style="width: 100%">
+              <el-option v-for="item in SHAPES" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <template #label>
+              <span>接口地址 baseUrl</span>
+              <el-button text size="small" class="inline-btn" @click="workshopConfig.baseUrl = 'https://api.deepseek.com'">填入推荐地址</el-button>
+            </template>
+            <el-input v-model="workshopConfig.baseUrl" placeholder="https://api.deepseek.com" />
+          </el-form-item>
+          <el-form-item label="API Key">
+            <el-input v-model="workshopConfig.apiKey" type="password" show-password placeholder="留空则读取环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY" />
+            <div class="cc-hint">当前 Key 来源：{{ keySourceLabel }}</div>
+          </el-form-item>
+          <el-form-item>
+            <template #label>
+              <span>模型</span>
+              <el-button text size="small" class="inline-btn" :loading="modelsLoading" @click="loadModels(true)">获取模型</el-button>
+            </template>
+            <el-select v-model="workshopConfig.model" filterable allow-create default-first-option style="width: 100%" placeholder="选择或输入模型名">
+              <el-option v-for="item in modelOptions" :key="item.id" :label="item.id" :value="item.id">
+                <span>{{ item.id }}</span>
+                <span v-if="item.name" class="option-hint">{{ item.name }}</span>
+              </el-option>
+            </el-select>
+            <div class="cc-hint">候选来源：{{ modelsSource === 'remote' ? '接口 /models' : '内置兜底列表' }}；生成长代码建议 deepseek-flash。</div>
+          </el-form-item>
+          <div class="form-section-title">生成参数</div>
+          <div class="config-grid">
+            <el-form-item label="思考等级">
+              <el-select v-model="workshopConfig.reasoningEffort" style="width: 100%">
+                <el-option label="auto（不干预）" value="auto" />
+                <el-option label="off（关闭思考）" value="off" />
+                <el-option label="low（低）" value="low" />
+                <el-option label="medium（中）" value="medium" />
+                <el-option label="high（高）" value="high" />
+                <el-option label="max（最高）" value="max" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="JSON 输出">
+              <el-select v-model="workshopConfig.jsonMode" style="width: 100%">
+                <el-option label="auto（接口支持时）" value="auto" />
+                <el-option label="on（开启）" value="on" />
+                <el-option label="off（关闭）" value="off" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="最大输出 token">
+              <el-input-number v-model="workshopConfig.maxTokens" :min="4096" :max="131072" :step="8192" style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="失败重试">
+              <el-input-number v-model="workshopConfig.retries" :min="0" :max="5" style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="超时（毫秒）">
+              <el-input-number v-model="workshopConfig.timeoutMs" :min="0" :max="600000" :step="10000" style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="温度">
+              <el-input-number v-model="workshopConfig.temperature" :min="-1" :max="2" :step="0.1" style="width: 100%" />
+            </el-form-item>
+          </div>
+          <div class="form-section-title">提示词与高级参数</div>
+          <el-form-item label="追加提示词（可选）">
+            <el-input v-model="workshopConfig.systemPrompt" type="textarea" :rows="2" placeholder="例如：入口固定 index.mjs；需要页面时输出 client/index.html；遵循团队编码规范" />
+          </el-form-item>
+          <el-form-item>
+            <el-button text size="small" @click="showAdvanced = !showAdvanced">
+              {{ showAdvanced ? '收起高级参数' : '高级参数（路径 / extraBody / extraHeaders）' }}
+            </el-button>
+          </el-form-item>
+          <template v-if="showAdvanced">
+            <el-form-item label="聊天路径 chatPath（可空）">
+              <el-input v-model="workshopConfig.chatPath" placeholder="留空按接口形态取默认值" />
+            </el-form-item>
+            <el-form-item label="模型列表路径 modelsPath">
+              <el-input v-model="workshopConfig.modelsPath" placeholder="/models" />
+            </el-form-item>
+            <el-form-item label="模型列表完整 URL modelsUrl（可空）">
+              <el-input v-model="workshopConfig.modelsUrl" placeholder="便于代理/反代场景" />
+            </el-form-item>
+            <el-form-item label="额外请求体 extraBody（JSON 文本）">
+              <el-input v-model="workshopConfig.extraBodyText" type="textarea" :rows="3" class="cc-mono" spellcheck="false" placeholder='例如 {"top_p":0.95,"thinking":{"type":"disabled"}}' />
+            </el-form-item>
+            <el-form-item label="额外请求头 extraHeaders（JSON 文本）">
+              <el-input v-model="workshopConfig.extraHeadersText" type="textarea" :rows="2" class="cc-mono" spellcheck="false" placeholder='例如 {"X-Custom-Header":"value"}' />
+            </el-form-item>
+          </template>
+        </el-form>
+        <div class="workshop-actions">
+          <el-button type="primary" :loading="savingConfig" :disabled="!available" @click="saveConfig">保存接口设置</el-button>
+          <el-button :loading="statusLoading" @click="loadWorkshopStatus(false)">刷新状态</el-button>
+          <el-button v-if="!available" type="primary" plain :loading="enabling" @click="enableWorkshop">启用插件</el-button>
+        </div>
+        <p class="cc-hint">配置保存在插件 <code>ai-workshop</code> 的 config 中，与「AI 建议」页的 AI 接口配置完全独立。</p>    </el-drawer>
   </div>
 </template>
 
@@ -640,6 +702,19 @@ onUnmounted(stopTimer)
 .workshop-meta .is-warn { color: #c07a00; }
 .workshop-alert { margin-top: -2px; }
 .workshop-grid { display: grid; grid-template-columns: minmax(0, 430px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.workflow-card { display: flex; flex-direction: column; gap: 6px; }
+.workflow-steps { display: flex; flex-direction: column; gap: 8px; margin: 6px 0; }
+.workflow-step {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border: 1px solid var(--cc-border); border-radius: 8px; font-size: 12.5px; color: var(--cc-text-dim);
+}
+.workflow-step b {
+  width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--cc-panel-2, rgba(79,124,255,0.08)); color: var(--cc-text); font-size: 11.5px; flex: none;
+}
+.workflow-step span { color: var(--cc-text); font-weight: 600; }
+.workflow-step small { margin-left: auto; color: var(--cc-text-faint); font-size: 11px; text-align: right; }
+.workflow-step.done b { background: rgba(31,157,85,0.15); color: #1f9d55; }
 .workshop-controls { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .review-card { min-height: 580px; }
 .review-body { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 12px; align-items: start; margin-top: 8px; }

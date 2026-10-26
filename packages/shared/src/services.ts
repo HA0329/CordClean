@@ -369,6 +369,10 @@ export interface AiWorkshopStatus {
   systemPromptExtra: string
   /** API Key 来源：config=工坊配置；env=环境变量；none=未配置 */
   apiKeySource?: 'config' | 'env' | 'none'
+  /** 思考等级（auto/off/low/medium/high/max） */
+  effort?: string
+  /** JSON 输出模式（auto/on/off） */
+  jsonMode?: string
 }
 
 export interface AiLike {

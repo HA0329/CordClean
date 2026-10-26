@@ -44,7 +44,11 @@ export const Config = Schema.object({
   temperature: Schema.number().default(-1).min(-1).max(2).description('温度；-1 表示不发送'),
   timeoutMs: Schema.number().default(180_000).min(0).max(600_000).description('单次请求超时（毫秒）；0=默认 180 秒'),
   retries: Schema.number().default(1).min(0).max(5).description('失败重试次数（截断/契约不通过会额外重试）'),
+  reasoningEffort: Schema.union(['auto', 'off', 'low', 'medium', 'high', 'max']).default('auto').description('思考等级：auto=不干预，off=关闭思考，low/medium/high/max=开启并指定强度'),
+  jsonMode: Schema.union(['auto', 'on', 'off']).default('auto').description('JSON 输出模式：auto=接口支持时启用'),
   systemPrompt: Schema.string().default('').description('追加到工坊 system prompt 的额外要求（例如团队编码规范）'),
+  extraBodyText: Schema.string().default('').description('额外请求体（JSON 文本，深合并，优先级最高）'),
+  extraHeadersText: Schema.string().default('').description('额外请求头（JSON 文本）'),
 })
 
 /** 供宿主/界面调用的工坊服务（命名空间 aiWorkshop） */
@@ -52,9 +56,15 @@ export class AiWorkshopService extends Service {
   private readonly config: AiConfig
   private modelCache?: { at: number; models: AiModelInfo[]; source: 'remote' | 'fallback' }
 
-  constructor(ctx: Context, raw: Partial<AiConfig>) {
+  constructor(ctx: Context, raw: Partial<AiConfig> & { extraBodyText?: string; extraHeadersText?: string }) {
     super(ctx, 'aiWorkshop')
-    this.config = normalizeConfig({ ...raw, stream: false })
+    const { extraBodyText, extraHeadersText, ...rest } = raw
+    this.config = normalizeConfig({
+      ...rest,
+      stream: false,
+      ...(parseJsonRecord(extraBodyText) ? { extraBody: parseJsonRecord(extraBodyText) } : {}),
+      ...(parseJsonRecord(extraHeadersText) ? { extraHeaders: parseJsonRecord(extraHeadersText) } : {}),
+    } as Partial<AiConfig>)
   }
 
   private resolveKey(): string {
@@ -80,6 +90,8 @@ export class AiWorkshopService extends Service {
       retries: this.config.retries,
       timeoutMs: this.config.timeoutMs || 180_000,
       systemPromptExtra: this.config.systemPrompt,
+      effort: this.config.reasoningEffort,
+      jsonMode: this.config.jsonMode,
       apiKeySource: this.config.apiKey?.trim()
         ? 'config'
         : String(process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || '').trim()
@@ -207,6 +219,18 @@ export class AiWorkshopService extends Service {
   }
 }
 
+function parseJsonRecord(text: string | undefined): Record<string, unknown> | undefined {
+  const raw = String(text ?? '').trim()
+  if (!raw) return undefined
+  try {
+    const data = JSON.parse(raw)
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined
+    return data as Record<string, unknown>
+  } catch {
+    return undefined
+  }
+}
+
 function extractDependenciesFromText(text: string): Record<string, string> {
   const match = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
   const raw = (match ? match[1] : text).trim()
@@ -224,7 +248,7 @@ function extractKindFromCode(code: string): string {
   return matched?.[1] ?? ''
 }
 
-export default defineCleanerPlugin<Partial<AiConfig>>({
+export default defineCleanerPlugin<Partial<AiConfig> & { extraBodyText?: string; extraHeadersText?: string }>({
   name: 'ai-workshop',
   version: '2.0.0',
   description: '独立插件：按需求生成 v2 插件包草稿；拥有独立的 API Key / 接口形态 / 模型 / 提示词配置',
