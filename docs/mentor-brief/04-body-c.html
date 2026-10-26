@@ -6,17 +6,17 @@
       <div class="sec-kicker"><span class="sec-num">09</span><span>Interface</span></div>
       <h2 class="sec-title">界面演示：六个页面，一套内核</h2>
       <p class="sec-lede">
-        截图来自 v0.5.18 真机运行（Windows 11 · Electron 外壳）。界面数据流单向：RPC 请求 → store → 视图，
+        截图来自 v0.6.0 真机运行（Windows 11 · Electron 外壳）。界面数据流单向：RPC 请求 → store → 视图，
         进度靠事件推送更新，不做轮询。点击任意截图可放大查看。
       </p>
     </div>
 
     <div class="gallery" id="galleryGrid">
-      <figure class="shot" data-caption="概览：磁盘与内存占用、38 个清理任务、启动耗时与最近清理记录，一屏可见。">
+      <figure class="shot" data-caption="概览：磁盘与内存占用、39 个清理任务、启动耗时与最近清理记录，一屏可见。">
         <img src="__SHOT_OVERVIEW__" alt="CordClean 概览页">
         <figcaption><span class="zoom">点击放大 ↗</span><b>① 概览</b>磁盘 / 内存 / 任务 / 最近清理，启动即见</figcaption>
       </figure>
-      <figure class="shot" data-caption="扫描与清理：38 个清理能力按风险分组，默认只勾选安全项；支持仅预演、单独扫描与取消。">
+      <figure class="shot" data-caption="扫描与清理：39 个清理能力按风险分组，默认只勾选安全项；支持仅预演、单独扫描与取消。">
         <img src="__SHOT_CLEAN__" alt="CordClean 扫描与清理页">
         <figcaption><span class="zoom">点击放大 ↗</span><b>② 扫描与清理</b>只扫描不删除，按风险勾选后再清理</figcaption>
       </figure>
@@ -59,10 +59,10 @@
         <tbody>
           <tr><td><b>第 1 章 绪论</b></td><td>选题背景、研究问题、创新点</td><td>本页 01；<code>docs/thesis-outline.md</code> 的「创新点表述」</td></tr>
           <tr><td><b>第 2 章 相关技术</b></td><td>Cordis、Vue 3、Electron、JSON-RPC</td><td><code>docs/architecture.md</code> §2–3、§6；插件机制对照表</td></tr>
-          <tr><td><b>第 3 章 需求分析</b></td><td>功能需求、非功能需求、用例</td><td>11 个插件 / 38 个任务清单；安全性与性能指标</td></tr>
+          <tr><td><b>第 3 章 需求分析</b></td><td>功能需求、非功能需求、用例</td><td>11 个插件 / 39 个任务清单；安全性与性能指标</td></tr>
           <tr><td><b>第 4 章 系统设计</b></td><td>分层架构、插件机制、引擎、安全模型</td><td>本页 02–05；<code>architecture.md</code> §5、§12（补偿链七步）</td></tr>
           <tr><td><b>第 5 章 系统实现</b></td><td>内核、引擎、插件、界面、外壳</td><td>源码 <code>packages/core</code>、<code>packages/plugins/*</code>、<code>packages/ui</code>；插件开发规范</td></tr>
-          <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 性能 / 缺陷改进</td><td>385 个测试、<code>docs/defect-log.md</code>（67 个缺陷）、<code>docs/benchmark.md</code></td></tr>
+          <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 性能 / 缺陷改进</td><td>455 个测试、<code>docs/defect-log.md</code>（67 个缺陷）、<code>docs/benchmark.md</code></td></tr>
           <tr><td><b>第 7 章 总结与展望</b></td><td>局限、后续工作</td><td>本页「局限与后续」；<code>architecture.md</code> §13 工程折中</td></tr>
         </tbody>
       </table>
@@ -141,12 +141,12 @@
           <div class="tl-item">
             <div class="tl-time">0:00 – 0:30</div>
             <div class="tl-title">概览：先给结论</div>
-            <div class="tl-desc">11 个插件、38 个清理任务、启动耗时；强调「插件化清理」而不是功能数量。</div>
+            <div class="tl-desc">11 个插件、39 个清理任务、启动耗时；强调「插件化清理」而不是功能数量。</div>
           </div>
           <div class="tl-item">
             <div class="tl-time">0:30 – 1:30</div>
             <div class="tl-title">扫描：只扫描，不删除</div>
-            <div class="tl-desc">展示 38 个清理能力按风险分组、默认只勾安全项、仅预演开关、取消扫描。</div>
+            <div class="tl-desc">展示 39 个清理能力按风险分组、默认只勾安全项、仅预演开关、取消扫描。</div>
           </div>
           <div class="tl-item">
             <div class="tl-time">1:30 – 2:30</div>
@@ -166,7 +166,7 @@
           <div class="tl-item">
             <div class="tl-time">4:15 – 5:00</div>
             <div class="tl-title">安全链与测试：证明而不是宣称</div>
-            <div class="tl-desc">七步链动画 + 385 个测试 + 67 个缺陷（尤其 D-01 越界删除）收尾。</div>
+            <div class="tl-desc">七步链动画 + 455 个测试 + 67 个缺陷（尤其 D-01 越界删除）收尾。</div>
           </div>
         </div>
       </div>
@@ -206,7 +206,7 @@
           <details>
             <summary><span class="q">Q5</span>这个题的工作量够吗？<span class="plus">+</span></summary>
             <div class="qa-body">
-              <p>可量化：源码约 1.93 万行、测试 0.63 万行、脚本 0.57 万行；151 次提交；11 个插件、38 个任务、271 条规则；13 份文档、67 条缺陷记录；385 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
+              <p>可量化：源码约 1.93 万行、测试 0.63 万行、脚本 0.57 万行；2591 次提交；11 个插件、39 个任务、271 条规则；13 份文档、67 条缺陷记录；455 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
             </div>
           </details>
           <details>
@@ -244,11 +244,11 @@
     <div>
       <h4>CordClean · 模块化电脑清理工具</h4>
       <p>本科毕业设计项目说明（导师版） · 基于 Cordis 插件框架 · MIT License</p>
-      <p class="footer-tag">版本 <b>v0.5.18</b> · 页面生成于 2026-10 · 单文件离线 HTML</p>
+      <p class="footer-tag">版本 <b>v0.6.0</b> · 页面生成于 2026-10 · 单文件离线 HTML</p>
     </div>
     <div style="text-align:right">
       <p class="footer-tag">数据来源：<b>docs/benchmark.md</b> · <b>docs/rules-report.md</b> · 自动化测试实测</p>
-      <p class="footer-tag">截图：v0.5.18 真机运行（Electron 外壳）</p>
+      <p class="footer-tag">截图：v0.6.0 真机运行（Electron 外壳）</p>
       <p class="footer-tag">按 Ctrl+P 可导出 A4 PDF；深色模式在右上角切换</p>
     </div>
   </div>

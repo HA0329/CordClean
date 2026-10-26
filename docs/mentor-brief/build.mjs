@@ -4,16 +4,16 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const parts = ['01-head.html', '02-body-a.html', '03-body-b.html', '04-body-c.html', '05-script.html']
-const shotDir = 'D:/桌面/deepseek-harness/CordClean-v0.5.18/assets/screenshots'
+const shotDir = path.resolve(here, '../../docs/screenshots')
 const out = 'D:/桌面/deepseek-harness/CordClean-项目介绍.html'
 
 const SHOTS = {
-  SHOT_OVERVIEW: 'overview.png',
-  SHOT_CLEAN: 'clean-result.png',
-  SHOT_PLUGINS: 'plugins.png',
-  SHOT_AI: 'ai.png',
-  SHOT_SETTINGS: 'settings.png',
-  SHOT_DARK: 'dark-theme.png',
+  SHOT_OVERVIEW: 'ui-overview.png',
+  SHOT_CLEAN: 'ui-clean-result.png',
+  SHOT_PLUGINS: 'ui-plugins.png',
+  SHOT_AI: 'ui-ai.png',
+  SHOT_SETTINGS: 'ui-settings.png',
+  SHOT_DARK: 'ui-theme-dark.png',
   SHOT_SELECT: 'scan-select-overview.png',
 }
 
