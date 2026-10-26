@@ -6,7 +6,7 @@
     <!-- CSP：生产（file://）与开发（Vite/Web 外壳）通用；style/script 允许内联以保留内联主题脚本与 Element Plus 内联样式 -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-src 'self' about: data: blob:; connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-src 'self' about: data: blob: cordclean-plugin:; connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'"
     />
     <title>CordClean · 模块化电脑清理工具</title>
     <!-- 先于样式应用主题，避免刷新时闪白/闪黑；默认亮色 -->

@@ -9,6 +9,7 @@ import type {
   AiAnalysis,
   AiModelInfo,
   AiPluginDraft,
+  AiPluginFile,
   AiProbeResult,
   AiRuntimeStatus,
   AppInfo,
@@ -17,6 +18,10 @@ import type {
   HistoryEntry,
   PluginRuntime,
   PluginRuntimeInfo,
+  PluginManifest,
+  PluginManifestIssue,
+  PluginPackageIssue,
+  PluginPackageReview,
   PluginUiEvent,
   QuarantineRecord,
   ScanProgressEvent,
@@ -350,6 +355,39 @@ export async function installNativePlugin(filePath: string): Promise<{ id: strin
   return result
 }
 
+/** v2 插件包：只读检查目录（不落盘），用于安装前审阅 */
+export async function inspectPluginPackage(path: string): Promise<PluginPackageReview> {
+  return requireTransport().request('plugins/inspect-package', { path })
+}
+
+/** v2 插件包：审阅通过后安装 */
+export async function installPluginPackage(
+  path: string,
+  options: { enable?: boolean; upgrade?: boolean } = {},
+): Promise<{ id: string; manifest: PluginManifest; warnings: PluginManifestIssue[] }> {
+  const result = await requireTransport().request('plugins/install-package', { path, ...options })
+  await refreshPlugins()
+  await refreshTasks()
+  return result
+}
+
+/** v2 插件包：卸载（目录移入 .trash，可回滚） */
+export async function uninstallPluginPackage(id: string): Promise<void> {
+  await requireTransport().request('plugins/uninstall-package', { id })
+  await refreshPlugins()
+  await refreshTasks()
+}
+
+/** 启动扫描发现的插件包问题 */
+export async function fetchPackageProblems(): Promise<PluginPackageIssue[]> {
+  return requireTransport().request('plugins/package-problems', undefined)
+}
+
+/** v2 插件包客户端页面 URL（Web: /plugin-assets/...；Electron: cordclean-plugin://...） */
+export async function pluginClientUrl(id: string): Promise<{ url: string; entry: string }> {
+  return requireTransport().request('plugins/client-url', { id })
+}
+
 /** 读取插件贡献的 UI 声明（概览卡片/页面/状态项/命令） */
 export async function fetchUiContributions(): Promise<UiContributionEntry[]> {
   return requireTransport().request('ui/contributions', undefined)
@@ -500,8 +538,9 @@ export async function validateAiPlugin(
   code: string,
   dependencies: Record<string, string> = {},
   native = false,
+  extra: { format?: 'single-file' | 'package'; manifest?: PluginManifest; files?: AiPluginFile[] } = {},
 ): Promise<{ ok: boolean; errors: string[]; warnings: string[] }> {
-  return requireTransport().request('ai/plugin/validate', { code, dependencies, native })
+  return requireTransport().request('ai/plugin/validate', { code, dependencies, native, ...extra })
 }
 
 export async function installAiPlugin(
@@ -510,13 +549,20 @@ export async function installAiPlugin(
   dependencies: Record<string, string> = {},
   acknowledgeDependencies = false,
   native = false,
-): Promise<{ path: string; id: string }> {
+  extra: {
+    format?: 'single-file' | 'package'
+    manifest?: PluginManifest
+    files?: AiPluginFile[]
+    acknowledgePermissions?: boolean
+  } = {},
+): Promise<{ path: string; id: string; manifest?: PluginManifest }> {
   const result = await requireTransport().request('ai/plugin/install', {
     name,
     code,
     dependencies,
     acknowledgeDependencies,
     native,
+    ...extra,
   })
   await refreshPlugins()
   return result

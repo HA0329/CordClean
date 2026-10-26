@@ -17,11 +17,17 @@ import type {
   SystemLiveInfo,
   AiAnalysis,
   AiPluginDraft,
+  AiPluginFile,
   AiRuleSuggestion,
   AiModelInfo,
   AiProbeResult,
   AiRuntimeStatus,
   UiContributionEntry,
+  PluginManifest,
+  PluginManifestIssue,
+  PluginPackageIssue,
+  PluginPackageReview,
+  PluginPermissions,
 } from './index.ts'
 import type { CleanProgressEvent, ScanProgressEvent, TaskDescriptor } from './task.ts'
 
@@ -126,6 +132,19 @@ export interface ApiMap {
   'plugins/reload': { params: { id: string }; result: void }
   'plugins/config': { params: { id: string; config: Record<string, unknown> }; result: void }
   'plugins/defaults': { params: { id: string }; result: Record<string, unknown> }
+  /** v2 插件包：检查目录（不落盘），返回清单/权限/警告/错误供用户审阅 */
+  'plugins/inspect-package': { params: { path: string }; result: PluginPackageReview }
+  /** v2 插件包：审阅通过后安装（stage → commit → 登记 → 可选启用） */
+  'plugins/install-package': {
+    params: { path: string; enable?: boolean; upgrade?: boolean }
+    result: { id: string; manifest: PluginManifest; warnings: PluginManifestIssue[] }
+  }
+  /** v2 插件包：卸载（目录移入 .trash） */
+  'plugins/uninstall-package': { params: { id: string }; result: void }
+  /** 启动扫描发现的插件包问题 */
+  'plugins/package-problems': { params: void; result: PluginPackageIssue[] }
+  /** v2 插件包客户端页面 URL（Web 走同源静态路由，Electron 走 cordclean-plugin:// 协议） */
+  'plugins/client-url': { params: { id: string }; result: { url: string; entry: string } }
 
   'settings/get': { params: void; result: Settings }
   'settings/patch': { params: { patch: Record<string, unknown> }; result: Settings }
@@ -149,12 +168,29 @@ export interface ApiMap {
   'ai/probe': { params: void; result: AiProbeResult }
   'ai/plugin/draft': { params: { requirement: string }; result: AiPluginDraft }
   'ai/plugin/validate': {
-    params: { code: string; dependencies?: Record<string, string>; native?: boolean }
+    params: {
+      code: string
+      dependencies?: Record<string, string>
+      native?: boolean
+      format?: 'single-file' | 'package'
+      manifest?: PluginManifest
+      files?: AiPluginFile[]
+    }
     result: { ok: boolean; errors: string[]; warnings: string[] }
   }
   'ai/plugin/install': {
-    params: { name: string; code: string; dependencies?: Record<string, string>; acknowledgeDependencies?: boolean; native?: boolean }
-    result: { path: string; id: string }
+    params: {
+      name: string
+      code: string
+      dependencies?: Record<string, string>
+      acknowledgeDependencies?: boolean
+      acknowledgePermissions?: boolean
+      native?: boolean
+      format?: 'single-file' | 'package'
+      manifest?: PluginManifest
+      files?: AiPluginFile[]
+    }
+    result: { path: string; id: string; manifest?: PluginManifest }
   }
   'ai/rules/dry-run': {
     params: { suggestion: AiRuleSuggestion }
@@ -201,6 +237,10 @@ export interface PluginRuntime extends PluginInfo {
   errorStack?: string
   config: Record<string, unknown>
   configurable: boolean
+  /** v2 插件包的清单（外部包插件才有） */
+  manifest?: PluginManifest
+  /** v2 插件包的权限声明（外部包插件才有） */
+  permissions?: PluginPermissions
 }
 
 export type ApiMethod = keyof ApiMap

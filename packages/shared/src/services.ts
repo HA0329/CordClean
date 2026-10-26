@@ -8,6 +8,13 @@
  */
 import type { Context } from 'cordis'
 import type { PluginKind } from './plugin-api.ts'
+import type {
+  PluginManifest,
+  PluginManifestIssue,
+  PluginPackageIssue,
+  PluginPackageReview,
+  PluginPermissions,
+} from './plugin-manifest.ts'
 import type { CleanRule, RuleCategory, RuleIssue, RuleValidationReport } from './rules.ts'
 import type {
   AiAnalysis,
@@ -113,7 +120,15 @@ export interface Settings {
     excludes: string[]
   }
   /** 插件配置（enabled + 插件自有配置） */
-  plugins: Record<string, { enabled?: boolean; config?: Record<string, any>; externalPath?: string; externalType?: 'native' | 'worker' }>
+  plugins: Record<
+    string,
+    {
+      enabled?: boolean
+      config?: Record<string, any>
+      externalPath?: string
+      externalType?: 'native' | 'worker' | 'package'
+    }
+  >
   /** 界面设置 */
   /** 定时任务运行状态（lastRuns 按计划持久化） */
   scheduler: {
@@ -255,6 +270,10 @@ export interface PluginRuntimeInfo extends PluginInfo {
   config: Record<string, any>
   /** 是否有可配置项 */
   configurable: boolean
+  /** v2 插件包的清单（外部包插件才有） */
+  manifest?: PluginManifest
+  /** v2 插件包的权限声明（外部包插件才有） */
+  permissions?: PluginPermissions
 }
 
 /** 插件管理能力（`ctx.plugins`） */
@@ -269,6 +288,19 @@ export interface PluginManagerLike {
   installExternal(filePath: string, options?: { allowCustomClean?: boolean }): Promise<void>
   /** 安装原生 Cordis 插件（通用插件，完整 ctx） */
   installNativePlugin?(filePath: string, options?: { enable?: boolean }): Promise<{ id: string }>
+  /** 安装 v2 插件包目录（manifest/源码/兼容校验通过后原子落盘；依赖安装与审阅由宿主层完成） */
+  installPackage?(
+    sourceDir: string,
+    options?: { enable?: boolean; upgrade?: boolean },
+  ): Promise<{ id: string; manifest: PluginManifest; warnings: PluginManifestIssue[] }>
+  /** 只读检查 v2 插件包目录（管理页审阅用，不落盘） */
+  inspectPackage?(sourceDir: string): Promise<PluginPackageReview>
+  /** 卸载 v2 插件包（保留旧版本到 .trash） */
+  uninstallPackage?(id: string): Promise<void>
+  /** v2 插件包的客户端页面（client.mode=page 时存在） */
+  clientPage?(id: string): { pluginId: string; entry: string; network: boolean } | undefined
+  /** 最近一次启动扫描发现的插件包问题（供管理页展示） */
+  packageProblems?(): PluginPackageIssue[]
   /** 卸载外部插件（内置插件只能停用） */
   uninstallExternal(id: string): Promise<void>
   updateConfig(id: string, config: Record<string, any>): Promise<void>
@@ -286,6 +318,13 @@ export interface PluginManagerLike {
  * 因此厂商调整参数（如新增推理等级、新增接口形态）时，
  * 用户改配置即可适配，不需要重新编译插件。
  */
+/** AI 插件工坊生成的多文件包里的一个文件 */
+export interface AiPluginFile {
+  /** 相对包目录的路径（用 / 分隔，不能越界） */
+  path: string
+  content: string
+}
+
 /** AI 插件工坊生成的草稿（dependencies 为 npm 包名 → semver） */
 export interface AiPluginDraft {
   name: string
@@ -296,6 +335,12 @@ export interface AiPluginDraft {
   mode: 'native' | 'worker'
   /** 插件类型，默认 cleaner */
   kind?: PluginKind
+  /** package = v2 多文件插件包；缺省按单文件处理（宿主仍会自动包成 v2 包安装） */
+  format?: 'single-file' | 'package'
+  /** format=package 时的 v2 清单（可选；缺省由宿主按草稿合成） */
+  manifest?: PluginManifest
+  /** format=package 时的包内文件（不含 plugin.json；entry 必须存在） */
+  files?: AiPluginFile[]
 }
 
 export interface AiLike {

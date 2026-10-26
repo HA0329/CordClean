@@ -412,6 +412,18 @@ const workshopDraft = ref<{
   dependencies: Record<string, string>
   mode?: 'native' | 'worker'
   kind?: string
+  format?: 'single-file' | 'package'
+  manifest?: {
+    id?: string
+    name?: string
+    version?: string
+    apiVersion?: number
+    engines?: { cordclean?: string }
+    entry?: string
+    permissions?: { services?: string[]; network?: boolean; subprocess?: boolean }
+    client?: { mode?: string; entry?: string }
+  }
+  files?: Array<{ path: string; content: string }>
 } | null>(null)
 const workshopValidation = ref<{ ok: boolean; errors: string[]; warnings: string[] } | null>(null)
 const workshopReviewed = ref(false)
@@ -490,6 +502,7 @@ async function generateWorkshopDraft() {
       draft.code,
       draft.dependencies ?? {},
       draft.mode === 'native',
+      { format: draft.format, manifest: draft.manifest as any, files: draft.files },
     )
     // 校验也可能是慢 RPC：用户在校验期间点了取消，就不能再把弹窗/草稿写回来
     if (requestId !== workshopRequest) return
@@ -530,7 +543,11 @@ async function revalidateWorkshopDraft() {
   const seq = ++workshopValidateSeq
   const draft = workshopDraft.value
   try {
-    const validation = await validateAiPlugin(draft.code, draft.dependencies ?? {}, draft.mode === 'native')
+    const validation = await validateAiPlugin(draft.code, draft.dependencies ?? {}, draft.mode === 'native', {
+      format: draft.format,
+      manifest: draft.manifest as any,
+      files: draft.files,
+    })
     // 只接受最后一次编辑对应的校验结果，避免旧校验覆盖新代码
     if (seq === workshopValidateSeq && workshopDraft.value?.code === draft.code) {
       workshopValidation.value = validation
@@ -560,6 +577,12 @@ async function installWorkshopDraft() {
       dependencies,
       workshopDependenciesAccepted.value,
       workshopDraft.value.mode === 'native',
+      {
+        format: workshopDraft.value.format,
+        manifest: workshopDraft.value.manifest as any,
+        files: workshopDraft.value.files,
+        acknowledgePermissions: true,
+      },
     )
     workshopOpen.value = false
     workshopDraft.value = null
@@ -1055,6 +1078,21 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <p class="cc-hint">
           类型：<code>{{ workshopDraft.kind ?? 'cleaner' }}</code> · 原生 Cordis 通用插件
           <span class="cc-faint">（完整权限，安装前请审阅代码）</span>
+        </p>
+        <p v-if="workshopDraft.format === 'package'" class="cc-hint">
+          安装形态：v2 插件包
+          <template v-if="workshopDraft.manifest">
+            · id <code>{{ workshopDraft.manifest.id ?? workshopDraft.name }}</code>
+            · v{{ workshopDraft.manifest.version ?? '1.0.0' }}
+            · 兼容 <code>{{ workshopDraft.manifest.engines?.cordclean ?? '—' }}</code>
+            · 权限 {{ (workshopDraft.manifest.permissions?.services ?? []).join(', ') || '无服务' }}
+            <span v-if="workshopDraft.manifest.permissions?.network"> · 网络</span>
+            <span v-if="workshopDraft.manifest.permissions?.subprocess"> · 子进程</span>
+          </template>
+          <template v-if="workshopDraft.files?.length">
+            · 文件 {{ workshopDraft.files.length }} 个：{{ workshopDraft.files.map((file) => file.path).join('、') }}
+          </template>
+          <span class="cc-faint">（安装会走 staging → 校验 → 原子落盘，失败自动回滚；多文件包当前只支持编辑入口代码）</span>
         </p>
         <div v-if="workshopValidation">
           <p v-if="workshopValidation.errors.length" class="error-text">校验未通过：{{ workshopValidation.errors.join('；') }}</p>

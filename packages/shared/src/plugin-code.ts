@@ -22,6 +22,11 @@ export interface PluginCodeOptions {
    * native = 原生 Cordis 通用插件（apply(ctx)，P1 起 AI 工坊默认）。
    */
   mode?: 'worker' | 'native'
+  /**
+   * v2 插件包（目录 + plugin.json）允许入口 import 包内相对文件；
+   * 旧版单文件插件保持禁止（false）。相对路径的越界由安装事务的 realpath 检查兜底。
+   */
+  allowRelativeImports?: boolean
 }
 
 export type PluginDependencyMap = Record<string, string>
@@ -199,6 +204,7 @@ export function checkPluginSource(code: string, options: PluginCodeOptions = {})
       continue
     }
     if (specifier.startsWith('.')) {
+      if (options.allowRelativeImports) continue
       errors.push(`不能 import 相对路径 "${specifier}"：外部插件必须是单文件，不能引用本地其它文件`)
       continue
     }

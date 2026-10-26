@@ -46,6 +46,7 @@ const server = await startHostServer({
   ctx: app.ctx,
   handlers,
   staticDir,
+  dataDir: app.dataDir,
   port: process.env.CORDCLEAN_PORT ? Number(process.env.CORDCLEAN_PORT) : 7801,
 })
 

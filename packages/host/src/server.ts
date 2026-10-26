@@ -15,6 +15,7 @@ import type { Duplex } from 'node:stream'
 import type { Context } from 'cordis'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { RpcRequest, RpcResponse, ServerEvent } from '@cordclean/shared'
+import { resolvePluginClientAsset } from '@cordclean/core'
 import { dlog } from './diagnostics.ts'
 import { validateParams } from './validation.ts'
 import { RPC_ERRORS } from '@cordclean/shared'
@@ -25,6 +26,8 @@ export interface HostServerOptions {
   handlers: HandlerMap
   /** 界面构建产物目录；不传则不提供静态资源（仅 API） */
   staticDir?: string
+  /** 数据目录（v2 插件包 client/ 资源从这里读取） */
+  dataDir?: string
   port?: number
   host?: string
   /** 访问令牌，默认随机生成 */
@@ -261,6 +264,46 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     }
   }
 
+  const servePluginAsset = async (url: URL, res: ServerResponse, isHead: boolean) => {
+    const dataDir = options.dataDir
+    if (!dataDir) {
+      res.writeHead(404).end('Not Found')
+      return
+    }
+    const prefix = '/plugin-assets/'
+    const rest = url.pathname.slice(prefix.length)
+    const slash = rest.indexOf('/')
+    let pluginId: string
+    try {
+      pluginId = decodeURIComponent(slash === -1 ? rest : rest.slice(0, slash))
+    } catch {
+      res.writeHead(400).end('Bad Request')
+      return
+    }
+    const requestPath = slash === -1 ? '' : rest.slice(slash + 1)
+    const resolved = await resolvePluginClientAsset({ dataDir, pluginId, requestPath })
+    if (!resolved.asset) {
+      const status = resolved.error?.status ?? 404
+      res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end(resolved.error?.message ?? 'Not Found')
+      return
+    }
+    const asset = resolved.asset
+    try {
+      const content = await fs.readFile(asset.file)
+      res.writeHead(200, {
+        'Content-Type': asset.contentType,
+        'Content-Security-Policy': asset.csp,
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'no-cache',
+      })
+      if (isHead) res.end()
+      else res.end(content)
+    } catch {
+      res.writeHead(404).end('Not Found')
+    }
+  }
+
   const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     // 所有 HTTP 请求（含静态资源）先校验 Host：页面内联了 token，必须阻断 DNS rebinding
     if (!isAllowedHost(req.headers.host, port)) {
@@ -295,6 +338,11 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405).end('Method Not Allowed')
+      return
+    }
+    // v2 插件包的客户端资源：/plugin-assets/<pluginId>/<client 内相对路径>
+    if (url.pathname.startsWith('/plugin-assets/')) {
+      await servePluginAsset(url, res, req.method === 'HEAD')
       return
     }
     await serveStatic(url, res)

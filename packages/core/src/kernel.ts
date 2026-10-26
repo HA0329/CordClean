@@ -29,7 +29,7 @@ import { PluginWindowService } from './domains/kernel/window.ts'
 import type { PluginWindowBackend } from './domains/kernel/window.ts'
 
 export const APP_NAME = 'CordClean'
-export const APP_VERSION = '0.5.18'
+export const APP_VERSION = '0.6.0'
 
 export interface AppOptions {
   /** 数据目录，默认 `%LOCALAPPDATA%\\CordClean` */
@@ -89,7 +89,10 @@ export async function createApp(options: AppOptions = {}): Promise<App> {
   await ctx.plugin(UiContributionService)
   await ctx.plugin(PluginWindowService)
   if (options.windowBackend) (ctx.window as PluginWindowService).attachBackend(options.windowBackend)
-  await ctx.plugin(PluginManagerService, { manifest: options.manifest ?? BUILTIN_MANIFEST })
+  await ctx.plugin(PluginManagerService, {
+    manifest: options.manifest ?? BUILTIN_MANIFEST,
+    appVersion: APP_VERSION,
+  })
 
   if (options.loadPlugins !== false) {
     await ctx.plugins.loadAll()

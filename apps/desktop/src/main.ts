@@ -6,11 +6,25 @@
  * 2. 界面由 BrowserWindow 直接加载本地构建产物，无需 HTTP 服务器。
  */
 import path from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron'
-import { createApp, defaultDataDir } from '@cordclean/core'
+import { app, BrowserWindow, ipcMain, Menu, protocol, shell } from 'electron'
+import { createApp, defaultDataDir, resolvePluginClientAsset } from '@cordclean/core'
 import { createHandlers, type ShellAdapter } from '@cordclean/host'
 import { createElectronWindowBackend } from './window-backend.ts'
+
+/**
+ * v2 插件包客户端页面使用的自定义协议。
+ * 必须在 app ready 之前声明；standard+secure 让它拥有正常的 URL 语义，
+ * 才能被渲染进程的 iframe 以 `cordclean-plugin://<pluginId>/<client 相对路径>` 加载。
+ */
+const PLUGIN_PROTOCOL = 'cordclean-plugin'
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: PLUGIN_PROTOCOL,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
+  },
+])
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../../..')
@@ -60,6 +74,51 @@ const shellAdapter: ShellAdapter = {
   },
 }
 
+/**
+ * 注册 v2 插件包客户端资源协议。
+ *
+ * 只从 `<dataDir>/plugins/<pluginId>/client/` 提供文件（由 core 的
+ * `resolvePluginClientAsset` 做 id/清单/realpath 越界校验），并附带 CSP：
+ * 清单未声明 network 时 connect-src 'none'，避免客户端页面绕过权限外联。
+ */
+let pluginProtocolRegistered = false
+
+function registerPluginProtocol(dataDir: string): void {
+  if (pluginProtocolRegistered) return
+  pluginProtocolRegistered = true
+  protocol.handle(PLUGIN_PROTOCOL, async (request) => {
+    try {
+      const url = new URL(request.url)
+      const pluginId = url.hostname
+      const requestPath = url.pathname.replace(/^\/+/, '')
+      const resolved = await resolvePluginClientAsset({ dataDir, pluginId, requestPath })
+      if (!resolved.asset) {
+        return new Response(resolved.error?.message ?? 'Not Found', {
+          status: resolved.error?.status ?? 404,
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        })
+      }
+      const asset = resolved.asset
+      const content = await readFile(asset.file)
+      return new Response(new Uint8Array(content), {
+        status: 200,
+        headers: {
+          'content-type': asset.contentType,
+          'content-security-policy': asset.csp,
+          'x-content-type-options': 'nosniff',
+          'cache-control': 'no-cache',
+          'access-control-allow-origin': '*',
+        },
+      })
+    } catch (error) {
+      return new Response('Not Found', {
+        status: 404,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      })
+    }
+  })
+}
+
 async function createKernel() {
   const dataDir = process.env.CORDCLEAN_DATA ?? defaultDataDir()
   const instance = await createApp({
@@ -69,6 +128,8 @@ async function createKernel() {
     windowBackend: createElectronWindowBackend(),
   })
   disposeApp = () => instance.dispose()
+
+  registerPluginProtocol(instance.dataDir)
 
   const handlers = createHandlers({
     ctx: instance.ctx,

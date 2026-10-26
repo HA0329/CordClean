@@ -16,13 +16,27 @@ import { ExternalPluginProxy } from './external-proxy.ts'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Service, type Context, type Fiber } from 'cordis'
-import type {
-  CategoryId,
-  CleanerPluginModule,
-  PluginManagerLike,
-  PluginRuntimeInfo,
+import {
+  checkPluginManifestCompatibility,
+  checkPluginSource,
+  type CategoryId,
+  type CleanerPluginModule,
+  type PluginManagerLike,
+  type PluginManifest,
+  type PluginManifestIssue,
+  type PluginPackageIssue,
+  type PluginPackageReview,
+  type PluginRuntimeInfo,
 } from '@cordclean/shared'
 import { errorMessage, isAbsolutePath, isSubPath } from '@cordclean/utils'
+import {
+  PLUGIN_PACKAGES_DIR,
+  pluginClientEntryRelative,
+  scanPluginPackages,
+  type PluginPackageScan,
+  type ScannedPluginPackage,
+} from './plugin-package.ts'
+import { cleanupPluginStaging, inspectPluginPackage, installPluginPackage, removePluginPackage } from './plugin-installer.ts'
 
 const AUTO_INJECT_SERVICES = new Set([
   'cleaner',
@@ -145,6 +159,31 @@ interface RuntimeRecord {
 
 export interface PluginManagerConfig {
   manifest: PluginManifestEntry[]
+  /** 宿主版本，用于 v2 插件包的 engines/apiVersion 兼容检查 */
+  appVersion?: string
+}
+
+/** 从 v2 清单的 kind 推断界面分类（清单暂不单独声明 category） */
+function categoryOfManifest(manifest: PluginManifest): CategoryId {
+  switch (manifest.kind) {
+    case 'active':
+      return 'system'
+    case 'desktop':
+      return 'apps'
+    case 'widget':
+      return 'apps'
+    case 'integration':
+      return 'apps'
+    case 'cleaner':
+      return 'apps'
+    default:
+      return 'apps'
+  }
+}
+
+/** v2 插件包的运行时记录 id：与旧版 external:<name> 共用命名空间，避免与内置插件冲突 */
+function packagePluginId(manifestId: string): string {
+  return 'external:' + manifestId
 }
 
 /** cordis 的 FiberState.ACTIVE（const enum 在 isolatedModules 下不能直接引用，这里用等值常量） */
@@ -171,9 +210,13 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   static inject = ['cleaner', 'settings', 'ui', 'window']
 
   private records = new Map<string, RuntimeRecord>()
+  private readonly appVersion: string
+  /** 最近一次启动扫描 v2 插件包的结果（供管理页展示问题） */
+  private packageScan?: PluginPackageScan
 
   constructor(ctx: Context, config: PluginManagerConfig) {
     super(ctx, 'plugins')
+    this.appVersion = config.appVersion ?? '0.0.0'
     for (const entry of config.manifest) {
       const stored = ctx.settings.get().plugins[entry.id]
       this.records.set(entry.id, {
@@ -185,6 +228,11 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     }
   }
 
+  /** v2 插件包目录（dataDir/plugins） */
+  private packagesDir(): string {
+    return path.join(path.dirname(this.ctx.settings.file), PLUGIN_PACKAGES_DIR)
+  }
+
   /** 启动时加载全部启用的插件（顺序加载，确保任务归属统计准确） */
   async loadAll(): Promise<void> {
     const settings = this.ctx.settings.get()
@@ -194,9 +242,80 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       if (!enabled) continue
       await this.enable(id)
     }
+    // v2 插件包（目录 + plugin.json）先扫描登记，再处理旧版单文件外部插件
+    await this.loadPackagePlugins()
     // 外部插件（含 AI 工坊生成的插件）在进程内安装，settings 里保存了路径；
     // 启动时按路径重新加载，让“装一次以后一直能用”成立。
     await this.loadPersistedExternalPlugins()
+  }
+
+  /** 扫描 dataDir/plugins 下的 v2 插件包并登记为 external 记录 */
+  private async loadPackagePlugins(options: { autoEnable?: boolean } = {}): Promise<void> {
+    const dir = this.packagesDir()
+    await cleanupPluginStaging(dir).catch(() => {})
+    const scan = await scanPluginPackages(dir, { appVersion: this.appVersion })
+    this.packageScan = scan
+    for (const problem of scan.problems) {
+      this.ctx.logger?.warn?.(
+        `插件包 ${problem.target} 未加载：${problem.errors.map((item) => item.message).join('；')}`,
+      )
+    }
+    for (const problem of scan.warnings) {
+      this.ctx.logger?.warn?.(`插件包扫描警告：${problem.message}`)
+    }
+    for (const pkg of scan.packages) {
+      this.registerPackagePlugin(pkg)
+      const id = packagePluginId(pkg.manifest.id)
+      const stored = this.ctx.settings.get().plugins[id]
+      if (options.autoEnable !== false && stored?.enabled !== false && this.records.has(id)) {
+        await this.enable(id)
+      }
+    }
+  }
+
+  /** 把扫描到的插件包注册为运行时记录（不启动） */
+  private registerPackagePlugin(pkg: ScannedPluginPackage): void {
+    const id = packagePluginId(pkg.manifest.id)
+    if (this.records.has(id)) {
+      this.ctx.logger?.warn?.(`插件包 ${pkg.manifest.id} 与已登记插件 id 冲突，已跳过`)
+      return
+    }
+    const manifest = pkg.manifest
+    const stored = this.ctx.settings.get().plugins[id]
+    const entry: PluginManifestEntry = {
+      id,
+      name: manifest.name,
+      description: manifest.description ?? '外部插件包（v2 清单）',
+      category: categoryOfManifest(manifest),
+      version: manifest.version,
+      defaultEnabled: true,
+      load: async () => {
+        const url =
+          pathToFileURL(pkg.entryPath).href +
+          '?v=' +
+          Date.now().toString(36) +
+          Math.random().toString(36).slice(2, 8)
+        return (await import(url)) as Record<string, unknown>
+      },
+    }
+    const record: RuntimeRecord = {
+      entry,
+      status: 'stopped',
+      config: stored?.config ?? {},
+      taskIds: [],
+    }
+    ;(record as any).externalPath = pkg.dir
+    ;(record as any).externalType = 'package'
+    ;(record as any).manifest = manifest
+    ;(record as any).permissions = manifest.permissions
+    ;(record as any).packageEntryPath = pkg.entryPath
+    ;(record as any).clientEntryPath = pkg.clientEntryPath
+    ;(record as any).capabilities = {
+      fsRoots: manifest.permissions.fsRoots ?? [],
+      network: manifest.permissions.network,
+      childProcess: manifest.permissions.subprocess,
+    }
+    this.records.set(id, record)
   }
 
   private async loadPersistedExternalPlugins(): Promise<void> {
@@ -205,6 +324,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     for (const [id, stored] of Object.entries(settings.plugins ?? {})) {
       if (!id.startsWith('external:') || !stored) continue
       const isNative = (stored as any).externalType === 'native'
+      if ((stored as any).externalType === 'package') continue
       if (!isNative && stored.enabled === false) continue
       if (this.records.has(id)) continue
       const name = id.slice('external:'.length)
@@ -255,6 +375,8 @@ export class PluginManagerService extends Service implements PluginManagerLike {
         config: record.config,
         configurable: !!descriptor?.Config,
         capabilities: (record as any).capabilities,
+        manifest: (record as any).manifest,
+        permissions: (record as any).permissions,
       }
     })
   }
@@ -262,6 +384,23 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   /** 加载插件模块（带缓存） */
   private async loadModule(record: RuntimeRecord): Promise<CleanerPluginModule> {
     if (record.module) return record.module
+    const manifest = (record as any).manifest as PluginManifest | undefined
+    if (manifest) {
+      // 启用前再做一次兼容检查（安装后宿主升级/清单被手改都可能造成不兼容）
+      const compatibility = checkPluginManifestCompatibility(manifest, { appVersion: this.appVersion })
+      if (!compatibility.ok) {
+        throw new Error(compatibility.errors.map((item) => item.message).join('；'))
+      }
+      // 入口源码静态契约复查：防止安装后文件被替换
+      const entryPath = (record as any).packageEntryPath as string | undefined
+      if (entryPath) {
+        const source = await readFile(entryPath, 'utf8').catch(() => '')
+        if (source) {
+          const check = checkPluginSource(source, { mode: 'native', allowRelativeImports: true })
+          if (!check.ok) throw new Error('插件入口校验失败：' + check.errors.join('；'))
+        }
+      }
+    }
     const namespace = await record.entry.load()
     const plugin = (namespace.default ?? namespace) as CleanerPluginModule
     if (!plugin || typeof plugin.apply !== 'function') {
@@ -311,8 +450,12 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       record.status = (fiber.state as unknown as number) === FIBER_STATE_ACTIVE ? 'active' : 'stopped'
       const registered = new Set(this.ctx.cleaner.list().map((task) => task.id))
       record.taskIds = [...registered].filter((taskId) => !before.has(taskId))
-      // 原生通用插件可在模块上声明 UI 贡献；每次启用都重新登记，禁用时由 disable 清理
-      if ((record as any).externalType === 'native' && (plugin as any).contributes && this.ctx.ui) {
+      // 原生通用插件（含 v2 插件包）可在模块上声明 UI 贡献；每次启用都重新登记，禁用时由 disable 清理
+      if (
+        ((record as any).externalType === 'native' || (record as any).externalType === 'package') &&
+        (plugin as any).contributes &&
+        this.ctx.ui
+      ) {
         ;(record as any).uiDispose = this.ctx.ui.register(
           id,
           (plugin as any).contributes,
@@ -562,6 +705,80 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     return existsSync(dir) ? dir : undefined
   }
 
+  /** 只读检查 v2 插件包目录（管理页审阅用，不落盘） */
+  async inspectPackage(sourceDir: string): Promise<PluginPackageReview> {
+    const review = await inspectPluginPackage({ sourceDir, appVersion: this.appVersion })
+    if (review.manifest) {
+      const record = this.records.get(packagePluginId(review.manifest.id))
+      const installed = (record as any)?.manifest as PluginManifest | undefined
+      if (installed) review.installedVersion = installed.version
+    }
+    return review
+  }
+
+  /**
+   * 安装 v2 插件包：校验 → 暂存 → 原子落盘 → 登记 → （可选）启用。
+   * 依赖安装与用户审阅由宿主层在调用前完成；这里只接受已就绪的目录。
+   */
+  async installPackage(
+    sourceDir: string,
+    options: { enable?: boolean; upgrade?: boolean } = {},
+  ): Promise<{ id: string; manifest: PluginManifest; warnings: PluginManifestIssue[] }> {
+    const result = await installPluginPackage({
+      pluginsDir: this.packagesDir(),
+      sourceDir,
+      appVersion: this.appVersion,
+      upgrade: options.upgrade === true,
+    })
+    const id = packagePluginId(result.id)
+    const existing = this.records.get(id)
+    if (existing) {
+      await this.disable(id)
+      this.records.delete(id)
+    }
+    await this.loadPackagePlugins({ autoEnable: options.enable !== false })
+    if (!this.records.has(id)) {
+      const problems = (this.packageScan?.problems ?? [])
+        .map((problem) => problem.errors.map((item) => item.message).join('；'))
+        .filter(Boolean)
+        .join('；')
+      throw new Error(`插件 ${result.id} 已落盘但未能登记为运行时插件${problems ? '：' + problems : ''}`)
+    }
+    if (options.enable !== false) await this.enable(id)
+    this.emitChanged()
+    return { id, manifest: result.manifest, warnings: result.warnings }
+  }
+
+  /** 卸载 v2 插件包：停用 → 删登记 → 目录移入 .trash（可回滚） */
+  async uninstallPackage(id: string): Promise<void> {
+    if (!id.startsWith('external:')) throw new Error('内置插件只能停用，不能卸载')
+    const record = this.records.get(id)
+    if (!record) throw new Error(`插件不存在：${id}`)
+    const manifest = (record as any).manifest as PluginManifest | undefined
+    if ((record as any).externalType !== 'package' || !manifest) throw new Error(`不是 v2 插件包：${id}`)
+    await this.disable(id)
+    this.records.delete(id)
+    this.ctx.settings.patch({ plugins: { [id]: { enabled: false, config: {}, externalPath: '' } } })
+    await removePluginPackage(this.packagesDir(), manifest.id)
+    this.emitChanged()
+  }
+
+  /** v2 插件包的客户端页面（client.mode=page 时存在） */
+  clientPage(id: string): { pluginId: string; entry: string; network: boolean } | undefined {
+    const record = this.records.get(id)
+    if (!record || (record as any).externalType !== 'package') return undefined
+    const manifest = (record as any).manifest as PluginManifest | undefined
+    if (!manifest) return undefined
+    const entry = pluginClientEntryRelative(manifest)
+    if (!entry) return undefined
+    return { pluginId: manifest.id, entry, network: manifest.permissions.network === true }
+  }
+
+  /** 最近一次启动扫描发现的插件包问题（安装/启用失败原因也在这里） */
+  packageProblems(): PluginPackageIssue[] {
+    return this.packageScan?.problems ?? []
+  }
+
   async disable(id: string): Promise<void> {
     const record = this.records.get(id)
     if (!record) throw new Error(`插件不存在：${id}`)
@@ -585,6 +802,8 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     }
     const fiber = record.fiber
     record.fiber = undefined
+    // v2 插件包：丢弃模块缓存，下次 enable/reload 会带 cache-busting 重新 import
+    if ((record as any).externalType === 'package') record.module = undefined
     record.status = 'stopped'
     record.taskIds = []
     record.error = undefined
@@ -677,7 +896,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
 
   private persist(record: RuntimeRecord, enabled: boolean): void {
     const externalPath = (record as any).externalPath as string | undefined
-    const externalType = (record as any).externalType as 'native' | 'worker' | undefined
+    const externalType = (record as any).externalType as 'native' | 'worker' | 'package' | undefined
     this.ctx.settings.patch({
       plugins: {
         [record.entry.id]: {

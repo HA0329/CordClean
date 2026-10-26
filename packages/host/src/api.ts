@@ -1,5 +1,5 @@
 import { moveFiles, elevatedCheckedAt } from '@cordclean/core'
-import { readdir, stat } from 'node:fs/promises'
+import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { folderSize } from '@cordclean/utils'
 import { spawn } from 'node:child_process'
@@ -36,6 +36,7 @@ import {
   validatePluginCode,
 } from './plugin-workshop.ts'
 import { RpcError } from '@cordclean/shared'
+import { validateAiPluginPackage, writeAiPluginPackage } from './ai-plugin-package.ts'
 
 /** 读取系统 PATH 中的 Node 版本；Electron 内置 Node 与系统 Node 可能不同 */
 let systemNodePromise: Promise<string | undefined> | null = null
@@ -307,6 +308,32 @@ export function createHandlers(api: ApiContext): HandlerMap {
       await ctx.plugins.updateConfig(id, config)
     },
     'plugins/defaults': ({ id }) => ctx.plugins.defaults(id),
+    'plugins/inspect-package': async ({ path: sourceDir }) => {
+      if (typeof ctx.plugins.inspectPackage !== 'function') throw new Error('当前插件管理器不支持 v2 插件包')
+      return ctx.plugins.inspectPackage(String(sourceDir ?? ''))
+    },
+    'plugins/install-package': async ({ path: sourceDir, enable, upgrade }) => {
+      if (typeof ctx.plugins.installPackage !== 'function') throw new Error('当前插件管理器不支持 v2 插件包')
+      return ctx.plugins.installPackage(String(sourceDir ?? ''), { enable, upgrade })
+    },
+    'plugins/uninstall-package': async ({ id }) => {
+      if (typeof ctx.plugins.uninstallPackage !== 'function') throw new Error('当前插件管理器不支持 v2 插件包')
+      await ctx.plugins.uninstallPackage(id)
+    },
+    'plugins/package-problems': () => ctx.plugins.packageProblems?.() ?? [],
+    'plugins/client-url': ({ id }) => {
+      const page = ctx.plugins.clientPage?.(id)
+      if (!page) throw new Error('该插件没有客户端页面（client.mode=page）')
+      const segments = page.entry
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/')
+      // Web 外壳与界面同源，走宿主 HTTP 静态路由；Electron 走主进程注册的自定义协议
+      const url = api.shell.electron
+        ? `cordclean-plugin://${page.pluginId}/${segments}`
+        : `/plugin-assets/${page.pluginId}/${segments}`
+      return { url, entry: page.entry }
+    },
 
     'settings/get': () => ctx.settings.get(),
     'settings/patch': ({ patch }) => {
@@ -358,10 +385,80 @@ export function createHandlers(api: ApiContext): HandlerMap {
       if (!ctx.ai?.draftPlugin) throw new Error('AI 插件未启用或版本过旧')
       return ctx.ai.draftPlugin(String(requirement ?? ''))
     },
-    'ai/plugin/validate': ({ code, dependencies, native }) =>
-      validatePluginCode(String(code ?? ''), dependencies ?? {}, native === true ? 'native' : 'worker'),
-    'ai/plugin/install': async ({ name, code, dependencies, acknowledgeDependencies, native }) => {
+    'ai/plugin/validate': async ({ code, dependencies, native, format, manifest, files }) => {
+      const wantsPackage = format === 'package' || Boolean(manifest) || Boolean(files?.length)
+      if (!wantsPackage) {
+        return validatePluginCode(String(code ?? ''), dependencies ?? {}, native === true ? 'native' : 'worker')
+      }
+      const validation = await validateAiPluginPackage(
+        {
+          name: manifest?.id ?? 'ai-plugin',
+          code: String(code ?? ''),
+          notes: '',
+          dependencies: dependencies ?? {},
+          mode: 'native',
+          format: 'package',
+          manifest,
+          files,
+        },
+        api.version,
+      )
+      return { ok: validation.ok, errors: validation.errors, warnings: validation.warnings }
+    },
+    'ai/plugin/install': async (params) => {
+      const {
+        name,
+        code,
+        dependencies,
+        acknowledgeDependencies,
+        native,
+        format,
+        manifest,
+        files,
+        acknowledgePermissions,
+      } = params
       const deps = dependencies ?? {}
+      const wantsPackage = format === 'package' || Boolean(manifest) || Boolean(files?.length)
+      if (wantsPackage) {
+        const draft = {
+          name: String(name ?? ''),
+          code: String(code ?? ''),
+          notes: '',
+          dependencies: deps,
+          mode: 'native' as const,
+          format: 'package' as const,
+          manifest,
+          files,
+        }
+        const validation = await validateAiPluginPackage(draft, api.version)
+        if (!validation.ok) {
+          throw new Error('插件包校验未通过：' + validation.errors.slice(0, 3).join('；'))
+        }
+        if (acknowledgePermissions !== true) {
+          throw new Error('该插件包以宿主用户权限运行，需要先确认清单与权限（acknowledgePermissions）')
+        }
+        if (typeof ctx.plugins.installPackage !== 'function') throw new Error('当前插件管理器不支持 v2 插件包')
+        const installedId = 'external:' + validation.manifest!.id
+        if (ctx.plugins.list().some((item) => item.id === installedId)) {
+          throw new Error('同名插件已安装，请先在插件页卸载后再安装')
+        }
+        const tempDir = path.join(
+          api.dataDir,
+          '.ai-packages',
+          `${validation.manifest!.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        )
+        try {
+          await writeAiPluginPackage(tempDir, validation)
+          const result = await ctx.plugins.installPackage(tempDir, { enable: true })
+          return {
+            path: path.join(api.dataDir, 'plugins', result.manifest.id),
+            id: result.id,
+            manifest: result.manifest,
+          }
+        } finally {
+          await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+        }
+      }
       const mode = native === true ? 'native' : 'worker'
       const checked = await validatePluginCode(String(code ?? ''), deps, mode)
       if (!checked.ok) throw new Error(checked.errors[0] ?? '校验未通过')

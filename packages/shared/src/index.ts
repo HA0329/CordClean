@@ -467,6 +467,7 @@ export function emptyReport(scanId: string): ScanReport {
 /* 任务契约 / 规则契约 / 服务契约 / RPC 协议 */
 export * from './rules.ts'
 export * from './plugin-code.ts'
+export * from './plugin-manifest.ts'
 export * from './plugin-api.ts'
 export type * from './task.ts'
 export * from './services.ts'

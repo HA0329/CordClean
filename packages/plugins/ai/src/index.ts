@@ -17,7 +17,7 @@ import { AiService } from './service.ts'
 export { Config, normalizeConfig, resolveModelAlias, LEGACY_MODEL_ALIASES, applyEffort, resolveChatUrl, resolveModelsUrl, DEFAULT_PATHS, DEFAULT_BASE_URLS, API_SHAPES, EFFORT_LEVELS } from './config.ts'
 export { buildRequest, parseResponse, authHeaders, mergeHeaders } from './adapters.ts'
 export { FALLBACK_MODELS, fetchModelList } from './models.ts'
-export { AiService, createAiService, extractJsonObject, normalizeSuggestions } from './service.ts'
+export { AiService, createAiService, extractJsonObject, normalizeSuggestions, normalizePluginFiles, normalizePluginManifest } from './service.ts'
 export { AiError, requestJson } from './http.ts'
 export type { AiConfig } from './config.ts'
 

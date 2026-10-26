@@ -2,7 +2,14 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CATEGORIES, RISK_META } from '@cordclean/shared'
-import type { PluginRuntime, UiCommandContribution, UiContributionEntry, UiPageContribution } from '@cordclean/shared'
+import type {
+  PluginPackageIssue,
+  PluginPackageReview,
+  PluginRuntime,
+  UiCommandContribution,
+  UiContributionEntry,
+  UiPageContribution,
+} from '@cordclean/shared'
 import {
   loadPluginDefaults,
   refreshPlugins,
@@ -15,10 +22,15 @@ import {
   runSchedulerNow,
   installPlugin,
   uninstallPlugin,
+  inspectPluginPackage,
+  installPluginPackage,
+  uninstallPluginPackage,
+  fetchPackageProblems,
   savePluginConfig,
   setPluginEnabled,
   resolvePluginUi,
   runPluginCommand,
+  pluginClientUrl,
   startScan,
   state,
 } from '../api/store.ts'
@@ -37,14 +49,84 @@ const installPath = ref('')
 const installing = ref(false)
 const allowCustomClean = ref(false)
 
+// v2 插件包：检查 → 审阅权限/警告 → 安装
+const packageOpen = ref(false)
+const packagePath = ref('')
+const packageReview = ref<PluginPackageReview | null>(null)
+const packageChecking = ref(false)
+const packageInstalling = ref(false)
+const packageProblems = ref<PluginPackageIssue[]>([])
+
+function permissionText(review: PluginPackageReview): string {
+  const manifest = review.manifest
+  if (!manifest) return '—'
+  return manifest.permissions.services.join(', ') || '无'
+}
+
+function fsRootsText(review: PluginPackageReview): string {
+  const roots = review.manifest?.permissions.fsRoots ?? []
+  return roots.join('；') || '无'
+}
+
+function networkText(review: PluginPackageReview): string {
+  const permissions = review.manifest?.permissions
+  if (!permissions) return '—'
+  if (!permissions.network && !permissions.subprocess) return '否'
+  return [permissions.network ? '网络' : '', permissions.subprocess ? '子进程' : ''].filter(Boolean).join(' / ')
+}
+
+async function refreshPackageProblems(): Promise<void> {
+  try {
+    packageProblems.value = await fetchPackageProblems()
+  } catch {
+    packageProblems.value = []
+  }
+}
+
+async function checkPackage(): Promise<void> {
+  const target = packagePath.value.trim()
+  if (!target) return
+  packageChecking.value = true
+  packageReview.value = null
+  try {
+    packageReview.value = await inspectPluginPackage(target)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    packageChecking.value = false
+  }
+}
+
+async function doInstallPackage(): Promise<void> {
+  const review = packageReview.value
+  if (!review?.manifest) return
+  packageInstalling.value = true
+  try {
+    await installPluginPackage(review.sourceDir, { upgrade: !!review.installedVersion })
+    ElMessage.success(`插件包 ${review.manifest.name} 已安装`)
+    packageOpen.value = false
+    packagePath.value = ''
+    packageReview.value = null
+    await refreshPackageProblems()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    packageInstalling.value = false
+  }
+}
+
 // 通用插件页面（P1.5）：声明式/iframe 贡献，iframe 用 sandbox 隔离
 const uiEntries = ref<UiContributionEntry[]>([])
 const pageOpen = ref(false)
 const pageTitle = ref('插件页面')
 const pagePluginId = ref('')
 const pageHtml = ref('')
-const pageSrc = computed(() =>
-  pageHtml.value ? 'data:text/html;charset=utf-8,' + encodeURIComponent(pageHtml.value) : '',
+/** v2 插件包客户端页面 URL（Web 同源静态路由 / Electron cordclean-plugin://） */
+const pageExternalUrl = ref('')
+const pageSrc = computed(
+  () =>
+    pageExternalUrl.value ||
+    (pageHtml.value ? 'data:text/html;charset=utf-8,' + encodeURIComponent(pageHtml.value) : ''),
 )
 const pageFrame = ref<HTMLIFrameElement>()
 
@@ -79,8 +161,23 @@ function openPluginPage(plugin: PluginRuntime): void {
   if (!page) return
   pageTitle.value = page.title
   pagePluginId.value = plugin.id
+  pageExternalUrl.value = ''
   pageHtml.value = page.html ?? ''
   pageOpen.value = true
+}
+
+/** 打开 v2 插件包自带的客户端页面（client.mode=page） */
+async function openPackageClientPage(plugin: PluginRuntime): Promise<void> {
+  try {
+    const info = await pluginClientUrl(plugin.id)
+    pageTitle.value = `${plugin.name} · 插件页面`
+    pagePluginId.value = plugin.id
+    pageHtml.value = ''
+    pageExternalUrl.value = info.url
+    pageOpen.value = true
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  }
 }
 
 async function loadUiContributions(): Promise<void> {
@@ -127,6 +224,7 @@ watch(
 )
 onMounted(() => {
   void loadUiContributions()
+  void refreshPackageProblems()
   window.addEventListener('message', onPageMessage)
 })
 onUnmounted(() => window.removeEventListener('message', onPageMessage))
@@ -207,6 +305,17 @@ async function reload(plugin: PluginRuntime) {
 async function uninstall(plugin: PluginRuntime) {
   try {
     if (plugin.id.startsWith('external:')) {
+      if (plugin.manifest) {
+        await ElMessageBox.confirm(
+          `卸载插件包「${plugin.name}」？插件目录会移入 .trash，可在插件目录恢复；如果只是暂时不用，请关闭开关。`,
+          '卸载插件包',
+          { type: 'warning', confirmButtonText: '卸载插件包', cancelButtonText: '取消' },
+        )
+        await uninstallPluginPackage(plugin.id)
+        ElMessage.success(plugin.name + ' 已卸载（旧版本保留在 .trash）')
+        await refreshPackageProblems()
+        return
+      }
       await ElMessageBox.confirm(
         `卸载并删除「${plugin.name}」？这会删除工坊生成的插件文件与依赖目录，无法恢复；如果只是暂时不用，请关闭开关。`,
         '卸载并删除',
@@ -367,9 +476,23 @@ function categoryName(id: string) {
         <span class="cc-pill status-active">{{ enabledCount }} 个已启用</span>
         <span class="cc-pill">{{ taskCount }} 个清理任务</span>
         <el-button @click="installOpen = true">添加插件</el-button>
+        <el-button @click="packageOpen = true">安装插件包</el-button>
         <el-button @click="refreshPlugins">刷新</el-button>
       </div>
     </div>
+
+    <el-alert
+      v-if="packageProblems.length"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="install-warning"
+      title="有插件包未能加载"
+    >
+      <p v-for="problem in packageProblems" :key="problem.target">
+        {{ problem.target }}：{{ problem.errors.map((item) => item.message).join('；') }}
+      </p>
+    </el-alert>
 
     <div class="plugin-grid">
       <div v-for="plugin in plugins" :key="plugin.id" class="plugin-card" :class="{ disabled: !plugin.enabled }">
@@ -390,6 +513,18 @@ function categoryName(id: string) {
           能力：目录×{{ plugin.capabilities.fsRoots.length }}
           <span v-if="plugin.capabilities.network"> · 网络</span>
           <span v-if="plugin.capabilities.childProcess"> · 子进程</span>
+        </div>
+        <div v-if="plugin.manifest" class="cc-pill" :title="'兼容范围：' + plugin.manifest.engines.cordclean">
+          插件包 v{{ plugin.manifest.version }}
+        </div>
+        <div
+          v-if="plugin.permissions"
+          class="cc-pill"
+          :title="'需要服务：' + (plugin.permissions.services.join(', ') || '无')"
+        >
+          权限：{{ plugin.permissions.services.length }} 个服务
+          <span v-if="plugin.permissions.network"> · 网络</span>
+          <span v-if="plugin.permissions.subprocess"> · 子进程</span>
         </div>
         <div class="plugin-meta">
           <span class="cc-pill">{{ categoryName(plugin.category) }}</span>
@@ -418,6 +553,13 @@ function categoryName(id: string) {
             <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" type="primary" plain @click="runPluginTasks(plugin)">扫描此插件</el-button>
             <el-button v-if="plugin.source === 'external' && plugin.enabled && plugin.tasks.length" size="small" @click="addPluginToScheduler(plugin)">加入定时任务</el-button>
             <el-button v-if="pagesFor(plugin).length" size="small" type="primary" plain @click="openPluginPage(plugin)">插件页面</el-button>
+            <el-button
+              v-if="plugin.manifest?.client?.mode === 'page' && plugin.enabled"
+              size="small"
+              type="primary"
+              plain
+              @click="openPackageClientPage(plugin)"
+            >插件页面</el-button>
             <el-button v-if="cardsFor(plugin) > 0" size="small" type="primary" plain @click="state.page = 'overview'">查看概览卡片（{{ cardsFor(plugin) }}）</el-button>
             <el-button
               v-for="command in commandsFor(plugin)"
@@ -448,6 +590,62 @@ function categoryName(id: string) {
       </el-table>
       <p v-if="!ruleHits.length" class="cc-faint">还没有扫描结果，先到清理页扫描一次。</p>
       <template #footer><el-button @click="ruleOpen = false">关闭</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="packageOpen" title="安装插件包（v2）" width="700px">
+      <el-alert type="warning" :closable="false" show-icon class="install-warning">
+        <template #title>插件包以当前用户权限执行代码</template>
+        <p>
+          安装前会校验 plugin.json、apiVersion/engines 兼容范围、权限清单与入口源码；安装后插件仍在宿主进程内运行，没有沙箱。
+          请只安装可信来源的插件包。
+        </p>
+      </el-alert>
+      <div style="display: flex; gap: 8px; margin: 12px 0">
+        <el-input v-model="packagePath" placeholder="插件包目录，例如 D:\plugins\dev-cache" @keyup.enter="checkPackage" />
+        <el-button :loading="packageChecking" @click="checkPackage">检查</el-button>
+      </div>
+      <template v-if="packageReview">
+        <el-descriptions v-if="packageReview.manifest" :column="2" border size="small">
+          <el-descriptions-item label="名称">{{ packageReview.manifest.name }}</el-descriptions-item>
+          <el-descriptions-item label="id">{{ packageReview.manifest.id }}</el-descriptions-item>
+          <el-descriptions-item label="版本">{{ packageReview.manifest.version }}</el-descriptions-item>
+          <el-descriptions-item label="类型">{{ packageReview.manifest.kind }}</el-descriptions-item>
+          <el-descriptions-item label="兼容范围">{{ packageReview.manifest.engines.cordclean }}</el-descriptions-item>
+          <el-descriptions-item label="客户端">{{ packageReview.manifest.client?.mode ?? 'none' }}</el-descriptions-item>
+          <el-descriptions-item label="需要服务" :span="2">{{ permissionText(packageReview) }}</el-descriptions-item>
+          <el-descriptions-item label="可访问目录" :span="2">{{ fsRootsText(packageReview) }}</el-descriptions-item>
+          <el-descriptions-item label="网络 / 子进程" :span="2">{{ networkText(packageReview) }}</el-descriptions-item>
+        </el-descriptions>
+        <p v-if="packageReview.installedVersion" class="cc-hint">
+          已安装 v{{ packageReview.installedVersion }}，继续安装会覆盖旧版本（旧版本保留在 .trash）。
+        </p>
+        <el-alert
+          v-for="issue in packageReview.errors"
+          :key="'e' + issue.code + issue.message"
+          type="error"
+          :closable="false"
+          show-icon
+          :title="issue.message"
+          style="margin-top: 8px"
+        />
+        <el-alert
+          v-for="issue in packageReview.warnings"
+          :key="'w' + issue.code + issue.message"
+          type="warning"
+          :closable="false"
+          :title="issue.message"
+          style="margin-top: 8px"
+        />
+      </template>
+      <template #footer>
+        <el-button @click="packageOpen = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="packageInstalling"
+          :disabled="!packageReview?.manifest || (packageReview?.errors.length ?? 0) > 0"
+          @click="doInstallPackage"
+        >安装</el-button>
+      </template>
     </el-dialog>
 
     <el-dialog v-model="installOpen" title="添加本地插件" width="600px">
@@ -499,7 +697,7 @@ function categoryName(id: string) {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="pageOpen" :title="pageTitle" width="860px" destroy-on-close>
+    <el-dialog v-model="pageOpen" :title="pageTitle" width="860px" destroy-on-close @closed="pageExternalUrl = ''; pageHtml = ''">
       <iframe
         v-if="pageSrc"
         ref="pageFrame"

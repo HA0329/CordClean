@@ -24,10 +24,12 @@ import type {
   AiLike,
   AiModelInfo,
   AiPluginDraft,
+  AiPluginFile,
   AiProbeResult,
   AiRuntimeStatus,
   AiSuggestion,
   PluginKind,
+  PluginManifest,
   RiskLevel,
   TaskDescriptor,
 } from '@cordclean/shared'
@@ -291,19 +293,31 @@ export class AiService extends Service implements AiLike {
         continue
       }
       const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments
-      const code = toolArgs && typeof toolArgs.code === 'string' ? toolArgs.code.trim() : extractPluginCode(parsed.text)
+      // 多文件插件包：模型可额外输出 manifest（v2 清单）与 files（入口/页面/资源）
+      const packageFiles = normalizePluginFiles(toolArgs?.files)
+      const packageManifest = normalizePluginManifest(toolArgs?.manifest)
+      const entryName = packageManifest?.entry || 'index.mjs'
+      const fileCode = packageFiles.find((file) => file.path === entryName)?.content
+      const code =
+        toolArgs && typeof toolArgs.code === 'string' && toolArgs.code.trim()
+          ? toolArgs.code.trim()
+          : fileCode || extractPluginCode(parsed.text)
       const dependencies = normalizeDependencies(
         toolArgs?.dependencies ?? extractDependenciesFromText(parsed.text),
       )
       const kind = pickPluginKind(toolArgs?.kind ?? extractKindFromText(parsed.text) ?? extractKindFromCode(code))
       if (!code) {
         lastError = '模型没有返回有效的插件代码'
-        feedback = '\n\n上一次没有返回有效代码。请输出完整单文件 ESM 源码。'
+        feedback = '\n\n上一次没有返回有效代码。请输出单文件 ESM 源码，或提供 files 数组并包含入口文件。'
         continue
       }
       // 与安装端共用同一套契约检查：错误的 import / defineCleanerPlugin / 危险 API
       // 在这里就拦下来，不把“能生成但装不上”的草稿交给用户。
-      const check = checkPluginSource(code, { dependencies, mode: 'native' })
+      const check = checkPluginSource(code, {
+        dependencies,
+        mode: 'native',
+        allowRelativeImports: packageFiles.length > 0,
+      })
       if (!check.ok) {
         lastError = check.errors.slice(0, 2).join('；')
         feedback =
@@ -321,13 +335,19 @@ export class AiService extends Service implements AiLike {
         continue
       }
       const matched = code.match(/(?:export\s+const\s+name\s*=|name\s*:)\s*['"]([a-zA-Z0-9_-]+)['"]/)
+      // 零依赖草稿统一走 v2 插件包安装事务；声明了第三方依赖时退回旧单文件安装（v2 安装事务暂不装依赖）
+      const format: 'package' | 'single-file' =
+        Object.keys(dependencies).length > 0 ? 'single-file' : 'package'
       return {
-        name: matched?.[1] ?? 'ai-plugin',
+        name: matched?.[1] ?? packageManifest?.id ?? 'ai-plugin',
         code,
         notes: parsed.text.slice(0, 200),
         dependencies,
         mode: 'native',
         kind,
+        format,
+        ...(format === 'package' && packageManifest ? { manifest: packageManifest } : {}),
+        ...(format === 'package' && packageFiles.length ? { files: packageFiles } : {}),
       }
     }
     throw new AiError(lastError, 'INVALID_RESPONSE')
@@ -735,6 +755,27 @@ export function normalizeDependencies(input: unknown): Record<string, string> {
   return deps
 }
 
+/** 把模型输出的多文件插件包内容整理成 [{path, content}]（最多 30 个，丢弃空路径/非字符串） */
+export function normalizePluginFiles(input: unknown): AiPluginFile[] {
+  if (!Array.isArray(input)) return []
+  const files: AiPluginFile[] = []
+  for (const item of input.slice(0, 30)) {
+    if (!item || typeof item !== 'object') continue
+    const record = item as Record<string, unknown>
+    const filePath = typeof record.path === 'string' ? record.path.trim() : ''
+    const content = typeof record.content === 'string' ? record.content : ''
+    if (!filePath || !content) continue
+    files.push({ path: filePath, content })
+  }
+  return files
+}
+
+/** 把模型输出的 manifest 原样收下（深度校验交给宿主 validatePluginManifest） */
+export function normalizePluginManifest(input: unknown): PluginManifest | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  return input as PluginManifest
+}
+
 function extractDependenciesFromText(text: string): Record<string, string> {
   const fenced = text.match(/```(?:json|js|javascript|mjs)?\s*([\s\S]*?)```/i)
   const raw = (fenced ? fenced[1] : text).trim()
@@ -819,7 +860,7 @@ function checkPluginSyntax(text: string): Promise<string | null> {
 }
 const PLUGIN_TOOL = {
   name: 'emit_plugin',
-  description: '输出一个完整可运行的原生 Cordis 通用插件源码与 npm 依赖声明',
+  description: '输出一个完整可运行的原生 Cordis 通用插件源码与 npm 依赖声明；可选输出多文件插件包（manifest + files）',
   parameters: {
     type: 'object',
     properties: {
@@ -840,6 +881,23 @@ const PLUGIN_TOOL = {
         description: 'npm 依赖（包名 → semver），无依赖时输出 {}；最多 8 个',
         additionalProperties: { type: 'string' },
       },
+      manifest: {
+        type: 'object',
+        description:
+          '可选：v2 插件包清单（apiVersion:2、engines.cordclean、kind、entry、permissions、client）。不输出时由宿主自动合成',
+      },
+      files: {
+        type: 'array',
+        description: '可选：多文件插件包内容（不含 plugin.json），path 相对包目录；entry 必须出现在其中',
+        items: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: '相对包目录的路径，例如 index.mjs / client/index.html' },
+            content: { type: 'string' },
+          },
+          required: ['path', 'content'],
+        },
+      },
     },
     required: ['name', 'code'],
   },
@@ -855,6 +913,7 @@ const PLUGIN_SYSTEM_PROMPT = [
   'overviewCards 的数据返回格式必须匹配类型：metric → { value: string|number, unit? }；text → { text } 或字符串；list → string[] 或 { items: string[] }；progress → { value: number, max: number }。不要用 { value: string[] } 表示列表，否则卡片会空白。',
   '也可以贡献 statusItems（状态栏）与 commands（插件页按钮）：statusItems 项使用 { id, label, resolve, tone }（label 是显示文字，不要用 title）；commands 项必须使用 { id, title, rpc }，title 是按钮文字，不要用 label。',
   '如确实需要自定义页面，可在 contributes.pages 中提供 mode:"iframe" 的自包含 HTML；页面内不能访问宿主 DOM，只能通过 postMessage 的 cordclean/plugin-page 协议请求 resolve 数据。',
+  '多文件插件包（可选，推荐用于带独立客户端页面的插件）：额外输出 manifest（v2 清单，必须 apiVersion:2、engines.cordclean、kind、entry、permissions{services,network,subprocess}、client）与 files（[{path,content}]；path 用 / 分隔且必须在包内；入口文件必须出现在 files 中；客户端页面放 client/index.html，并在 manifest.client 写 { "mode":"page","entry":"client/index.html" }）。不输出 manifest/files 时，宿主会把单文件 code 自动包成 v2 插件包安装。',
   'active 类型：在 apply 中用 ctx.effect(() => { const timer = setInterval(...); return () => clearInterval(timer) }) 注册后台逻辑，并用 ctx.ui.emit(name, 事件名, 数据) 主动刷新界面、ctx.ui.notify(name, { title, message, level }) 弹通知；通过 ctx.on/ctx.emit 订阅事件。',
   'desktop 类型：用 ctx.window.open(name, { id, html, width, height, transparent, alwaysOnTop, clickThrough }) 打开独立悬浮窗口（仅 Electron 桌面壳可用）；用 ctx.window.createTray(name, { tooltip, items, onSelect }) 创建托盘。窗口 HTML 是自包含的，不能用 Node/宿主 DOM。',
   'dependencies 为空对象 {} 表示零依赖；需要第三方能力时声明 npm 包（最多 8 个），版本必须是 semver（如 "^3.3.2"），安装时由用户确认并下载。禁止 file:/git/URL/路径规格；优先纯 JS 包，避免需要本地编译的原生模块。',
