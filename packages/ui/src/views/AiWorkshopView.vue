@@ -410,6 +410,7 @@ onUnmounted(stopTimer)
     </el-alert>
 
     <div class="workshop-grid">
+      <div class="workshop-controls">
       <section class="cc-card">
         <div class="cc-card-title">
           <h3>1. 描述你想要的插件</h3>
@@ -445,6 +446,7 @@ onUnmounted(stopTimer)
           <span class="cc-faint">与「AI 建议」的接口配置互不影响</span>
         </div>
         <el-form label-position="top" class="setting-form">
+          <div class="form-section-title">连接与凭据</div>
           <el-form-item label="接口形态">
             <el-select v-model="workshopConfig.apiShape" style="width: 100%">
               <el-option v-for="item in SHAPES" :key="item.value" :label="item.label" :value="item.value" />
@@ -474,6 +476,7 @@ onUnmounted(stopTimer)
             </el-select>
             <div class="cc-hint">候选来源：{{ modelsSource === 'remote' ? '接口 /models' : '内置兜底列表' }}；生成长代码建议 deepseek-flash。</div>
           </el-form-item>
+          <div class="form-section-title">生成参数</div>
           <div class="config-grid">
             <el-form-item label="最大输出 token">
               <el-input-number v-model="workshopConfig.maxTokens" :min="4096" :max="131072" :step="8192" style="width: 100%" />
@@ -488,6 +491,7 @@ onUnmounted(stopTimer)
               <el-input-number v-model="workshopConfig.temperature" :min="-1" :max="2" :step="0.1" style="width: 100%" />
             </el-form-item>
           </div>
+          <div class="form-section-title">提示词与高级参数</div>
           <el-form-item label="追加提示词（可选）">
             <el-input v-model="workshopConfig.systemPrompt" type="textarea" :rows="2" placeholder="例如：入口固定 index.mjs；需要页面时输出 client/index.html；遵循团队编码规范" />
           </el-form-item>
@@ -515,6 +519,7 @@ onUnmounted(stopTimer)
         </div>
         <p class="cc-hint">配置保存在插件 <code>ai-workshop</code> 的 config 中，与「AI 建议」页的 AI 接口配置完全独立。</p>
       </section>
+      </div>
 
       <section class="cc-card review-card">
         <div class="cc-card-title">
@@ -547,44 +552,48 @@ onUnmounted(stopTimer)
             <p v-if="validation.warnings.length" class="cc-faint">提示：{{ validation.warnings.join('；') }}</p>
           </div>
 
-          <div class="file-toolbar">
-            <div class="file-tabs">
+          <div class="review-body">
+            <aside class="file-sidebar">
+              <div class="file-sidebar-head">文件（{{ files.length }}）</div>
               <button
                 v-for="file in files"
                 :key="file.path"
                 type="button"
-                class="file-tab"
+                class="file-item"
                 :class="{ active: file.path === activeFile }"
                 @click="activeFile = file.path"
               >
-                {{ file.path }}
-                <span class="cc-faint">{{ fileSizeText(file.content) }}</span>
+                <span class="file-item-path">{{ file.path }}</span>
+                <span class="file-item-size">{{ fileSizeText(file.content) }}</span>
+                <span v-if="file.path === entryPath" class="file-item-tag">入口</span>
               </button>
-            </div>
-            <div class="file-actions">
-              <el-button size="small" @click="addFile">添加文件</el-button>
-              <el-button size="small" :disabled="activeFile === entryPath" @click="removeFile(activeFile)">删除当前文件</el-button>
+              <div class="file-sidebar-actions">
+                <el-button size="small" @click="addFile">添加文件</el-button>
+                <el-button size="small" :disabled="activeFile === entryPath" @click="removeFile(activeFile)">删除</el-button>
+              </div>
+            </aside>
+            <div class="editor-pane">
+              <div class="file-meta cc-faint">
+                {{ activeFile }} · {{ activeSize }} 字节
+                {{ activeFile === entryPath ? '（入口文件，编辑会同步草稿代码）' : '' }}
+              </div>
+              <el-input
+                :model-value="activeContent"
+                type="textarea"
+                :rows="20"
+                class="cc-mono"
+                spellcheck="false"
+                @update:model-value="updateFileContent(activeFile, $event)"
+              />
+              <el-collapse class="manifest-editor">
+                <el-collapse-item title="plugin.json 清单（可直接编辑，保存前会重新校验）">
+                  <el-input v-model="manifestText" type="textarea" :rows="12" class="cc-mono" spellcheck="false" @update:model-value="updateManifest" />
+                  <p v-if="manifestError" class="error-text">清单 JSON 不合法：{{ manifestError }}</p>
+                  <p v-else class="cc-hint">清单修改后会重新校验；client / permissions / entry 都在这里调整。</p>
+                </el-collapse-item>
+              </el-collapse>
             </div>
           </div>
-          <div class="file-meta cc-faint">
-            当前文件：{{ activeFile }} · {{ activeSize }} 字节 {{ activeFile === entryPath ? '（入口文件，编辑会同步草稿代码）' : '' }}
-          </div>
-          <el-input
-            :model-value="activeContent"
-            type="textarea"
-            :rows="16"
-            class="cc-mono"
-            spellcheck="false"
-            @update:model-value="updateFileContent(activeFile, $event)"
-          />
-
-          <el-collapse class="manifest-editor">
-            <el-collapse-item title="plugin.json 清单（可直接编辑，保存前会重新校验）">
-              <el-input v-model="manifestText" type="textarea" :rows="12" class="cc-mono" spellcheck="false" @update:model-value="updateManifest" />
-              <p v-if="manifestError" class="error-text">清单 JSON 不合法：{{ manifestError }}</p>
-              <p v-else class="cc-hint">清单修改后会重新校验；client / permissions / entry 都在这里调整。</p>
-            </el-collapse-item>
-          </el-collapse>
 
           <div v-if="dependencies.length" class="deps-box">
             <p class="cc-hint">该插件包声明了第三方依赖（在 staging 内安装，禁用 lifecycle scripts）：</p>
@@ -605,7 +614,18 @@ onUnmounted(stopTimer)
             <el-button :disabled="installing" @click="discard">放弃草稿</el-button>
           </div>
         </template>
-        <p v-else class="cc-faint">生成后在这里展示清单、权限、多文件与校验结果；可以添加/删除/编辑任意文件后安装，不会自动安装。</p>
+        <div v-else class="review-empty">
+          <div class="review-empty-icon">🧩</div>
+          <h4>插件包会显示在这里</h4>
+          <p>左侧描述需求并生成后，这里会展示清单、权限、多文件内容与校验结果；你可以添加、删除、编辑任意文件，确认无误后再安装。</p>
+          <div class="review-empty-grid">
+            <div><b>清单</b><span>apiVersion / engines / 权限 / client</span></div>
+            <div><b>多文件</b><span>入口 + client/index.html + 其它资源</span></div>
+            <div><b>校验</b><span>静态契约 / 语法 / 清单结构</span></div>
+            <div><b>安装</b><span>staging → 原子落盘 → 失败回滚</span></div>
+          </div>
+          <p class="cc-faint">不会自动安装；安装前必须勾选「已阅读代码」。</p>
+        </div>
       </section>
     </div>
   </div>
@@ -619,28 +639,99 @@ onUnmounted(stopTimer)
 .workshop-meta .is-ok { color: #1f9d55; }
 .workshop-meta .is-warn { color: #c07a00; }
 .workshop-alert { margin-top: -2px; }
-.workshop-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
+.workshop-grid { display: grid; grid-template-columns: minmax(0, 430px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.workshop-controls { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.review-card { min-height: 580px; }
+.review-body { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 12px; align-items: start; margin-top: 8px; }
 .workshop-examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 .workshop-examples .example { cursor: pointer; font-size: 11.5px; }
 .workshop-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
 .setting-form { margin-top: 4px; }
+.form-section-title {
+  margin: 10px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--cc-border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cc-text-dim);
+  letter-spacing: 0.02em;
+}
+.review-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 46px 20px 30px;
+  min-height: 440px;
+}
+.review-empty-icon {
+  font-size: 40px;
+  line-height: 1;
+  opacity: 0.85;
+}
+.review-empty h4 {
+  margin: 0;
+  font-size: 16px;
+}
+.review-empty p {
+  margin: 0;
+  max-width: 560px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--cc-text-dim);
+}
+.review-empty-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  margin: 14px 0 6px;
+  text-align: left;
+  width: min(560px, 100%);
+}
+.review-empty-grid div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--cc-text-dim);
+}
+.review-empty-grid b {
+  color: var(--cc-text);
+  font-size: 12.5px;
+}
+@media (max-width: 760px) {
+  .review-empty-grid { grid-template-columns: 1fr; }
+}
 .setting-form :deep(.el-form-item) { margin-bottom: 12px; }
 .config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
 .inline-btn { margin-left: 6px; }
 .option-hint { float: right; color: var(--cc-text-faint); font-size: 11.5px; }
 .pkg-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 .pkg-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.file-toolbar { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; align-items: center; }
-.file-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-.file-tab {
-  border: 1px solid var(--cc-border); background: transparent; color: var(--cc-text-dim);
-  border-radius: 6px; padding: 3px 8px; font-size: 11.5px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
+.file-sidebar { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--cc-border); border-radius: 10px; padding: 10px; background: var(--cc-panel-2, rgba(0,0,0,0.015)); }
+.file-sidebar-head { font-size: 12px; color: var(--cc-text-dim); margin-bottom: 2px; }
+.file-item {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+  border: 1px solid transparent; background: transparent; color: var(--cc-text-dim);
+  border-radius: 7px; padding: 6px 8px; font-size: 12px; cursor: pointer;
 }
-.file-tab.active { border-color: var(--cc-accent, #4f7cff); color: var(--cc-text); }
-.file-actions { display: flex; gap: 6px; }
+.file-item:hover { background: var(--cc-hover, rgba(79,124,255,0.06)); }
+.file-item.active { border-color: var(--cc-accent, #4f7cff); color: var(--cc-text); background: var(--cc-panel, #fff); }
+.file-item-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.file-item-size { font-size: 10.5px; color: var(--cc-text-faint); }
+.file-item-tag { font-size: 10px; border-radius: 4px; padding: 1px 4px; background: rgba(79,124,255,0.12); color: var(--cc-accent, #4f7cff); }
+.file-sidebar-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.editor-pane { min-width: 0; }
 .file-meta { font-size: 11.5px; margin-bottom: 6px; }
 .manifest-editor { margin-top: 10px; }
 .deps-box { margin: 10px 0; padding: 10px; border: 1px solid var(--cc-border); border-radius: 8px; }
 .deps-box ul { margin: 6px 0; padding-left: 20px; }
-@media (max-width: 1200px) { .workshop-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1280px) { .workshop-grid { grid-template-columns: minmax(0, 380px) minmax(0, 1fr); } }
+@media (max-width: 1100px) { .workshop-grid { grid-template-columns: 1fr; } .review-body { grid-template-columns: 180px minmax(0, 1fr); } }
+@media (max-width: 760px) { .review-body { grid-template-columns: 1fr; } .file-sidebar { flex-direction: row; flex-wrap: wrap; } }
 </style>
