@@ -348,12 +348,37 @@ export interface AiPluginDraft {
   files?: AiPluginFile[]
 }
 
+export interface AiWorkshopStatus {
+  /** 工坊插件是否已启用（服务已注册） */
+  available: boolean
+  /** 是否复用「AI 清理顾问」的连接配置（需要 AI 插件启用且配置 Key） */
+  configured: boolean
+  /** 实际使用的模型（工坊覆盖值或 AI 顾问模型） */
+  model: string
+  /** AI 顾问模型（用于提示「跟随」关系） */
+  aiModel: string
+  /** true=未覆盖模型，跟随 AI 顾问 */
+  inheritsModel: boolean
+  maxTokens: number
+  retries: number
+  systemPromptExtra: string
+}
+
 export interface AiLike {
-  analyze(options?: { taskIds?: string[]; extraContext?: string; contextProviders?: string[] }): Promise<AiAnalysis>
+  analyze(options?: {
+    taskIds?: string[]
+    extraContext?: string
+    contextProviders?: string[]
+    /** 截图（base64，不含 data: 前缀）；仅支持视觉的模型可用 */
+    image?: { mime: string; data: string }
+  }): Promise<AiAnalysis>
   /** 取消当前分析 */
   cancelAnalyze?(): void
-  /** 生成单文件插件草稿（工坊用；dependencies 空对象表示零依赖） */
-  draftPlugin?(requirement: string): Promise<AiPluginDraft>
+  /** 生成插件包草稿（工坊用）；options 允许「AI 插件工坊」插件覆盖模型/重试等生成参数 */
+  draftPlugin?(
+    requirement: string,
+    options?: { model?: string; maxTokens?: number; retries?: number; systemPromptExtra?: string },
+  ): Promise<AiPluginDraft>
   last(): AiAnalysis | undefined
   configured(): boolean
   /** 拉取可用模型列表（失败时返回内置兜底列表） */

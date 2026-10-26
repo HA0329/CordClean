@@ -8,10 +8,11 @@
 defineOptions({ name: 'AiWorkshopView' })
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { AiPluginDraft } from '@cordclean/shared'
+import type { AiPluginDraft, AiWorkshopStatus } from '@cordclean/shared'
 import {
   cancelAi,
-  draftAiPlugin,
+  draftAiWorkshopPlugin,
+  fetchAiWorkshopStatus,
   installAiPlugin,
   refreshAiStatus,
   state,
@@ -39,8 +40,23 @@ let timer: ReturnType<typeof setInterval> | undefined
 let validateSeq = 0
 let validateTimer: ReturnType<typeof setTimeout> | undefined
 
-const configured = computed(() => state.aiStatus?.configured === true)
-const model = computed(() => state.aiStatus?.model ?? '未配置模型')
+const workshopStatus = ref<AiWorkshopStatus | null>(null)
+const statusLoading = ref(false)
+const available = computed(() => workshopStatus.value?.available === true)
+const configured = computed(() => workshopStatus.value?.configured === true)
+const model = computed(() => workshopStatus.value?.model || state.aiStatus?.model || '未配置模型')
+const inheritsModel = computed(() => workshopStatus.value?.inheritsModel !== false)
+
+async function loadWorkshopStatus(): Promise<void> {
+  statusLoading.value = true
+  try {
+    workshopStatus.value = await fetchAiWorkshopStatus()
+  } catch {
+    workshopStatus.value = null
+  } finally {
+    statusLoading.value = false
+  }
+}
 const entryPath = computed(() => draft.value?.manifest?.entry ?? 'index.mjs')
 const files = computed<Array<{ path: string; content: string }>>(() => {
   const list = draft.value?.files ?? []
@@ -57,6 +73,10 @@ const dependencies = computed(() => Object.entries(draft.value?.dependencies ?? 
 
 function openAiSettings(): void {
   state.page = 'ai'
+}
+
+function openPlugins(): void {
+  state.page = 'plugins'
 }
 
 function startTimer(): void {
@@ -112,7 +132,7 @@ async function generate(): Promise<void> {
   busy.value = true
   startTimer()
   try {
-    const result = await draftAiPlugin(requirement.value.trim())
+    const result = await draftAiWorkshopPlugin(requirement.value.trim())
     draft.value = result
     resetReview()
     await revalidate()
@@ -179,6 +199,7 @@ async function install(): Promise<void> {
 
 onMounted(() => {
   void refreshAiStatus().catch(() => {})
+  void loadWorkshopStatus()
 })
 onUnmounted(stopTimer)
 </script>
@@ -194,16 +215,25 @@ onUnmounted(stopTimer)
         </p>
       </div>
       <div class="workshop-meta">
-        <span class="cc-pill" :class="{ 'is-ok': configured, 'is-warn': !configured }">
-          AI {{ configured ? '已配置' : '未配置' }}
+        <span class="cc-pill" :class="{ 'is-ok': available, 'is-warn': !available }">
+          插件 {{ available ? '已启用' : '未启用' }}
         </span>
-        <span class="cc-pill">{{ model }}</span>
+        <span class="cc-pill" :class="{ 'is-ok': configured, 'is-warn': !configured }">
+          {{ !available ? '等待启用插件' : (configured ? 'AI 已配置' : 'AI 未配置') }}
+        </span>
+        <span class="cc-pill" :title="inheritsModel ? '跟随 AI 清理顾问' : '工坊覆盖模型'">
+          {{ model }}{{ inheritsModel && available ? '（跟随顾问）' : '' }}
+        </span>
         <span class="cc-pill">v2 插件包</span>
       </div>
     </div>
 
-    <el-alert v-if="!configured" type="warning" :closable="false" show-icon class="workshop-alert">
-      还没有可用的 AI 配置：请先到「AI 建议」页填写 API Key、接口形态与模型，再回来生成插件包。
+    <el-alert v-if="workshopStatus && !available" type="warning" :closable="false" show-icon class="workshop-alert">
+      「AI 插件工坊」插件还没有启用：请到插件页启用它（需要同时启用「AI 清理顾问」）。
+      <el-button link type="primary" @click="openPlugins">去插件页</el-button>
+    </el-alert>
+    <el-alert v-else-if="workshopStatus && !configured" type="warning" :closable="false" show-icon class="workshop-alert">
+      「AI 清理顾问」还没有配置 API Key：工坊复用它的连接与 Key，请先到「AI 建议」页填写。
       <el-button link type="primary" @click="openAiSettings">去配置</el-button>
     </el-alert>
 
@@ -224,7 +254,7 @@ onUnmounted(stopTimer)
           <span v-for="item in EXAMPLES" :key="item" class="cc-pill example" @click="requirement = item">{{ item }}</span>
         </div>
         <div class="workshop-actions">
-          <el-button type="primary" :loading="busy" :disabled="busy || installing || !requirement.trim()" @click="generate">
+          <el-button type="primary" :loading="busy" :disabled="busy || installing || !requirement.trim() || !available" @click="generate">
             生成 v2 插件包草稿
           </el-button>
           <el-button v-if="busy" @click="cancel">取消生成</el-button>
@@ -235,6 +265,26 @@ onUnmounted(stopTimer)
           生成的插件包包含 <code>plugin.json</code> 清单（apiVersion / engines / 权限 / client）、入口源码与可选客户端页面；
           第三方依赖会在暂存目录安装 <code>node_modules</code>（安装时需再次确认）。
         </p>
+      </section>
+
+      <section class="cc-card">
+        <div class="cc-card-title">
+          <h3>工坊配置（独立）</h3>
+          <span class="cc-faint">与 AI 清理顾问分开，可在插件页的「AI 插件工坊」配置中修改</span>
+        </div>
+        <div class="workshop-config">
+          <template v-if="available">
+            <div class="config-row"><span>模型</span><b>{{ model }}{{ inheritsModel ? '（跟随 AI 顾问）' : '（工坊覆盖）' }}</b></div>
+            <div class="config-row"><span>单次最大输出</span><b>{{ workshopStatus?.maxTokens ?? '—' }} tokens</b></div>
+            <div class="config-row"><span>失败重试</span><b>{{ workshopStatus?.retries ?? '—' }} 次</b></div>
+            <div class="config-row"><span>追加提示</span><b>{{ workshopStatus?.systemPromptExtra || '（无）' }}</b></div>
+          </template>
+          <p v-else class="cc-faint">插件未启用：启用后可在这里看到独立生成参数（模型覆盖 / maxTokens / 重试 / 追加提示）。</p>
+        </div>
+        <div class="workshop-actions">
+          <el-button size="small" @click="openPlugins">在插件页修改工坊配置</el-button>
+          <el-button size="small" link @click="loadWorkshopStatus">刷新状态</el-button>
+        </div>
       </section>
 
       <section class="cc-card">
@@ -410,6 +460,25 @@ onUnmounted(stopTimer)
   padding: 10px;
   border: 1px solid var(--cc-border);
   border-radius: 8px;
+}
+.workshop-config {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+.config-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--cc-text-dim);
+}
+.config-row b {
+  color: var(--cc-text);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
 }
 .deps-box ul {
   margin: 6px 0;

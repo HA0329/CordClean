@@ -64,6 +64,7 @@ const schemas: Record<string, z.ZodTypeAny> = {
     .strict(),
   'plugins/uninstall': z.object({ id: z.string().min(1) }).strict(),
   'plugins/inspect-package': z.object({ path: z.string().min(1).max(500) }).strict(),
+  'plugins/source-content': z.object({ id: z.string().min(1).max(120) }).strict(),
   'plugins/install-package': z
     .object({
       path: z.string().min(1).max(500),
@@ -91,6 +92,8 @@ const schemas: Record<string, z.ZodTypeAny> = {
     .optional(),
   'ai/rules/dry-run': z.object({ suggestion: z.record(z.string(), z.unknown()) }).strict(),
   'ai/plugin/draft': z.object({ requirement: z.string().min(1).max(2000) }).strict(),
+  'ai/workshop/status': z.void().optional(),
+  'ai/workshop/draft': z.object({ requirement: z.string().min(1).max(2000) }).strict(),
   'ai/plugin/validate': z
     .object({
       code: z.string().max(200_000),

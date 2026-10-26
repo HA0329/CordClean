@@ -22,6 +22,7 @@ import type {
   AiModelInfo,
   AiProbeResult,
   AiRuntimeStatus,
+  AiWorkshopStatus,
   UiContributionEntry,
   PluginManifest,
   PluginManifestIssue,
@@ -116,6 +117,11 @@ export interface ApiMap {
   'clean/cancel': { params: { sessionId?: string }; result: void }
 
   'plugins/source': { params: { id: string }; result: { path: string } }
+  /** 读取插件源码文件内容（内置源码查看器；最多 512 KB） */
+  'plugins/source-content': {
+    params: { id: string }
+    result: { path: string; content: string; bytes: number; truncated: boolean }
+  }
   'app/open-editor': { params: { path: string }; result: void }
   'scheduler/authorize': { params: { planId?: string; everyMinutes?: number; taskIds?: string[] }; result: { hash: string } }
   'scheduler/run': { params: { planId?: string }; result: { ok: true } }
@@ -167,6 +173,10 @@ export interface ApiMap {
   'ai/models': { params: { refresh?: boolean }; result: { source: 'remote' | 'fallback'; models: AiModelInfo[] } }
   'ai/probe': { params: void; result: AiProbeResult }
   'ai/plugin/draft': { params: { requirement: string }; result: AiPluginDraft }
+  /** AI 插件工坊（独立插件）运行时状态 */
+  'ai/workshop/status': { params: void; result: AiWorkshopStatus }
+  /** AI 插件工坊生成 v2 插件包草稿（走独立的 ai-workshop 插件） */
+  'ai/workshop/draft': { params: { requirement: string }; result: AiPluginDraft }
   'ai/plugin/validate': {
     params: {
       code: string

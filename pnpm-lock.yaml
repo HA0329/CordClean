@@ -239,6 +239,9 @@ importers:
       '@cordclean/plugin-ai':
         specifier: workspace:*
         version: link:../plugins/ai
+      '@cordclean/plugin-ai-workshop':
+        specifier: workspace:*
+        version: link:../plugins/ai-workshop
       '@cordclean/plugin-duplicates':
         specifier: workspace:*
         version: link:../plugins/duplicates
@@ -311,6 +314,18 @@ importers:
       '@cordclean/utils':
         specifier: workspace:*
         version: link:../../utils
+      schemastery:
+        specifier: ^3.17.2
+        version: 3.18.0
+
+  packages/plugins/ai-workshop:
+    dependencies:
+      '@cordclean/shared':
+        specifier: workspace:*
+        version: link:../../shared
+      cordis:
+        specifier: 4.0.0-rc.12
+        version: 4.0.0-rc.12
       schemastery:
         specifier: ^3.17.2
         version: 3.18.0

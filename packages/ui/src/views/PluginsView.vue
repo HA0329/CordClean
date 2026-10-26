@@ -15,7 +15,7 @@ import {
   refreshPlugins,
   fetchUiContributions,
   reloadPlugin,
-  pluginSource,
+  fetchPluginSourceContent,
   openEditor,
   authorizeScheduler,
   revokeScheduler,
@@ -129,6 +129,15 @@ const pageSrc = computed(
     (pageHtml.value ? 'data:text/html;charset=utf-8,' + encodeURIComponent(pageHtml.value) : ''),
 )
 const pageFrame = ref<HTMLIFrameElement>()
+
+// 内置源码查看器：不依赖系统文件关联，点击「源码」一定有可见结果
+const sourceOpen = ref(false)
+const sourceLoading = ref(false)
+const sourceName = ref('')
+const sourcePath = ref('')
+const sourceContent = ref('')
+const sourceBytes = ref(0)
+const sourceTruncated = ref(false)
 
 function pagesFor(plugin: PluginRuntime): UiPageContribution[] {
   return uiEntries.value.find((entry) => entry.pluginId === plugin.id)?.contributions.pages ?? []
@@ -415,10 +424,31 @@ async function runScheduler() {
 }
 
 async function openSource(plugin: PluginRuntime) {
+  sourceOpen.value = true
+  sourceLoading.value = true
+  sourceName.value = plugin.name
+  sourcePath.value = ''
+  sourceContent.value = ''
+  sourceBytes.value = 0
+  sourceTruncated.value = false
   try {
-    const path = await pluginSource(plugin.id)
-    await openEditor(path)
-    ElMessage.success('已打开源码：' + path)
+    const result = await fetchPluginSourceContent(plugin.id)
+    sourcePath.value = result.path
+    sourceContent.value = result.content
+    sourceBytes.value = result.bytes
+    sourceTruncated.value = result.truncated
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    sourceLoading.value = false
+  }
+}
+
+async function openSourceExternal(): Promise<void> {
+  if (!sourcePath.value) return
+  try {
+    await openEditor(sourcePath.value)
+    ElMessage.success('已请求系统程序打开：' + sourcePath.value)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
@@ -697,6 +727,16 @@ function categoryName(id: string) {
       </template>
     </el-dialog>
 
+    <el-dialog v-model="sourceOpen" :title="'源码：' + sourceName" width="920px">
+      <p class="cc-hint cc-mono" style="word-break: break-all">{{ sourcePath || '（未找到源码路径）' }}</p>
+      <p v-if="sourceTruncated" class="cc-faint">文件较大，仅显示前 512 KB（共 {{ sourceBytes }} 字节）。</p>
+      <pre class="source-view cc-mono">{{ sourceLoading ? '正在读取源码…' : (sourceContent || '(读取失败或文件为空)') }}</pre>
+      <template #footer>
+        <el-button @click="sourceOpen = false">关闭</el-button>
+        <el-button type="primary" plain :disabled="!sourcePath" @click="openSourceExternal">用系统程序打开</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="pageOpen" :title="pageTitle" width="860px" destroy-on-close @closed="pageExternalUrl = ''; pageHtml = ''">
       <iframe
         v-if="pageSrc"
@@ -714,6 +754,18 @@ function categoryName(id: string) {
 </template>
 
 <style scoped>
+.source-view {
+  max-height: 58vh;
+  overflow: auto;
+  margin: 10px 0 0;
+  padding: 12px;
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  background: var(--cc-panel-2, rgba(0, 0, 0, 0.02));
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
 .plugin-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));

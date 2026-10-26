@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.0`；11 个内置插件（8 个默认启用）、默认 38 个清理任务、60 个 RPC 方法；62 个测试文件 / 456 个用例。
+当前版本 `0.6.0`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、68 个 RPC 方法；63 个测试文件 / 459 个用例。
 
 ## 快速开始
 
@@ -26,7 +26,7 @@ pnpm start:desktop    # Electron 桌面应用
 
 | 能力 | 说明 |
 | --- | --- |
-| 插件化清理 | 11 个内置插件（8 个默认启用）、默认 38 个清理任务，每个插件独立启停、独立配置、热重载 |
+| 插件化清理 | 12 个内置插件（8 个默认启用）、默认 38 个清理任务，每个插件独立启停、独立配置、热重载 |
 | 运行时插件管理 | 「插件」页面可启用/停用/热重载插件，配置写入 `config.json`，无需重启应用 |
 | 通用插件框架 P1 | 外部插件可按原生 Cordis 插件加载，拥有完整 `ctx`；可贡献概览卡片、状态栏、命令、iframe 沙箱页面；主动事件/通知可实时刷新 UI；Electron 壳提供悬浮窗口/托盘；旧 worker cleaner 插件继续兼容 |
 | 插件包 v2 | 外部插件升级为「目录 + `plugin.json` 清单」：`apiVersion`/`engines` 兼容检查、权限清单、staging → 校验 → 原子落盘/回滚安装事务、包内 `client/` 页面经 `cordclean-plugin://` 协议加载；旧单文件插件继续兼容 |
@@ -36,7 +36,7 @@ pnpm start:desktop    # Electron 桌面应用
 | 扫描结果选择 v2 | 千条级结果按「分类 → 任务」聚合；安全项智能推荐，谨慎/高风险项显式确认；支持风险/大小/任务筛选、三态整组勾选、逐项明细 + 详情说明 + 打开位置、受保护只读视图、清理确认摘要 |
 | 双外壳 | 同一内核与界面，可运行在浏览器（HTTP + WebSocket）或 Electron（IPC）中 |
 | AI 顾问插件 | 把脱敏的本机画像交给 DeepSeek 等 OpenAI 兼容接口，产出结构化清理建议 |
-| AI 插件工坊 | 独立页面：生成原生 Cordis 通用插件（cleaner/widget/active/desktop），并**直接产出 v2 插件包**（清单 + 入口 + 可选 `client/` 页面 + 权限清单）；安装走 staging 校验、原子落盘与回滚；第三方依赖在 staging 内安装 `node_modules`（用户确认、禁用 lifecycle scripts）；生成后静态契约 + 语法校验，失败自动重试 |
+| AI 插件工坊（独立插件） | 独立页面 + 独立插件：生成原生 Cordis 通用插件（cleaner/widget/active/desktop），并**直接产出 v2 插件包**（清单 + 入口 + 可选 `client/` 页面 + 权限清单）；安装走 staging 校验、原子落盘与回滚；第三方依赖在 staging 内安装 `node_modules`（用户确认、禁用 lifecycle scripts）；生成后静态契约 + 语法校验，失败自动重试 |
 | 可观测 | 扫描/清理进度事件、结构化日志、清理历史、失败归因 |
 
 ## 2. 技术栈
@@ -44,9 +44,9 @@ pnpm start:desktop    # Electron 桌面应用
 - **内核**：Node.js 22+ / TypeScript / [Cordis](https://github.com/cordiverse/cordis) 4（`cordis@4.0.0-rc.12`）插件框架
 - **配置校验**：Schemastery（Cordis 生态的 schema 库）+ zod（RPC 参数校验）
 - **界面**：Vue 3 + Vite + Element Plus
-- **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 60 个方法）
+- **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 68 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（456 个用例 / 62 个文件）
+- **测试**：Vitest（459 个用例 / 63 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -60,7 +60,7 @@ pnpm start:desktop    # Electron 桌面应用
                             │ JSON-RPC │
 ┌───────────────────────────▼──────────▼───────────────────────────────┐
 │                     传输层 packages/host                             │
-│   api.ts：60 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
+│   api.ts：68 个 RPC 方法（与传输无关）   server.ts：静态资源 + WS      │
 │   Host/Origin/token 校验、CSP 注入、WS 1MB 上限、畸形 URL → 400       │
 └───────────────────────────┬──────────────────────────────────────────┘
                             │ 直接调用
@@ -262,7 +262,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 456 个用例 / 62 个文件
+pnpm test          # 459 个用例 / 63 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）

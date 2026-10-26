@@ -90,6 +90,15 @@ export const BUILTIN_MANIFEST: PluginManifestEntry[] = [
     load: () => import('@cordclean/plugin-registry'),
   },
   {
+    id: 'ai-workshop',
+    name: 'AI 插件工坊',
+    description: '独立插件：按需求生成 v2 插件包草稿；生成参数与 AI 清理顾问分开，复用其 API 连接',
+    category: 'ai',
+    version: '1.0.0',
+    defaultEnabled: false,
+    load: () => import('@cordclean/plugin-ai-workshop'),
+  },
+  {
     id: 'ai',
     name: 'AI 清理顾问',
     description: '调用 DeepSeek 等大模型 API，结合本机磁盘画像给出针对性的清理建议',

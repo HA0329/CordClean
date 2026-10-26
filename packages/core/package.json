@@ -21,6 +21,7 @@
     "@cordclean/plugin-leftovers": "workspace:*",
     "@cordclean/plugin-startup": "workspace:*",
     "@cordclean/plugin-registry": "workspace:*",
-    "@cordclean/plugin-ai": "workspace:*"
+    "@cordclean/plugin-ai": "workspace:*",
+    "@cordclean/plugin-ai-workshop": "workspace:*"
   }
 }

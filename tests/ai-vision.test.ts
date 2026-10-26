@@ -60,8 +60,12 @@ describe('Vision 图片输入', () => {
     expect(content[1]).toMatchObject({ type: 'image', source: { type: 'base64', media_type: 'image/png' } })
   })
 
-  it('responses 形态明确拒绝图片', () => {
-    expect(() => buildRequest(normalizeConfig({ apiKey: 'k', apiShape: 'responses' }), 'k', 's', 'u', undefined, image)).toThrow(/不支持图片/)
+  it('responses 形态使用 input_image 内容块（官方文档支持）', () => {
+    const req = buildRequest(normalizeConfig({ apiKey: 'k', apiShape: 'responses' }), 'k', 's', 'u', undefined, image)
+    const input = (req.body as any).input
+    expect(Array.isArray(input)).toBe(true)
+    expect(input[0].content[1]).toMatchObject({ type: 'input_image', detail: 'auto' })
+    expect(input[0].content[1].image_url).toContain('data:image/png;base64,')
   })
 
   it('analyze() 真正把截图与补充说明发给模型（服务层回归）', async () => {
@@ -94,6 +98,7 @@ describe('Vision 图片输入', () => {
       expect(capturedBody).toContain('data:image/png;base64,iVBORw0KGgo=')
       expect(capturedBody).toContain('image_url')
       expect(capturedBody).toContain('我的补充说明：保留剪辑素材缓存')
+      expect(capturedBody).toContain('附件截图')
     } finally {
       await app.dispose()
     }

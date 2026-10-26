@@ -262,19 +262,28 @@ export class AiService extends Service implements AiLike {
   }
 
   /** AI 插件工坊：生成原生 Cordis 通用插件草稿（生成后先过静态契约，失败自动带错误重试） */
-  async draftPlugin(requirement: string): Promise<AiPluginDraft> {
+  async draftPlugin(
+    requirement: string,
+    overrides: { model?: string; maxTokens?: number; retries?: number; systemPromptExtra?: string } = {},
+  ): Promise<AiPluginDraft> {
     const key = this.requireKey()
-    const base = this.rawConfig
+    const base = { ...this.rawConfig }
+    if (overrides.model) base.model = overrides.model
+    if (overrides.maxTokens && overrides.maxTokens > 0) base.maxTokens = Math.trunc(overrides.maxTokens)
+    const attempts = Math.max(1, Math.min(5, Math.trunc(overrides.retries ?? 2) + 1))
     let lastError = '生成失败'
     let feedback = ''
 
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < attempts; attempt++) {
       const maxTokens = Math.min(131_072, Math.max(32_768, base.maxTokens) * (attempt ? 2 : 1))
       const config = { ...base, maxTokens }
       const request = buildRequest(
         config,
         key,
-        PLUGIN_SYSTEM_PROMPT + '\n\n' + this.pluginProjectBrief(),
+        PLUGIN_SYSTEM_PROMPT +
+          '\n\n' +
+          this.pluginProjectBrief() +
+          (overrides.systemPromptExtra ? '\n\n' + overrides.systemPromptExtra : ''),
         PLUGIN_USER_PREFIX + requirement + feedback,
         [PLUGIN_TOOL],
       )
@@ -570,8 +579,18 @@ export class AiService extends Service implements AiLike {
     const key = this.requireKey()
     if (options.image) {
       const model = this.modelCache?.models?.find((item) => item.id === this.rawConfig.model)
-      const supports = model ? (model.inputModalities ?? []).includes('image') : this.rawConfig.model.startsWith('deepseek-flash')
-      if (!supports) throw new Error('当前模型不支持图片输入（deepseek-flash 支持，v4-pro 不支持）')
+      const declared = (model?.inputModalities ?? []) as string[]
+      const modelId = String(this.rawConfig.model).toLowerCase()
+      // 官方文档：deepseek-flash 支持 Vision，v4-pro 不支持；旧别名 deepseek-v4-flash / ...-vision-exp 仍被 Flash 承接
+      const knownVision =
+        modelId === 'deepseek-flash' ||
+        modelId === 'deepseek-v4-flash' ||
+        modelId === 'deepseek-v4-flash-vision-exp' ||
+        modelId.includes('vision')
+      const supports = declared.length > 0 ? declared.includes('image') : knownVision
+      if (!supports) {
+        throw new Error('当前模型不支持图片输入：DeepSeek 官方仅 deepseek-flash 支持视觉，deepseek-v4-pro 不支持；自定义接口请在 /models 中声明 image 能力')
+      }
       if (options.image.data.length > 4_000_000) throw new Error('图片过大（base64 超过 4MB），请压缩后再试')
     }
     const limits = this.modelLimits()
@@ -603,11 +622,14 @@ export class AiService extends Service implements AiLike {
       ? '\n\n补充上下文（脱敏摘要）：\n' +
         contextSections.map((section) => `【${section.title}】\n` + section.lines.join('\n')).join('\n\n')
       : ''
+    const imageHint = options.image
+      ? '\\n\\n【附件截图】用户随消息附带了一张截图（已在图片内容块中）。请先说明你从截图中实际看到的关键内容（界面、文字或报错），再结合截图给出清理建议；不要忽略图片。'
+      : ''
     const request = buildRequest(
       config,
       key,
       buildSystemPrompt(config),
-      buildUserPrompt(profile, options.extraContext) + contextText + candidateHint + rootHint + SELECTION_HINT + ROOT_HINT + RULE_HINT,
+      buildUserPrompt(profile, options.extraContext) + contextText + candidateHint + rootHint + SELECTION_HINT + ROOT_HINT + RULE_HINT + imageHint,
       undefined,
       options.image,
     )

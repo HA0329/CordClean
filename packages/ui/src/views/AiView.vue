@@ -904,8 +904,8 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <div class="cc-card">
         <div class="cc-card-title"><h3>🧪 AI 插件工坊</h3><span class="cc-faint">已独立为单独页面</span></div>
         <p class="cc-hint">
-          生成原生 Cordis 插件、产出 v2 插件包（清单 + 入口 + 可选 client 页面）与安装审阅已移到「AI 插件工坊」页面；
-          本页只负责清理建议分析。两页都可以直接使用，不需要先分析。
+          生成原生 Cordis 插件、产出 v2 插件包（清单 + 入口 + 可选 client 页面）与安装审阅已拆到独立的
+          「AI 插件工坊」页面和插件（独立的生成参数，需要在插件页启用）；本页只负责清理建议分析。
         </p>
         <el-button type="primary" plain @click="state.page = 'workshop'">前往 AI 插件工坊</el-button>
       </div>

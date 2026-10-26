@@ -50,7 +50,7 @@
           <tr><td><b>删除入口</b></td><td>分散在各功能模块，谁都能调用删除</td><td>唯一入口：补偿链签发 <code>CleanTicket</code>，执行器逐项复核</td></tr>
           <tr><td><b>安全边界</b></td><td>黑名单：不在名单里就允许删，信任插件</td><td>白名单辖区：插件先声明范围，未声明路径一律拒绝</td></tr>
           <tr><td><b>AI 定位</b></td><td>聊天框或营销入口，输出与操作脱节</td><td>只给建议：脱敏画像、可试运行、用户勾选后才进入安全链</td></tr>
-          <tr><td><b>可裁剪性</b></td><td>整套安装，功能耦合</td><td>11 个插件独立启停、按需懒加载，模块可裁剪</td></tr>
+          <tr><td><b>可裁剪性</b></td><td>整套安装，功能耦合</td><td>12 个插件独立启停、按需懒加载，模块可裁剪</td></tr>
         </tbody>
       </table>
     </div>
@@ -227,7 +227,7 @@ const fiber  = ctx.plugin(mod, config)
 await fiber
 const after  = new Set(ctx.cleaner.list().map(t =&gt; t.id))
 record.taskIds = [...after].filter(id =&gt; !before.has(id))</code></pre>
-        <div class="card-note">代价：插件必须顺序加载（并发会污染差分结果）。实测 11 个插件约 18 ms，可接受。</div>
+        <div class="card-note">代价：插件必须顺序加载（并发会污染差分结果）。实测 12 个插件约 18 ms，可接受。</div>
       </div>
       <div class="card">
         <div class="card-kicker">扩展方式</div>

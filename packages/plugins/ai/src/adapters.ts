@@ -118,11 +118,26 @@ export function buildRequest(config: AiConfig, apiKey: string, systemPrompt: str
   }
 
   if (image) {
-    if (config.apiShape === 'responses') throw new Error('当前接口形态暂不支持图片输入，请切换到 chat 或 messages')
-    const messages = (body as any).messages
-    const last = messages?.[messages.length - 1]
-    if (!last) throw new Error('请求体缺少 messages')
-    if (config.apiShape === 'chat') {
+    // Responses API 用 input_image 内容块（DeepSeek 官方文档已支持）；chat / messages 用各自格式
+    if (config.apiShape === 'responses') {
+      body.input = [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: userPrompt },
+            {
+              type: 'input_image',
+              image_url: 'data:' + image.mime + ';base64,' + image.data,
+              detail: 'auto',
+            },
+          ],
+        },
+      ]
+    } else {
+      const messages = (body as any).messages
+      const last = messages?.[messages.length - 1]
+      if (!last) throw new Error('请求体缺少 messages')
+      if (config.apiShape === 'chat') {
       last.content = [
         { type: 'text', text: String(last.content ?? '') },
         { type: 'image_url', image_url: { url: 'data:' + image.mime + ';base64,' + image.data } },
@@ -131,6 +146,7 @@ export function buildRequest(config: AiConfig, apiKey: string, systemPrompt: str
       const blocks = Array.isArray(last.content) ? last.content : [{ type: 'text', text: String(last.content ?? '') }]
       blocks.push({ type: 'image', source: { type: 'base64', media_type: image.mime, data: image.data } })
       last.content = blocks
+      }
     }
   }
 

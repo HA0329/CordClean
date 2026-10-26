@@ -5,7 +5,7 @@ import { folderSize } from '@cordclean/utils'
 import { spawn } from 'node:child_process'
 import { execFile } from 'node:child_process'
 import os from 'node:os'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 /**
  * RPC 方法实现。
  *
@@ -88,6 +88,15 @@ export type HandlerMap = { [M in ApiMethod]: (params: ApiParams<M>) => Promise<A
 /** 构造 RPC 处理方法表 */
 export function createHandlers(api: ApiContext): HandlerMap {
   initDiagnostics(api.dataDir)
+  // 源码按钮：优先返回可打开/可读取的源码文件；只有目录时才退回目录
+  const resolveSourceFile = (id: string): string => {
+    const source = ctx.plugins.sourcePath(id)
+    if (!source) throw new Error('找不到该插件的源码路径（可能来自打包文件）')
+    const candidates = /\.(mjs|js|ts)$/i.test(source)
+      ? [source]
+      : [path.join(source, 'src', 'index.ts'), path.join(source, 'index.mjs'), path.join(source, 'index.js'), source]
+    return candidates.find((item) => existsSync(item)) ?? source
+  }
   // 外部插件不是跨进程持久加载的旧行为已修复：settings 里记录了 externalPath，
   // 启动加载后只清理真正没有持久化记录的工坊残留。
   const persistedExternalPaths = Object.values(api.ctx.settings.get().plugins ?? {})
@@ -154,15 +163,19 @@ export function createHandlers(api: ApiContext): HandlerMap {
       const child = spawn(command, [target], { detached: true, stdio: 'ignore', windowsHide: true })
       child.unref()
     },
-    'plugins/source': ({ id }) => {
-      const source = ctx.plugins.sourcePath(id)
-      if (!source) throw new Error('找不到该插件的源码路径（可能来自打包文件）')
-      // 优先返回可打开的源码文件；只有目录时才交给资源管理器
-      const candidates = /\.(mjs|js|ts)$/i.test(source)
-        ? [source]
-        : [path.join(source, 'src', 'index.ts'), path.join(source, 'index.mjs'), path.join(source, 'index.js'), source]
-      const target = candidates.find((item) => existsSync(item)) ?? source
-      return { path: target }
+    'plugins/source': ({ id }) => ({ path: resolveSourceFile(id) }),
+    'plugins/source-content': ({ id }) => {
+      const target = resolveSourceFile(id)
+      const info = statSync(target)
+      if (!info.isFile()) throw new Error('该插件源码是目录，请在资源管理器中打开')
+      const limit = 512 * 1024
+      const raw = readFileSync(target)
+      return {
+        path: target,
+        content: raw.subarray(0, limit).toString('utf8'),
+        bytes: raw.length,
+        truncated: raw.length > limit,
+      }
     },
     'app/logs/recent': ({ limit }) => ({ lines: recentLogs(limit ?? 200) }),
     'app/logs/open': async () => {
@@ -387,8 +400,36 @@ export function createHandlers(api: ApiContext): HandlerMap {
     'ai/models': async ({ refresh }) => requireAi().models({ refresh }),
     'ai/probe': () => requireAi().probe(),
     'ai/plugin/draft': async ({ requirement }) => {
+      // 兼容旧入口：优先走独立的「AI 插件工坊」插件
+      const workshop = (ctx as unknown as { aiWorkshop?: { draftPlugin?(text: string): Promise<any> } }).aiWorkshop
+      if (workshop?.draftPlugin) return workshop.draftPlugin(String(requirement ?? ''))
       if (!ctx.ai?.draftPlugin) throw new Error('AI 插件未启用或版本过旧')
       return ctx.ai.draftPlugin(String(requirement ?? ''))
+    },
+    'ai/workshop/status': () => {
+      const workshop = (
+        ctx as unknown as { aiWorkshop?: { status?(): import('@cordclean/shared').AiWorkshopStatus } }
+      ).aiWorkshop
+      if (!workshop?.status) {
+        return {
+          available: false,
+          configured: false,
+          model: '',
+          aiModel: '',
+          inheritsModel: true,
+          maxTokens: 32_768,
+          retries: 2,
+          systemPromptExtra: '',
+        }
+      }
+      return workshop.status()
+    },
+    'ai/workshop/draft': async ({ requirement }) => {
+      const workshop = (ctx as unknown as { aiWorkshop?: { draftPlugin?(text: string): Promise<any> } }).aiWorkshop
+      if (!workshop?.draftPlugin) {
+        throw new Error('「AI 插件工坊」插件未启用：请在插件页启用它（需要同时启用「AI 清理顾问」）')
+      }
+      return workshop.draftPlugin(String(requirement ?? ''))
     },
     'ai/plugin/validate': async ({ code, dependencies, native, format, manifest, files }) => {
       const wantsPackage = format === 'package' || Boolean(manifest) || Boolean(files?.length)

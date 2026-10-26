@@ -10,6 +10,7 @@ import type {
   AiModelInfo,
   AiPluginDraft,
   AiPluginFile,
+  AiWorkshopStatus,
   AiProbeResult,
   AiRuntimeStatus,
   AppInfo,
@@ -539,6 +540,16 @@ export async function draftAiPlugin(requirement: string): Promise<AiPluginDraft>
   return requireTransport().request('ai/plugin/draft', { requirement })
 }
 
+/** AI 插件工坊（独立插件）运行时状态；插件未启用时 available=false */
+export async function fetchAiWorkshopStatus(): Promise<AiWorkshopStatus> {
+  return requireTransport().request('ai/workshop/status', undefined)
+}
+
+/** 通过独立插件生成 v2 插件包草稿 */
+export async function draftAiWorkshopPlugin(requirement: string): Promise<AiPluginDraft> {
+  return requireTransport().request('ai/workshop/draft', { requirement })
+}
+
 export async function validateAiPlugin(
   code: string,
   dependencies: Record<string, string> = {},
@@ -636,6 +647,12 @@ export async function runSchedulerNow(planId?: string): Promise<void> {
 export async function pluginSource(id: string): Promise<string> {
   const result = await requireTransport().request('plugins/source', { id })
   return result.path
+}
+
+export async function fetchPluginSourceContent(
+  id: string,
+): Promise<{ path: string; content: string; bytes: number; truncated: boolean }> {
+  return requireTransport().request('plugins/source-content', { id })
 }
 
 export async function openEditor(target: string): Promise<void> {

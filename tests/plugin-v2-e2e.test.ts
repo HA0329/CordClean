@@ -124,6 +124,10 @@ describe('插件系统 v2 端到端', () => {
       // 源码按钮必须拿到可打开的文件，而不是包目录
       const sourceInfo = await rpc('plugins/source', { id: 'external:e2e-demo' })
       expect(sourceInfo.result.path.endsWith('index.mjs')).toBe(true)
+      const sourceContent = await rpc('plugins/source-content', { id: 'external:e2e-demo' })
+      expect(sourceContent.result.path).toBe(sourceInfo.result.path)
+      expect(sourceContent.result.content).toContain('e2e-demo-task')
+      expect(sourceContent.result.truncated).toBe(false)
 
       const pageUrl = await rpc('plugins/client-url', { id: 'external:e2e-demo' })
       expect(pageUrl.result.url).toBe('/plugin-assets/e2e-demo/index.html')
@@ -235,13 +239,13 @@ describe('插件系统 v2 端到端', () => {
     }
   })
 
-  it('内置 11 个插件正常加载（升级不破坏内置插件）', async () => {
+  it('内置 12 个插件正常加载（升级不破坏内置插件）', async () => {
     const dataDir = path.join(root, 'builtin', 'data')
     mkdirSync(dataDir, { recursive: true })
     const app = await createApp({ dataDir, logger: false })
     try {
       const plugins = app.ctx.plugins.list()
-      expect(plugins.length).toBe(11)
+      expect(plugins.length).toBe(12)
       const builtinSource = app.ctx.plugins.sourcePath('rule-pack')
       expect(builtinSource?.endsWith('rule-pack')).toBe(true)
       expect(plugins.filter((item) => item.status === 'error')).toEqual([])
