@@ -62,6 +62,38 @@ interface HotState {
 /** 8.3 短名解析器（可注入，便于测试） */
 export type ShortNameResolver = (paths: string[]) => string[]
 
+/**
+ * 按「路径段整体」匹配的保护目录名（对齐 PC-Cleaner v0.9.11）。
+ *
+ * 只匹配完整目录名，绝不做子串匹配：
+ * - `wechat files` / `tencent files`：微信 3.x / QQ 聊天数据，绝不自动删除；
+ * - `weixin` / `weixinshuju` / `xwechat_files`：微信 4.x 数据目录常见名；
+ * - `.git` / `.venv` / `.idea` / `.vscode`：版本库与开发环境，删除不可逆。
+ *
+ * 注意不能写成子串 `wechat`：`%APPDATA%\Tencent\WeChat\Logs` 是
+ * rules.json 中有意清理的可重建内容，必须继续允许清理。
+ */
+const PROTECTED_COMPONENT_NAMES = new Set([
+  'wechat files',
+  'tencent files',
+  'weixin',
+  'weixinshuju',
+  'xwechat_files',
+  '.git',
+  '.venv',
+  '.idea',
+  '.vscode',
+])
+
+/** 返回命中的保护目录段（无则 undefined） */
+function protectedComponentOf(path: string): string | undefined {
+  for (const segment of path.toLowerCase().split('\\')) {
+    const name = segment.replace(/[. ]+$/, '')
+    if (PROTECTED_COMPONENT_NAMES.has(name)) return name
+  }
+  return undefined
+}
+
 /* ------------------------------------------------------------------ */
 /* 纯函数热路径                                                        */
 /* ------------------------------------------------------------------ */
@@ -128,6 +160,8 @@ function checkClearPath(hot: HotState, target: string): PathPolicyCheck {
   if (!isAbsolutePath(normalized)) return { allowed: false, reason: 'outside', detail: '非绝对路径' }
   const path = canonicalizePath(normalized)
   if (/^[a-zA-Z]:\\?$/.test(path)) return { allowed: false, reason: 'protected', detail: '驱动器根目录' }
+  const blockedComponent = protectedComponentOf(path)
+  if (blockedComponent) return { allowed: false, reason: 'protected', detail: `受保护目录名：${blockedComponent}` }
   const key = path.toLowerCase()
   const root = clearRootOf(hot, key)
   if (!root) return { allowed: false, reason: 'outside', detail: '不在清空白名单内' }
@@ -153,6 +187,10 @@ function checkPath(hot: HotState, target: string): PathPolicyCheck {
   const protectedRoot = findProtectedKey(hot, key)
   if (protectedRoot) {
     return { allowed: false, reason: 'protected', detail: protectedRoot }
+  }
+  const blockedComponent = protectedComponentOf(path)
+  if (blockedComponent) {
+    return { allowed: false, reason: 'protected', detail: `受保护目录名：${blockedComponent}` }
   }
   const name = basename(path).toLowerCase()
   if (hot.deniedNames.has(name)) {
@@ -251,11 +289,15 @@ export class PathPolicyService extends Service implements PathPolicyLike {
 
   readonly check = (target: string): PathPolicyCheck => checkPath(this.hot, target)
 
-  readonly isProtected = (target: string): boolean =>
-    findProtectedKey(this.hot, canonicalizePath(target).toLowerCase()) !== undefined
+  readonly isProtected = (target: string): boolean => {
+    const path = canonicalizePath(target)
+    return protectedComponentOf(path) !== undefined || findProtectedKey(this.hot, path.toLowerCase()) !== undefined
+  }
 
-  readonly containsProtected = (target: string): boolean =>
-    findProtectedKey(this.hot, canonicalizePath(target).toLowerCase()) !== undefined
+  readonly containsProtected = (target: string): boolean => {
+    const path = canonicalizePath(target)
+    return protectedComponentOf(path) !== undefined || findProtectedKey(this.hot, path.toLowerCase()) !== undefined
+  }
 
   /** 找出路径命中的「允许根」（用于删除前检查链接祖先） */
   readonly rootOf = (target: string): string | undefined =>
@@ -289,6 +331,11 @@ export class PathPolicyService extends Service implements PathPolicyLike {
       return () => {}
     }
     const keyBase = key.replace(/\\+$/, '')
+    const blockedComponent = protectedComponentOf(normalized)
+    if (blockedComponent) {
+      this.ctx.logger?.warn?.('拒绝把保护目录名登记为清空白名单（来源 %s）：%s', source ?? 'unknown', target)
+      return () => {}
+    }
     for (const root of this.hot.protectedRoots) {
       const rootKey = pathKey(root).replace(/\\+$/, '')
       if (!rootKey) continue

@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.3`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；65 个测试文件 / 473 个用例。
+当前版本 `0.6.4`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；65 个测试文件 / 474 个用例。
 
 更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md)
 
@@ -49,7 +49,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 69 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（473 个用例 / 65 个文件）
+- **测试**：Vitest（474 个用例 / 65 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -214,8 +214,8 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 
 `rule-pack` 插件把 `packages/plugins/rule-pack/rules/` 下的规则自动变成清理任务：
 
-- **来源**：从 PC-Cleaner 的 `rules.json` 导入并持续扩充，两套数据文件：
-  - `catalog.json`：**28 个分类 / 271 条规则 / 284 个候选根**（原始导入）；
+- **来源**：从 [PC-Cleaner](https://github.com/HA0329/PC-Cleaner) **v0.9.11** 的 `rules.json`（规则数据版本 0.9.9）导入并持续扩充；两套数据文件：
+  - `catalog.json`：**28 个分类 / 271 条规则 / 284 个候选根**（原始导入；上游 `broken_shortcuts` 由 `shortcuts` 插件实现、`dev_purge` 依赖 `<CWD>` 语义未导入）；
   - `extra.json`：**9 个分类 / 130 条规则**（后续扩充）；
   - 合计 37 类 / 401 条 / 414 个候选根（同一目标可能被多个分类引用）。
 - **默认装载**：非高风险、非 `deepOnly` 的规则默认生效，约 **31 类 / 312 条**；高风险分类（浏览器密码/Cookie、Windows.old、Downloads 大文件等）
@@ -228,6 +228,8 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
   批次1 起 `addClearRoot` 会拒绝盘符根、保护根及其祖先，且外部插件不再获得清空白名单；
 - **新增清理域**：在 `catalog.json` / `extra.json` 加一段 JSON，或写进用户规则（`settings.rules.custom`），
   重启/热重载插件即可生效，内核与其它插件零改动。
+
+PC-Cleaner v0.9.11 的即时通讯数据保护（`WeChat Files` / `Tencent Files` 等按完整路径段拦截）已同步到路径策略，详见 [规则库同步验收](docs/verification/pc-cleaner-rules-sync-2026-10-28.md)。
 
 规则校验与覆盖率由 `scripts/audit-rules.ts` 输出到 [规则库审计报告](docs/rules-report.md)：
 结构错误、暂未实现的类型、死目标、重复目标、被路径策略拦截的目标都会列出来。
@@ -265,7 +267,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 473 个用例 / 65 个文件
+pnpm test          # 474 个用例 / 65 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）
@@ -351,7 +353,9 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [插件开发规范](docs/plugin-authoring.md)
 - [v2 插件包规范](docs/plugin-package-v2.md) —— 目录 + `plugin.json`、权限与兼容检查、安装事务、`client/` 自定义协议、AI 工坊产出 v2 包
 - [更新日志](CHANGELOG.md) —— 每个版本的变更摘要与更新说明入口
+- [PC-Cleaner 规则库同步验收](docs/verification/pc-cleaner-rules-sync-2026-10-28.md) —— 上游 0.9.11 对比、有意不导入项与保护网更新
 - [发布流程](docs/release-process.md) —— 每次更新必须写说明、打 tag、确认 CI 的清单
+- [v0.6.4 发布说明](docs/release-notes-v0.6.4.md) —— PC-Cleaner 规则库同步、即时通讯/开发环境保护网
 - [v0.6.3 发布说明](docs/release-notes-v0.6.3.md) —— Phase 3：重复日志合并、插件级日志级别、结构化诊断导出
 - [v0.6.2 发布说明](docs/release-notes-v0.6.2.md) —— Phase 2：结构化 JSONL、运行时日志配置、实时 tail 与 requestId
 - [v0.6.1 发布说明](docs/release-notes-v0.6.1.md) —— 统一日志系统、RPC 降噪、日志查看器与性能基准

@@ -77,6 +77,30 @@ describe('路径策略（安全阀）', () => {
     expect(result.allowed).toBe(false)
   })
 
+  it('即时通讯/开发环境保护名按完整路径段拦截，且不误伤 WeChat 缓存', () => {
+    const dir = path.join(sandbox, 'protected-names')
+    mkdirSync(dir, { recursive: true })
+    const dispose = app.ctx.pathPolicy.addRoot(dir)
+    const protectedTargets = [
+      path.join(dir, 'WeChat Files', 'a', 'msg.db'),
+      path.join(dir, 'Tencent Files', 'b', 'chat.db'),
+      path.join(dir, 'xwechat_files', 'c', 'msg.db'),
+      path.join(dir, 'repo', '.git', 'config'),
+      path.join(dir, 'project', '.venv', 'pyvenv.cfg'),
+      path.join(dir, 'project', '.idea', 'workspace.xml'),
+      path.join(dir, 'project', '.vscode', 'settings.json'),
+    ]
+    for (const target of protectedTargets) {
+      const result = app.ctx.pathPolicy.check(target)
+      expect(result.allowed).toBe(false)
+      expect(result.reason).toBe('protected')
+    }
+    // 不能过度封锁：WeChat 的可重建日志/临时目录仍允许清理
+    expect(app.ctx.pathPolicy.check(path.join(dir, 'WeChat', 'Logs', 'a.log')).allowed).toBe(true)
+    expect(app.ctx.pathPolicy.check(path.join(dir, 'WeChat', 'Temp', 'b.tmp')).allowed).toBe(true)
+    dispose()
+  })
+
   it('包含受保护子目录的祖先目录被识别', () => {
     const windows = app.ctx.system.env.windowsDir
     expect(app.ctx.pathPolicy.containsProtected(windows)).toBe(true)

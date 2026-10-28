@@ -4,6 +4,18 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.4 — 2026-10-28
+
+### PC-Cleaner 规则库同步
+
+- 上游最新 **v0.9.11**：重新导入 `rules.json` 并与本地逐条对比，规则数据 28 分类 / 271 条完全一致；
+- 上游多出的 `broken_shortcuts` 由 `shortcuts` 插件实现、`dev_purge`（依赖 `<CWD>`）有意不导入；
+- 同步 v0.9.11 安全保护网：`wechat files` / `tencent files` / `weixin` / `weixinshuju` / `xwechat_files`、`.git` / `.venv` / `.idea` / `.vscode` 按完整路径段拦截；
+- 保持 `%APPDATA%\Tencent\WeChat\Logs` / `Temp` 可清理，新增保护测试；
+- 规则审计：37 分类 / 401 条 / 414 根，0 错误；全量测试 65 文件 / 474 用例。
+
+详细说明：[docs/release-notes-v0.6.4.md](docs/release-notes-v0.6.4.md) · [规则同步验收](docs/verification/pc-cleaner-rules-sync-2026-10-28.md)
+
 ## v0.6.3 — 2026-10-26
 
 ### 日志系统 Phase 3

@@ -1,20 +1,20 @@
 # 规则库审计报告
 
-- 来源：catalog.json（PC-Cleaner 0.9.9（导入时间 2026-10-18T07:10:54.078Z）） + extra.json（手工补充（2026-10））
-- 生成时间：2026-10-20T07:00:01.649Z
+- 来源：catalog.json（PC-Cleaner 0.9.11（rules.json version 0.9.9；同步 2026-10-28）） + extra.json（手工补充（2026-10））
+- 生成时间：2026-10-28T06:19:49.975Z
 - 规模：37 个分类 / 401 条规则 / 414 个候选根目录
 - 结构校验：0 个错误，0 个提示；未实现的规则类型 0 条（无，全部规则类型均已实现）
-- 本机可命中的根目录：147 个；登记辖区后仍被路径策略拦截：18 个
+- 本机可命中的根目录：143 个；登记辖区后仍被路径策略拦截：18 个
 
 ## 分类明细
 
 | 分类 | 风险 | 界面归类 | 规则数 | 候选根 | 本机存在 | 策略拦截 | 策略放行 | 未实现 |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 开发工具缓存（dev_caches） | caution | dev | 33 | 33 | 13 | 2 | 11 | 0 |
-| 浏览器/网页缓存（web_cache） | safe | browser | 28 | 28 | 14 | 0 | 14 | 0 |
-| 系统日志与诊断残留（system_logs） | safe | system | 28 | 28 | 23 | 4 | 19 | 0 |
+| 开发工具缓存（dev_caches） | caution | dev | 33 | 33 | 11 | 2 | 9 | 0 |
+| 浏览器/网页缓存（web_cache） | safe | browser | 28 | 28 | 13 | 0 | 13 | 0 |
+| 系统日志与诊断残留（system_logs） | safe | system | 28 | 28 | 22 | 4 | 18 | 0 |
 | 浏览器站点数据(高风险)（browser_data） | risky | privacy | 27 | 27 | 9 | 0 | 9 | 0 |
-| 更多开发工具缓存（extra_dev） | safe | dev | 20 | 20 | 3 | 0 | 3 | 0 |
+| 更多开发工具缓存（extra_dev） | safe | dev | 20 | 20 | 1 | 0 | 1 | 0 |
 | 系统深度清理(需管理员)（system_admin） | caution | system | 17 | 17 | 14 | 7 | 7 | 0 |
 | 微信运行缓存（wechat_cache） | safe | apps | 16 | 22 | 14 | 0 | 14 | 0 |
 | 更多游戏平台缓存（extra_games） | safe | apps | 15 | 15 | 0 | 0 | 0 | 0 |
@@ -26,8 +26,8 @@
 | 常用工具与显卡缓存（extra_tools） | safe | apps | 13 | 13 | 1 | 0 | 1 | 0 |
 | 浏览器数据库压缩（database_compact） | safe | browser | 12 | 12 | 5 | 0 | 5 | 0 |
 | 更多浏览器缓存（extra_browsers） | safe | browser | 12 | 12 | 1 | 0 | 1 | 0 |
-| 游戏平台缓存（game_caches） | caution | apps | 10 | 15 | 2 | 0 | 2 | 0 |
-| 更多系统缓存（extra_windows） | safe | system | 10 | 10 | 6 | 0 | 6 | 0 |
+| 游戏平台缓存（game_caches） | caution | apps | 10 | 15 | 1 | 0 | 1 | 0 |
+| 更多系统缓存（extra_windows） | safe | system | 10 | 10 | 8 | 0 | 8 | 0 |
 | 直播伴侣/电竞平台缓存（live_stream_cache） | caution | apps | 9 | 9 | 5 | 0 | 5 | 0 |
 | 浏览器隐私数据(高风险)（browser_privacy） | risky | privacy | 9 | 9 | 3 | 0 | 3 | 0 |
 | 系统临时文件（system_temp） | safe | system | 8 | 8 | 5 | 0 | 5 | 0 |
@@ -35,7 +35,7 @@
 | GPU 着色器缓存（gpu_caches） | safe | system | 7 | 7 | 3 | 0 | 3 | 0 |
 | 游戏运行时缓存（game_runtime_cache） | caution | apps | 6 | 6 | 1 | 0 | 1 | 0 |
 | 云盘与商店应用缓存（cloud_app_hidden） | safe | apps | 5 | 5 | 2 | 0 | 2 | 0 |
-| 崩溃上报与遥测数据（crash_telemetry） | safe | system | 5 | 5 | 1 | 0 | 1 | 0 |
+| 崩溃上报与遥测数据（crash_telemetry） | safe | system | 5 | 5 | 2 | 0 | 2 | 0 |
 | 通信工具缓存（comm_caches） | safe | apps | 4 | 4 | 0 | 0 | 0 | 0 |
 | Java/远程桌面/字体缓存（java_rdp_legacy） | safe | system | 4 | 4 | 0 | 0 | 0 | 0 |
 | NVIDIA 应用缓存（nvidia_app_cache） | safe | system | 3 | 3 | 3 | 0 | 3 | 0 |

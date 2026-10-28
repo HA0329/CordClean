@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedFrom": "PC-Cleaner 0.9.9（导入时间 2026-10-18T07:10:54.078Z）",
+  "generatedFrom": "PC-Cleaner 0.9.11（rules.json version 0.9.9；同步 2026-10-28）",
   "description": "PC Junk Cleaner 内置清理规则（基于本机实测 + BleachBit/Dism++ 吸收扩充）。v0.9.3 安全加固：删除 clear_dir %LOCALAPPDATA%/npm-cache 父规则（它会连带清空正在运行的 npx/AI 工具，改为只清 _npx/_cacache/_logs）；删除微信 3.x 数据目录、ProgramData/Package Cache、WinSxS、$Recycle.Bin、System32/config/systemprofile 等不可逆或不受支持的规则；新增 ALLOWED_CLEAR_UNDER_PROTECTED（%WINDIR%/System32/LogFiles 与 %WINDIR%/System32/winevt/Logs 仅允许清空内容，根目录不可删）；缓存类规则批量加 skip_if_in_use（被运行中进程占用时跳过）；find_dirs 一律显式 max_depth；chkdsk found.* 由 delete 改为 clear。v0.9.2 增强（本机实测校准）：微信 4.x 补齐 xplugin 插件模块（本机 636MB）与 radium 小程序容器缓存（本机 173MB）、网络缓存通配 net_*、3.x 遗留日志；开发缓存补齐 npm _npx（本机 212MB）/ _cacache / _logs、corepack、各盘根 pnpm store、Maven 仓库、VS Code 日志、JetBrains 日志；新增 system_logs 分类（DISM/CBS/waasmedic/SIH/NetSetup 日志、System32\\LogFiles、setupapi/setuperr 安装日志、USOShared/USOPrivate 更新状态、传递优化缓存、Panther、security\\logs 等）；直播伴侣补齐 perfectworldarena Partitions 与日志；Steam 着色器缓存加规则级 max_depth 避免遍历上百 GB 游戏目录。v0.9.1：所有规则改用标准环境变量/应用默认位置表达，跨机器、跨用户皆可用；补充微信 4.x 升级包与日志缓存、NVIDIA App/Overlay 界面缓存、WebView2 嵌入式浏览器缓存、本地游戏/直播伴侣缓存与 LocalLow GPU 缓存。v0.9.0：BleachBit 浏览器站点数据（DOM/本地存储、会话、站点偏好、登录/表单数据、搜索引擎、同步数据）、浏览器数据库压缩（compact_db，VACUUM 释放碎片不删数据）、Dism++ 空间回收补充（Windows 事件日志、崩溃内存转储 MEMORY.DMP、.NET 原生映像缓存）。 v0.9.9 新增：broken_shortcuts（失效快捷方式 —— 纯 Python 解析 .lnk，只清「目标所在卷可访问但目标确实不存在」的死链；离线盘/移动盘/网络共享/URL/系统命名空间一律不动，Startup 默认排除）与 usage_traces（使用痕迹 —— 最近文档、跳转列表、PowerShell 命令历史；同时把 Recent 从 system_temp 移出，不再被 safe 分类静默清空）。分类数 29、目标数 276。",
   "categories": [
     {
@@ -3831,5 +3831,6 @@
         }
       ]
     }
-  ]
+  ],
+  "importNotes": "broken_shortcuts 由 shortcuts 插件实现；dev_purge 依赖 <CWD> 语义，桌面工具不导入；其余规则与上游 rules.json 一致。"
 }
