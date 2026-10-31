@@ -6,7 +6,7 @@
 
 当前版本 `0.6.9`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；67 个测试文件 / 487 个用例。
 
-更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md)
+更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md) · 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md) · 安全政策：[SECURITY.md](SECURITY.md)
 
 ## 快速开始
 
