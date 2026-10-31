@@ -355,6 +355,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [更新日志](CHANGELOG.md) —— 每个版本的变更摘要与更新说明入口
 - [PC-Cleaner 规则库同步验收](docs/verification/pc-cleaner-rules-sync-2026-10-28.md) —— 上游 0.9.11 对比、有意不导入项与保护网更新
 - [真实用户走查（2026-10-31）](docs/verification/usability-walkthrough-2026-10-31.md) —— 全新配置下的扫描/选择/预演/清理/撤销/日志真实体验与问题清单
+- [AI 建议与插件工坊深度验收（2026-10-31）](docs/verification/ai-workshop-deep-test-2026-10-31.md) —— 真实模型分析/直答/截图、工坊生成与安装、客户端页面 bridge 验收
 - [发布流程](docs/release-process.md) —— 每次更新必须写说明、打 tag、确认 CI 的清单
 - [v0.6.7 发布说明](docs/release-notes-v0.6.7.md) —— %TEMP% 逐条拆分、任务级批量操作
 - [v0.6.6 发布说明](docs/release-notes-v0.6.6.md) —— P2 体验修复：数字对账/任务筛选/历史明细/AI 入口/日志日期
