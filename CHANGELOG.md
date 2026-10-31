@@ -4,6 +4,20 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.6 — 2026-10-31
+
+### 真实用户走查 P2 修复
+
+- 结果区数字对账（发现 = 可清理 + 受保护；可清理 = 推荐 + 待确认）；
+- Web 外壳不再误显示 Electron Node；
+- 清理能力区支持任务搜索/风险筛选，任务列表限高滚动；
+- 历史记录支持展开查看回收站/隔离区/消失/跳过/失败明细；
+- AI 未配置 Key 时增加「填写 API Key」入口；
+- 日志时间带日期（MM-DD HH:mm:ss）；
+- 全量 65 个文件 / 475 个用例通过；P2 复核见 [走查报告](docs/verification/usability-walkthrough-2026-10-31.md)。
+
+详细说明：[docs/release-notes-v0.6.6.md](docs/release-notes-v0.6.6.md)
+
 ## v0.6.5 — 2026-10-31
 
 ### 真实用户走查 P1 修复

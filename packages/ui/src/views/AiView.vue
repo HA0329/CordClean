@@ -704,6 +704,13 @@ async function applyAiSelection() {
   }
 }
 
+function focusApiKey(): void {
+  const field = document.getElementById('ai-api-key')
+  field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const input = field?.querySelector('input')
+  if (input instanceof HTMLInputElement) input.focus()
+}
+
 const shapeLabel = computed(() => SHAPES.find((item) => item.value === form.apiShape)?.value ?? form.apiShape)
 const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.effort)?.value ?? form.effort)
 </script>
@@ -720,7 +727,13 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <el-button :disabled="!available" @click="loadEgress">外发记录</el-button>
         <el-button v-if="running" type="danger" plain @click="cancelAi()">取消生成</el-button>
         <el-button :loading="probing" :disabled="!available || !configured" @click="doProbe">测试连接</el-button>
-        <el-button type="primary" :loading="running" :disabled="!available || !configured" @click="run">
+        <el-button
+          type="primary"
+          :loading="running"
+          :disabled="!available || !configured"
+          :title="!available ? 'AI 插件未启用' : !configured ? '请先填写 API Key' : ''"
+          @click="run"
+        >
           {{ analysis ? '重新分析' : '开始分析' }}
         </el-button>
       </div>
@@ -740,6 +753,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <span class="cc-pill" :class="{ 'status-active': configured }">
           {{ configured ? '凭据已配置' : '未配置 API Key' }}
         </span>
+        <el-button v-if="!configured" size="small" text type="primary" @click="focusApiKey">填写 API Key</el-button>
         <span class="cc-pill" :class="{ 'status-active': !formDirty, 'status-error': formDirty }">
           {{ formDirty ? '有未保存修改（分析前会自动保存）' : '配置已保存' }}
         </span>
@@ -851,7 +865,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
             <el-switch v-model="form.asEvaluator" />
             <div class="cc-hint">开启后扫描时用 AI 判断每类规则的风险与默认勾选；关闭则用内置启发式</div>
           </el-form-item>
-          <el-form-item label="API Key">
+          <el-form-item label="API Key" id="ai-api-key">
             <el-input
               v-model="form.apiKey"
               type="password"

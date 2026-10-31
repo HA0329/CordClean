@@ -307,6 +307,13 @@ function levelClass(level: LogEntry['level']): string {
   return level === 'error' ? 'log-error' : level === 'warn' ? 'log-warn' : level === 'debug' ? 'log-debug' : 'log-info'
 }
 
+function formatLogTime(ts: string): string {
+  const date = new Date(ts)
+  if (Number.isNaN(date.getTime())) return ts
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 function formatFields(entry: LogEntry): string {
   if (!entry.fields || !Object.keys(entry.fields).length) return ''
   const text = JSON.stringify(entry.fields)
@@ -1067,7 +1074,7 @@ async function doClearEgress() {
       <div class="log-view">
         <p v-if="!filteredEntries.length" class="cc-faint">{{ loadingLogs ? '正在读取…' : '（暂无匹配日志）' }}</p>
         <div v-for="(entry, index) in filteredEntries" :key="`${entry.ts}-${index}`" class="log-entry">
-          <span class="log-time">{{ entry.ts.slice(11, 23) }}</span>
+          <span class="log-time">{{ formatLogTime(entry.ts) }}</span>
           <span class="log-level" :class="levelClass(entry.level)">{{ entry.level.toUpperCase() }}</span>
           <span class="log-scope">{{ entry.scope }}</span>
           <span v-if="entry.requestId" class="log-request">{{ entry.requestId }}</span>

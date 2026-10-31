@@ -137,6 +137,8 @@ const SORT_OPTIONS: Array<{ value: ItemSort; label: string }> = [
 ]
 
 const tasks = computed(() => state.tasks)
+const taskSearch = ref('')
+const taskRiskFilter = ref<'all' | RiskLevel>('all')
 const scan = computed(() => state.scan)
 const scanning = computed(() => state.scanning)
 const cleaning = computed(() => state.cleaning)
@@ -227,6 +229,11 @@ const recommendedBytes = computed(() => {
   for (const item of allItems.value) if (recommendedSet.value.has(item.id)) bytes += item.size
   return bytes
 })
+
+/* 结果数字对账：发现 = 可清理 + 受保护；可清理 = 推荐 + 待确认 */
+const totalBytes = computed(() => allItems.value.reduce((sum, item) => sum + item.size, 0))
+const protectedBytes = computed(() => protectedItems.value.reduce((sum, item) => sum + item.size, 0))
+const needConfirmBytes = computed(() => riskCounts.value.bytes.caution + riskCounts.value.bytes.risky)
 
 /** 每个任务下被路径策略保护的项目数（用于总览里说明「为什么有些没出现」） */
 const protectedByTask = computed(() => {
@@ -511,8 +518,15 @@ const itemsByTask = computed(() => {
 })
 
 const tasksByCategory = computed(() => {
+  const query = taskSearch.value.trim().toLowerCase()
+  const risk = taskRiskFilter.value
   const groups = new Map<string, typeof state.tasks>()
   for (const task of state.tasks) {
+    if (risk !== 'all' && task.risk !== risk) continue
+    if (query) {
+      const haystack = `${task.name} ${task.description ?? ''} ${task.id}`.toLowerCase()
+      if (!haystack.includes(query)) continue
+    }
     const list = groups.get(task.category) ?? []
     list.push(task)
     groups.set(task.category, list)
@@ -523,6 +537,8 @@ const tasksByCategory = computed(() => {
     tasks: list,
   }))
 })
+
+const filteredTaskCount = computed(() => tasksByCategory.value.reduce((sum, group) => sum + group.tasks.length, 0))
 
 async function runScanWith(ids: string[]) {
   if (state.scanning || state.cleaning) {
@@ -693,6 +709,18 @@ async function handleBulkCommand(command: string) {
           <el-button size="small" text @click="clearTaskSelection">清空</el-button>
         </div>
       </div>
+      <div class="task-tools">
+        <el-input v-model="taskSearch" size="small" placeholder="搜索任务名 / 说明 / id" clearable style="width: 230px" />
+        <el-select v-model="taskRiskFilter" size="small" style="width: 118px">
+          <el-option label="全部风险" value="all" />
+          <el-option label="安全" value="safe" />
+          <el-option label="谨慎" value="caution" />
+          <el-option label="高风险" value="risky" />
+        </el-select>
+        <span class="cc-faint">显示 {{ filteredTaskCount }} / {{ tasks.length }} 个任务</span>
+      </div>
+      <p v-if="!tasksByCategory.length" class="cc-faint task-empty">没有匹配的任务，清空搜索条件试试。</p>
+      <div class="task-scroll">
       <el-checkbox-group v-model="selectedTaskIds" class="task-groups">
         <div v-for="group in tasksByCategory" :key="group.category" class="task-group">
           <div class="group-label">
@@ -720,6 +748,7 @@ async function handleBulkCommand(command: string) {
           </div>
         </div>
       </el-checkbox-group>
+      </div>
 
       <div v-if="scanning" class="progress-box">
         <el-progress :percentage="100" :indeterminate="true" :show-text="false" :stroke-width="6" />
@@ -766,6 +795,14 @@ async function handleBulkCommand(command: string) {
           <div class="cc-stat-sub">命中路径策略，扫描已跳过</div>
         </div>
       </div>
+
+      <p class="reconcile cc-hint">
+        扫描发现 {{ allItems.length }} 项（{{ formatBytes(totalBytes) }}）：
+        可清理 {{ cleanableItems.length }} 项（{{ formatBytes(cleanableBytes) }}）
+        + 受保护 {{ protectedItems.length }} 项（{{ formatBytes(protectedBytes) }}）；
+        可清理中默认推荐 {{ recommendedIds.length }} 项（{{ formatBytes(recommendedBytes) }}），
+        需确认 {{ riskCounts.caution + riskCounts.risky }} 项（{{ formatBytes(needConfirmBytes) }}）。
+      </p>
 
       <!-- 推荐策略横幅 -->
       <div class="cc-card recommend-banner">
@@ -1179,6 +1216,29 @@ async function handleBulkCommand(command: string) {
 .scanning-banner {
   margin-bottom: 14px;
 }
+.task-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 10px;
+}
+
+.task-scroll {
+  max-height: 460px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.task-empty {
+  margin: 8px 0 4px;
+}
+
+.reconcile {
+  margin: 10px 0 0;
+  line-height: 1.7;
+}
+
 .task-groups {
   display: block;
 }

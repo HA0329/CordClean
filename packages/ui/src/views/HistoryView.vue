@@ -167,6 +167,18 @@ async function purge(ids?: string[]) {
             <el-button size="small" text type="danger" @click="clearAll">清空历史</el-button>
           </div>
           <el-table :data="state.history" size="small" :empty-text="'暂无清理记录'">
+            <el-table-column type="expand" width="40">
+              <template #default="{ row }">
+                <div class="history-detail">
+                  <span><b>模式</b>{{ row.dryRun ? '预演' : '实际清理' }}</span>
+                  <span><b>回收站</b>{{ formatBytes(row.recycledBytes) }}</span>
+                  <span><b>隔离区</b>{{ formatBytes(row.quarantinedBytes) }}</span>
+                  <span><b>外部消失</b>{{ row.vanished }} 项</span>
+                  <span><b>条件跳过</b>{{ row.skipped }} 项</span>
+                  <span><b>失败</b>{{ row.failed }} 项</span>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column label="时间" width="150">
               <template #default="{ row }">{{ formatTime(row.startedAt) }}</template>
             </el-table-column>
@@ -231,3 +243,22 @@ async function purge(ids?: string[]) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.history-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  padding: 6px 18px;
+  color: var(--cc-text-dim);
+  font-size: 12px;
+}
+.history-detail b {
+  color: var(--cc-text);
+  margin-right: 6px;
+  font-weight: 500;
+}
+.undo-hint {
+  align-self: center;
+}
+</style>

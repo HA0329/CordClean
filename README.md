@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.5`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；65 个测试文件 / 475 个用例。
+当前版本 `0.6.6`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；65 个测试文件 / 475 个用例。
 
 更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md)
 
@@ -356,6 +356,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [PC-Cleaner 规则库同步验收](docs/verification/pc-cleaner-rules-sync-2026-10-28.md) —— 上游 0.9.11 对比、有意不导入项与保护网更新
 - [真实用户走查（2026-10-31）](docs/verification/usability-walkthrough-2026-10-31.md) —— 全新配置下的扫描/选择/预演/清理/撤销/日志真实体验与问题清单
 - [发布流程](docs/release-process.md) —— 每次更新必须写说明、打 tag、确认 CI 的清单
+- [v0.6.6 发布说明](docs/release-notes-v0.6.6.md) —— P2 体验修复：数字对账/任务筛选/历史明细/AI 入口/日志日期
 - [v0.6.5 发布说明](docs/release-notes-v0.6.5.md) —— 真实用户走查 P1 修复：结果定位/撤销状态/预演继续/默认推荐
 - [v0.6.4 发布说明](docs/release-notes-v0.6.4.md) —— PC-Cleaner 规则库同步、即时通讯/开发环境保护网
 - [v0.6.3 发布说明](docs/release-notes-v0.6.3.md) —— Phase 3：重复日志合并、插件级日志级别、结构化诊断导出

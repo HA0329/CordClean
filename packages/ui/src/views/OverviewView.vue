@@ -191,7 +191,7 @@ onUnmounted(() => {
               {{ appInfo?.systemNode ?? appInfo?.node ?? system?.nodeVersion }}<span v-if="appInfo?.systemNode" class="cc-faint">（系统 Node）</span>
             </b>
           </div>
-          <div v-if="appInfo?.node && appInfo.node !== appInfo.systemNode" class="info-row">
+          <div v-if="state.app?.shell === 'desktop' && appInfo?.node && appInfo.node !== appInfo.systemNode" class="info-row">
             <span>Electron Node</span><b>{{ appInfo.node }}</b>
           </div>
           <div class="info-row"><span>数据目录</span><button class="link" :title="state.app?.dataDir" @click="openDataDir">{{ state.app?.dataDir }}</button></div>
