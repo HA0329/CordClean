@@ -77,6 +77,14 @@ async function cancel(): Promise<void> {
 function backToClean(): void {
   state.page = 'clean'
 }
+
+/** 预演后继续：保留本次选择，回到清理页后自动打开确认对话框 */
+function continueCleaning(): void {
+  if (report.value?.dryRun && state.cleanSelection.length) {
+    state.pendingCleanSelection = [...state.cleanSelection]
+  }
+  backToClean()
+}
 function openHistory(): void {
   state.page = 'history'
 }
@@ -177,7 +185,7 @@ function failureMessage(message: string): string {
       </div>
 
       <div v-if="!report.cancelled" class="result-actions">
-        <el-button type="primary" @click="backToClean">继续清理</el-button>
+        <el-button type="primary" @click="continueCleaning">{{ report?.dryRun ? '继续实际清理' : '返回清理页' }}</el-button>
         <el-button @click="openHistory">查看清理历史</el-button>
       </div>
     </div>

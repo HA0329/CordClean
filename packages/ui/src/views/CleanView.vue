@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import WorkflowSteps from '../components/WorkflowSteps.vue'
 import {
@@ -141,6 +141,39 @@ const scan = computed(() => state.scan)
 const scanning = computed(() => state.scanning)
 const cleaning = computed(() => state.cleaning)
 const allItems = computed<CleanItem[]>(() => scan.value?.items ?? [])
+const resultsAnchor = ref<HTMLElement | null>(null)
+const workflowActive = computed<'scan' | 'select' | 'clean'>(() =>
+  cleaning.value ? 'clean' : scanning.value ? 'scan' : scan.value ? 'select' : 'scan',
+)
+
+function focusResults(): void {
+  nextTick(() => resultsAnchor.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+}
+
+/** 处理跨页面意图：定位结果区 / 预演后继续实际清理 */
+function applyPageIntent(): void {
+  if (!scan.value) return
+  if (state.revealCleanResults) {
+    state.revealCleanResults = false
+    focusResults()
+  }
+  if (state.pendingCleanSelection.length) {
+    const pending = [...state.pendingCleanSelection]
+    state.pendingCleanSelection = []
+    const available = new Set(cleanableItems.value.map((item) => item.id))
+    const ids = pending.filter((id) => available.has(id))
+    if (!ids.length) {
+      ElMessage.warning('预演的项目已不存在，已恢复默认推荐')
+      return
+    }
+    selected.value = new Set(ids)
+    dryRun.value = false
+    nextTick(() => {
+      focusResults()
+      showConfirm.value = true
+    })
+  }
+}
 
 const taskMap = computed(() => {
   const map = new Map<string, TaskDescriptor>()
@@ -327,7 +360,7 @@ function selectSafeOnly() {
   recommendIncludeCaution.value = false
   selected.value = new Set(recommendedIds.value)
   appliedPolicyKey.value = policyKey.value
-  ElMessage.success(`已勾选 ${selected.value.size} 项安全内容`)
+  ElMessage.success(`已勾选 ${selected.value.size} 项推荐内容`)
 }
 
 function selectLargeFiles() {
@@ -545,6 +578,7 @@ watch(
     expanded.value = new Set()
     resetFilters()
     page.value = 1
+    applyPageIntent()
   },
   { immediate: true },
 )
@@ -561,6 +595,7 @@ async function confirmClean() {
   showConfirm.value = false
   // 立即切到独立进度页：实时状态 + 避免用户在结果列表上继续误点。
   // 先清掉旧报告并把 cleaning 置为 true，确保进度页首帧不会闪现上一次结果。
+  state.cleanSelection = [...selected.value]
   state.lastClean = undefined
   state.cleanProgress = undefined
   state.cleaning = true
@@ -646,7 +681,7 @@ async function handleBulkCommand(command: string) {
       </div>
     </div>
 
-    <WorkflowSteps active="select" />
+    <WorkflowSteps :active="workflowActive" />
 
     <!-- 任务列表 -->
     <div class="cc-card">
@@ -708,6 +743,7 @@ async function handleBulkCommand(command: string) {
 
     <!-- 扫描结果 -->
     <template v-else>
+      <span ref="resultsAnchor" class="results-anchor" />
       <div class="cc-grid cc-grid-4">
         <div class="cc-card cc-stat">
           <div class="cc-stat-label">可清理项</div>
@@ -715,7 +751,7 @@ async function handleBulkCommand(command: string) {
           <div class="cc-stat-sub">{{ formatBytes(cleanableBytes) }} · {{ scanTaskCount }} 个任务</div>
         </div>
         <div class="cc-card cc-stat">
-          <div class="cc-stat-label">推荐清理（安全项）</div>
+          <div class="cc-stat-label">推荐清理（默认推荐）</div>
           <div class="cc-stat-value">{{ recommendedIds.length.toLocaleString('zh-CN') }}</div>
           <div class="cc-stat-sub">{{ formatBytes(recommendedBytes) }} · 可一键应用</div>
         </div>
@@ -738,7 +774,7 @@ async function handleBulkCommand(command: string) {
           <div class="banner-text">
             <b>智能推荐</b>
             <p>
-              已按推荐策略（安全项{{ recommendIncludeCaution ? ' + 谨慎项' : '' }}）勾选 <b>{{ recommendedIds.length }}</b> 项（{{ formatBytes(recommendedBytes) }}）；
+              已按推荐策略（默认推荐项{{ recommendIncludeCaution ? ' + 谨慎项' : '' }}）勾选 <b>{{ recommendedIds.length }}</b> 项（{{ formatBytes(recommendedBytes) }}）；
               谨慎 {{ riskCounts.caution }} 项、高风险 {{ riskCounts.risky }} 项、受保护 {{ protectedItems.length }} 项默认不勾选。
               看不明白的项目可展开「说明」或打开位置核对。
             </p>
@@ -756,7 +792,7 @@ async function handleBulkCommand(command: string) {
             <el-switch v-model="recommendIncludeCaution" size="small" class="recommend-caution" />
             <span>包含谨慎项</span>
           </label>
-          <el-button size="small" @click="selectSafeOnly">只选安全项</el-button>
+          <el-button size="small" @click="selectSafeOnly">只选推荐项</el-button>
           <el-button size="small" type="primary" @click="applyRecommendation">应用推荐</el-button>
         </div>
       </div>
@@ -1043,7 +1079,7 @@ async function handleBulkCommand(command: string) {
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="recommend">应用推荐（智能勾选）</el-dropdown-item>
-              <el-dropdown-item command="safe">只选安全项</el-dropdown-item>
+              <el-dropdown-item command="safe">只选推荐项</el-dropdown-item>
               <el-dropdown-item command="large">选 ≥ 100 MB 的内容</el-dropdown-item>
               <el-dropdown-item command="filtered" divided>选中当前筛选结果</el-dropdown-item>
               <el-dropdown-item command="invert">反选当前筛选结果</el-dropdown-item>

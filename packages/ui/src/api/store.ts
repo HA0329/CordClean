@@ -77,6 +77,12 @@ export interface UiState {
   /** 最近一次连通性探测结果 */
   aiProbe?: AiProbeResult
   logs: LogEntry[]
+  /** 从扫描结果页返回清理页时，是否定位到结果区 */
+  revealCleanResults: boolean
+  /** 预演后点「继续实际清理」时保留的 itemIds */
+  pendingCleanSelection: string[]
+  /** 最近一次实际/预演清理选择（用于预演后继续） */
+  cleanSelection: string[]
   page: string
 }
 
@@ -97,6 +103,9 @@ export const state = reactive<UiState>({
   aiStatus: { available: false, configured: false, shape: 'chat', baseUrl: '', model: '', effort: 'auto', jsonMode: 'auto', models: [] },
   aiModels: [],
   logs: [],
+  revealCleanResults: false,
+  pendingCleanSelection: [],
+  cleanSelection: [],
   page: 'overview',
 })
 

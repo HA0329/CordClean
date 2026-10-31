@@ -78,8 +78,9 @@ function normalizeSampleLimit(sampleLimit: number | undefined): number {
   return Math.max(0, Math.floor(sampleLimit))
 }
 
-/** 是否命中默认推荐策略：safe 且未受路径策略保护 */
+/** 是否命中默认推荐策略：safe、未受保护，且未被显式排除（recommended !== false） */
 function isDefaultRecommended(item: CleanItem): boolean {
+  if (item.recommended === false) return false
   return item.risk === 'safe' && item.protected !== true
 }
 
@@ -133,6 +134,7 @@ export function recommendIds(items: readonly CleanItem[], options: RecommendOpti
   const picked: CleanItem[] = []
   for (const item of items) {
     if (item.protected === true) continue
+    if (item.recommended === false) continue
     if (item.risk === 'risky') continue
     if (item.risk === 'caution' && !includeCaution) continue
     if (item.size < minSize) continue

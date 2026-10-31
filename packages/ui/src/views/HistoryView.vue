@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatBytes, formatDuration, formatTime } from '@cordclean/shared'
 import {
@@ -16,7 +16,14 @@ import {
 } from '../api/store.ts'
 
 const tab = ref<'history' | 'quarantine'>('history')
+const undoState = ref<{ available: boolean; quarantine: number; recycle: number; permanent: number }>({
+  available: false,
+  quarantine: 0,
+  recycle: 0,
+  permanent: 0,
+})
 loadInterrupted()
+onMounted(() => void loadUndoState())
 const selectedQuarantine = ref<string[]>([])
 const interrupted = ref<Array<{ sessionId: string; startedAt: number }>>([])
 
@@ -27,28 +34,46 @@ async function loadInterrupted() {
   } catch {}
 }
 
+async function loadUndoState() {
+  try {
+    undoState.value = await fetchUndoState()
+  } catch {
+    /* 状态读取失败时保守地禁用撤销入口 */
+    undoState.value = { available: false, quarantine: 0, recycle: 0, permanent: 0 }
+  }
+}
+
 async function undoLast() {
   try {
-    const state = await fetchUndoState()
-    if (!state.available) {
-      ElMessage.info('没有可撤销的清理记录（只保留最近一次）')
+    await loadUndoState()
+    if (!undoState.value.available) {
+      ElMessage.info(
+        undoState.value.recycle > 0
+          ? '本次记录进入了回收站，CordClean 不提供回收站一键还原；请在 Windows 回收站中手动还原'
+          : '没有可恢复的隔离项（只保留最近一次）',
+      )
       return
     }
     await ElMessageBox.confirm(
-      '可恢复：隔离区 ' + state.quarantine + ' 项；回收站 ' + state.recycle + ' 项（需手动还原）；永久删除 ' + state.permanent + ' 项（不可恢复）。',
+      '可恢复：隔离区 ' + undoState.value.quarantine + ' 项；回收站 ' + undoState.value.recycle + ' 项（需手动还原）；永久删除 ' + undoState.value.permanent + ' 项（不可恢复）。',
       '撤销上次清理',
       { type: 'warning', confirmButtonText: '恢复隔离区' },
     )
     const result = await undoLastClean()
     ElMessage.success('已恢复 ' + result.restored + ' 项；回收站 ' + result.recyclePending + ' 项请手动还原；永久删除 ' + result.permanent + ' 项不可恢复')
+    await loadUndoState()
   } catch (error) {
     if (error !== 'cancel') ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
 
+function taskLabels(taskIds: string[]): string {
+  return taskIds.map((taskId) => state.tasks.find((task) => task.id === taskId)?.name ?? taskId).join('、')
+}
+
 async function refreshAll() {
   try {
-    await Promise.all([refreshHistory(), refreshQuarantine()])
+    await Promise.all([refreshHistory(), refreshQuarantine(), loadUndoState()])
     ElMessage.success('已刷新')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))
@@ -103,7 +128,16 @@ async function purge(ids?: string[]) {
       </div>
       <div class="cc-actions">
         <el-button @click="refreshAll">刷新</el-button>
-      <el-button type="warning" plain @click="undoLast">撤销上次清理</el-button>
+        <el-tooltip
+          :disabled="undoState.available"
+          content="当前没有可恢复的隔离项（回收站记录不支持一键撤销）"
+          placement="bottom"
+        >
+          <span>
+            <el-button type="warning" plain :disabled="!undoState.available" @click="undoLast">撤销上次清理</el-button>
+          </span>
+        </el-tooltip>
+        <span v-if="!undoState.available && state.history.length" class="cc-faint undo-hint">暂无隔离项可撤销</span>
       </div>
     </div>
 
@@ -147,7 +181,7 @@ async function purge(ids?: string[]) {
             </el-table-column>
             <el-table-column label="任务" min-width="160">
               <template #default="{ row }">
-                <span class="cc-faint">{{ row.taskIds.join('、') }}</span>
+                <span class="cc-faint">{{ taskLabels(row.taskIds) }}</span>
               </template>
             </el-table-column>
           </el-table>

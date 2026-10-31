@@ -186,6 +186,16 @@ describe('recommendIds 推荐策略', () => {
     expect(recommendIds(items)).toEqual(['safe-ok'])
   })
 
+  it('recommended=false 的 safe 项不进入默认推荐（空目录/整体临时目录等）', () => {
+    const items = [
+      makeItem('safe-normal'),
+      makeItem('safe-no-recommend', { recommended: false }),
+      makeItem('safe-explicit', { recommended: true }),
+      makeItem('caution-no-recommend', { risk: 'caution', recommended: false }),
+    ]
+    expect(recommendIds(items)).toEqual(['safe-explicit', 'safe-normal'])
+  })
+
   it('includeCaution=true 纳入 caution，但永远排除 risky 与 protected', () => {
     const items = [
       makeItem('safe-ok'),

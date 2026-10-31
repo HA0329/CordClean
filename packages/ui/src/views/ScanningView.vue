@@ -55,6 +55,8 @@ async function cancel(): Promise<void> {
 }
 
 function back(): void {
+  // 回到清理页后定位到结果区，避免用户停在 38 张任务卡顶部找不到选择入口
+  state.revealCleanResults = true
   state.page = 'clean'
 }
 </script>

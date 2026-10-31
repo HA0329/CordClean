@@ -28,7 +28,7 @@ import type {
   TaskScanContext,
 } from '@cordclean/shared'
 import { SUPPORTED_RULE_TYPES } from '@cordclean/shared'
-import { exists, folderSize, mapLimit, normalizePath, walk } from '@cordclean/utils'
+import { exists, folderSize, mapLimit, normalizePath, pathKey, walk } from '@cordclean/utils'
 import catalogJson from '../rules/catalog.json' with { type: 'json' }
 import extraJson from '../rules/extra.json' with { type: 'json' }
 
@@ -225,10 +225,19 @@ async function scanRule(
       const size = await folderSize(root, { maxEntries: options.maxEntriesPerDir, signal: scan.signal })
       if (!size.bytes) continue
       if (!passesConditions(0, size.bytes, target)) continue
+      // 整体清空用户临时目录可能影响正在运行的程序：安全但不进入默认推荐，
+      // 用户需在结果页显式勾选；其余具名缓存目录保持原推荐策略。
+      const targetPaths = [target.path, ...(target.paths ?? [])].filter(Boolean).map((item) => String(item))
+      const isWholeTempRoot =
+        rule.category === 'system_temp' && targetPaths.some((item) => /^%(TEMP|TMP)%$/i.test(item))
       push({
         path: root,
         kind: 'directory',
         size: size.bytes,
+        ...(isWholeTempRoot ? { recommended: false } : {}),
+        ...(isWholeTempRoot
+          ? { note: '整体清空用户临时目录，可能影响正在运行的程序；默认不勾选，建议确认无程序运行时再手动选择' }
+          : {}),
         meta: { ruleId: rule.id, action: 'clear', files: size.files },
       })
     }
@@ -454,7 +463,7 @@ export default defineCleanerPlugin<RulePackConfig>({
               scan.emit({
                 ...draft,
                 risk: result?.risk ?? rule.risk,
-                defaultSelected: result?.suggest === true,
+                defaultSelected: result?.suggest === true && draft.recommended !== false,
                 note: result?.reason ?? rule.note,
                 meta: { ...draft.meta, ruleId: rule.id, ruleName: rule.name, strategy: result?.strategy },
               })

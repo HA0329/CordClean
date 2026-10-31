@@ -132,7 +132,7 @@
       <span class="tag tag-plain">受保护目录的祖目录</span>
     </div>
 
-    <div class="subhead">最新进展（v0.6.4）：插件系统 v2 + AI 工坊插件包</div>
+    <div class="subhead">最新进展（v0.6.5）：插件系统 v2 + AI 工坊插件包</div>
     <div class="grid g3" style="margin-top:8px">
       <div class="card">
         <div class="card-kicker">插件包 v2</div>
@@ -153,7 +153,7 @@
     <div class="table-wrap" style="margin-top:16px">
       <img src="__SHOT_SELECT__" alt="清理选择 v2：分组总览与智能推荐" style="width:100%;height:auto;border-radius:14px;border:1px solid var(--line-2)">
     </div>
-    <p class="table-note">图：清理选择 v2 的分组总览——安全项默认推荐、谨慎 / 高风险项不默认勾选；插件系统 v2 的端到端验收覆盖 检查 → 安装 → 客户端页面 → 启停/重载 → 卸载。截图来自 v0.6.4 真机运行。</p>
+    <p class="table-note">图：清理选择 v2 的分组总览——安全项默认推荐、谨慎 / 高风险项不默认勾选；插件系统 v2 的端到端验收覆盖 检查 → 安装 → 客户端页面 → 启停/重载 → 卸载。截图来自 v0.6.5 真机运行。</p>
   </div>
 </section>
 
@@ -370,13 +370,13 @@
       <div class="sec-kicker"><span class="sec-num">08</span><span>Engineering &amp; Verification</span></div>
       <h2 class="sec-title">工程与验证：用数据回答「做完没有、靠不靠谱」</h2>
       <p class="sec-lede">
-        项目从第一天起就把测试、审计、基准与缺陷记录当作交付物：<b>474 个自动化测试全绿</b>，
+        项目从第一天起就把测试、审计、基准与缺陷记录当作交付物：<b>475 个自动化测试全绿</b>，
         <b>规则审计 0 错误</b>，性能基准可复现，自测阶段<b>发现并修复 67 个缺陷</b>（含 1 个高危越界删除）。
       </p>
     </div>
 
     <div class="kpi-row">
-      <div class="kpi"><div class="k">自动化测试</div><div class="v">474<small>用例</small></div><div class="d">65 个测试文件 · 全部通过</div></div>
+      <div class="kpi"><div class="k">自动化测试</div><div class="v">475<small>用例</small></div><div class="d">65 个测试文件 · 全部通过</div></div>
       <div class="kpi"><div class="k">修复缺陷</div><div class="v">14<small>个</small></div><div class="d">含 1 个高危数据安全缺陷</div></div>
       <div class="kpi"><div class="k">代码提交</div><div class="v">151<small>次</small></div><div class="d">源码 + 测试 + 脚本约 3.13 万行</div></div>
       <div class="kpi"><div class="k">规则审计</div><div class="v">0<small>错误</small></div><div class="d">结构 / 死目标 / 重复 / 策略拦截</div></div>
@@ -387,7 +387,7 @@
       <table>
         <thead><tr><th style="width:24%">层次</th><th style="width:31%">方式</th><th>覆盖重点</th></tr></thead>
         <tbody>
-          <tr><td><b>单元 / 集成</b></td><td>Vitest，62 文件 / 474 用例</td><td>路径策略与攻击面、文件系统安全、引擎、插件管理、隔离区、设置 / 历史、RPC、AI、规则纯逻辑</td></tr>
+          <tr><td><b>单元 / 集成</b></td><td>Vitest，62 文件 / 475 用例</td><td>路径策略与攻击面、文件系统安全、引擎、插件管理、隔离区、设置 / 历史、RPC、AI、规则纯逻辑</td></tr>
           <tr><td><b>安全专项</b></td><td><code>path-attack</code> / <code>fs-safety</code> / <code>compensate</code></td><td>尾点、8.3 短名、UNC、junction 穿透、受保护目录、预算与预览一致性</td></tr>
           <tr><td><b>插件审计</b></td><td><code>scripts/audit-plugins.ts</code></td><td>真实扫描 + 清理项契约不变量（只读，不删除）</td></tr>
           <tr><td><b>规则审计</b></td><td><code>scripts/audit-rules.ts</code></td><td>结构错误、未实现类型、死目标、重复目标、被策略拦截目标</td></tr>
@@ -434,7 +434,7 @@
       <div class="card">
         <div class="card-kicker">交付形态</div>
         <h3>双外壳 + 单文件发布</h3>
-        <p>浏览器版与 Electron 桌面版共用内核与 UI；提供一键启动脚本与 v0.6.4 源码 / zip 包，MIT 许可。</p>
+        <p>浏览器版与 Electron 桌面版共用内核与 UI；提供一键启动脚本与 v0.6.5 源码 / zip 包，MIT 许可。</p>
       </div>
       <div class="card">
         <div class="card-kicker">质量门禁</div>

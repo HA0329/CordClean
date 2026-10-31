@@ -4,6 +4,18 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.5 — 2026-10-31
+
+### 真实用户走查 P1 修复
+
+- 扫描结果页「去选择可清理项」自动定位结果区；步骤条按状态高亮；
+- 历史页撤销按钮按 `clean/undo-state.available` 禁用并说明原因；任务显示可读名称；
+- 预演结果「继续实际清理」保留选择并直接进入实际清理确认；
+- 空目录默认不勾选、不进入推荐；整体 `%TEMP%` 标记不推荐并提示风险；`defaultSelected` 与 `recommended` 对齐；
+- 全量 65 个文件 / 475 个用例通过；走查复核见 [修复记录](docs/verification/usability-walkthrough-2026-10-31.md#8-p1-修复记录2026-10-31)。
+
+详细说明：[docs/release-notes-v0.6.5.md](docs/release-notes-v0.6.5.md)
+
 ## v0.6.4 — 2026-10-28
 
 ### PC-Cleaner 规则库同步

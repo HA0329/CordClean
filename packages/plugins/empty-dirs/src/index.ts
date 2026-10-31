@@ -397,8 +397,10 @@ export default defineCleanerPlugin<EmptyDirsConfig>({
               kind: 'directory',
               size: 0,
               risk: 'safe',
-              defaultSelected: true,
-              note: '空目录，删除不影响数据',
+              // 0 B 且可能被用户刻意保留：默认不勾选，也不进入一键推荐
+              defaultSelected: false,
+              recommended: false,
+              note: '空目录（0 B），删除不影响数据；默认不勾选，避免改变目录结构',
               meta: { depth: dir.depth },
             })
           }

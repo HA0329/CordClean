@@ -71,6 +71,12 @@ export interface CleanItem {
   category: CategoryId
   /** 默认是否被勾选 */
   defaultSelected: boolean
+  /**
+   * 是否进入「默认推荐」集合。
+   * false 表示虽然安全、但不应被一键推荐自动勾选（例如 0 B 空目录、整体临时目录）。
+   * 缺省按风险策略推断。
+   */
+  recommended?: boolean
   /** 是否被路径策略保护（保护项不可清理） */
   protected?: boolean
   /** 插件附加的元数据（如文件修改时间、分组标签） */
@@ -89,6 +95,8 @@ export interface CleanItemDraft {
   size?: number
   risk?: RiskLevel
   defaultSelected?: boolean
+  /** 是否进入默认推荐集合；false = 安全但不自动勾选 */
+  recommended?: boolean
   meta?: Record<string, unknown>
   note?: string
 }
