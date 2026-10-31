@@ -84,6 +84,7 @@ export type ServerEventMap = {
   'plugin/ui-event': import('./plugin-api.ts').PluginUiEvent
   'plugin/notify': import('./plugin-api.ts').PluginNotifyEvent
   'ai/stream': { kind: 'delta' | 'done'; text?: string; reasoning?: string }
+  'ai/workshop/progress': { phase: 'request' | 'streaming' | 'received' | 'validating' | 'done' | 'retry'; textLength: number; toolCalls: number; elapsedMs: number }
   'scheduler/scan': { at: number; items?: number; bytes?: number; elapsedMs?: number; errors?: number; error?: string; blocked?: boolean; reason?: string; autoCleaned?: boolean; cleaned?: number; freedBytes?: number; recycledBytes?: number; mode?: string }
   log: LogEntry
 }

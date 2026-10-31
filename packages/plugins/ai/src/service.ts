@@ -133,6 +133,15 @@ export function estimateTokens(text: string): number {
 }
 
 export class AiService extends Service implements AiLike {
+  /** CordClean 自己数据目录/临时产物不参与 AI 推荐（避免推荐清理自己） */
+  private isOwnArtifact(value: string): boolean {
+    const normalized = String(value ?? '').replace(/\//g, '\\').toLowerCase()
+    if (!normalized) return false
+    const dataDir = String(this.ctx.system.env.dataDir ?? '').replace(/\//g, '\\').toLowerCase().replace(/\\+$/, '')
+    if (dataDir && (normalized === dataDir || normalized.startsWith(dataDir + '\\'))) return true
+    return normalized.split('\\').some((segment) => /^(cordclean-|cc-usability-)/.test(segment))
+  }
+
   private cache?: AiAnalysis
   private modelCache?: { at: number; models: AiModelInfo[]; source: 'remote' | 'fallback' }
   private lastProbe?: AiProbeResult
@@ -653,7 +662,7 @@ export class AiService extends Service implements AiLike {
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan
       ? [...scan.items]
-          .filter((item) => !item.protected)
+          .filter((item) => !item.protected && !this.isOwnArtifact(item.path))
           .sort((a, b) => b.size - a.size)
           .slice(0, 40)
           .map((item) => ({ id: item.id, mb: Math.round(item.size / 1024 / 1024), risk: item.risk, task: item.taskId }))

@@ -72,6 +72,7 @@ const EVENT_BRIDGE: Array<[any, ServerEvent]> = [
   ['history/changed', 'history/changed'],
   ['scheduler/scan', 'scheduler/scan'],
   ['ai/stream', 'ai/stream'],
+  ['ai/workshop/progress', 'ai/workshop/progress'],
 ]
 
 /** 带状态码的 HTTP 错误 */

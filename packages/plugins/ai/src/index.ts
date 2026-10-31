@@ -15,10 +15,10 @@ import { Config, normalizeConfig, type AiConfig } from './config.ts'
 import { AiService } from './service.ts'
 
 export { Config, normalizeConfig, resolveModelAlias, LEGACY_MODEL_ALIASES, applyEffort, resolveChatUrl, resolveModelsUrl, DEFAULT_PATHS, DEFAULT_BASE_URLS, API_SHAPES, EFFORT_LEVELS } from './config.ts'
-export { buildRequest, parseResponse, authHeaders, mergeHeaders } from './adapters.ts'
+export { buildRequest, parseResponse, parseSseDelta, authHeaders, mergeHeaders } from './adapters.ts'
 export { FALLBACK_MODELS, fetchModelList } from './models.ts'
 export { AiService, createAiService, extractJsonObject, extractPluginCode, extractToolArgsFromText, normalizeSuggestions, normalizePluginFiles, normalizePluginManifest, PLUGIN_TOOL, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX, PLUGIN_KINDS, pickPluginKind, normalizeDependencies, checkPluginSyntax } from './service.ts'
-export { AiError, requestJson } from './http.ts'
+export { AiError, requestJson, requestSse } from './http.ts'
 export type { AiConfig } from './config.ts'
 
 export default defineCleanerPlugin<Partial<AiConfig>>({

@@ -189,6 +189,7 @@ async function createKernel() {
     ['history/changed', 'history/changed'],
     // AI 流式增量必须转发，否则桌面外壳要等分析结束才有输出（看起来“不是流式”）
     ['ai/stream', 'ai/stream'],
+    ['ai/workshop/progress', 'ai/workshop/progress'],
     ['scheduler/scan', 'scheduler/scan'],
   ]
   for (const [internal, external] of events) {

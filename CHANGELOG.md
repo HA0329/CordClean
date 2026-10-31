@@ -4,6 +4,19 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.9 — 2026-10-31
+
+### 剩余 P1/后续修复
+
+- 工坊启用时 Key 配置兜底（settings 恢复）+ 回归测试；真实配置启停复核通过；
+- 宿主 iframe bridge 兼容旧工坊协议，旧 client 页面无需重新生成；
+- AI 推荐过滤 CordClean 自身数据/临时/截图产物；
+- 工坊 chat 形态改为真实 SSE 流式进度（request/streaming/received/validating/done），失败回退非流式；
+- AI 扫描根保持可选添加（AppData 默认勾选、范围提示、二次确认）；
+- 全量 67 文件 / 487 用例通过；真实流式生成 8.2 秒、60 个进度事件。
+
+详细说明：[docs/release-notes-v0.6.9.md](docs/release-notes-v0.6.9.md)
+
 ## v0.6.8 — 2026-10-31
 
 ### AI 规则安全门 + 工坊 bridge/engines/扫描根/流式修复

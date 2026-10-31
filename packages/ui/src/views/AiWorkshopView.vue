@@ -118,6 +118,15 @@ function openPlugins(): void {
 }
 
 const generationStage = computed(() => {
+  const progress = state.workshopProgress
+  if (progress) {
+    if (progress.phase === 'request') return '已连接模型，等待首个流式片段…'
+    if (progress.phase === 'streaming') return `模型流式输出中：已接收 ${progress.textLength} 字符 · ${progress.toolCalls} 个工具调用`
+    if (progress.phase === 'received') return '模型已返回，正在解析插件包…'
+    if (progress.phase === 'validating') return '正在静态校验清单、代码与 bridge 契约…'
+    if (progress.phase === 'retry') return '上一次生成未通过校验，正在重试…'
+    if (progress.phase === 'done') return '生成与校验完成'
+  }
   const sec = elapsed.value
   if (sec < 5) return '正在连接模型并理解需求…'
   if (sec < 20) return '正在生成插件入口与清单…'
@@ -282,6 +291,7 @@ async function generate(): Promise<void> {
   draft.value = null
   validation.value = null
   busy.value = true
+  state.workshopProgress = undefined
   startTimer()
   try {
     draft.value = await draftAiWorkshopPlugin(requirement.value.trim())

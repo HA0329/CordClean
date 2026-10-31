@@ -138,3 +138,13 @@
 - **P1-3 已修**：流式原始 JSON 折叠到调试面板，普通视图只显示生成进度；工坊生成增加阶段提示（理解需求/生成清单代码/校验准备）与已等待秒数。
 - 验证：全量 66 文件 / 483 用例通过；tsc/vue-tsc/build 通过。
 - 已复验：修复后重新真实生成一次 client 插件，页面发送 `type: 'cordclean/plugin-page'`、`method: 'resolve'`、`resolverId`，校验通过（仅有 engines 修正 warning）；P0-1 的 npm-cache 采纳也被实际拒绝，具体 Edge 缓存规则可采纳且任务 `defaultSelected=false`。
+
+
+## 8. 剩余 P1/后续修复（v0.6.9）
+
+- 工坊 Key 状态：真实配置下停用/启用 Key 保留；新增“运行时配置为空时从 settings 恢复”的兜底与回归测试；
+- 旧 client 页面：宿主 bridge 同时兼容新旧协议，旧页面无需重新生成即可取数；
+- AI 推荐：过滤 CordClean 自身数据目录/插件日志/`cordclean-*`/`cc-usability-*` 临时与截图产物；
+- 工坊进度：chat 形态改用 SSE 真实流式，上报 request/streaming/received/validating/done，实测 60 个进度事件、总耗时 8.2 秒；
+- AI 扫描根：AppData 等宽目录保持可选（默认勾选、范围提示、二次确认），不再强制过滤。
+- 验证：67 文件 / 487 用例通过；真实流式生成与 bridge 兼容通过。

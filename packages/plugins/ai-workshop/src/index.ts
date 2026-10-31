@@ -30,6 +30,7 @@ import {
   parseResponse,
   pickPluginKind,
   requestJson,
+  requestSse,
   type AiConfig,
 } from '@cordclean/plugin-ai'
 
@@ -129,6 +130,74 @@ export class AiWorkshopService extends Service {
     }
   }
 
+  /** 真实流式生成（chat 形态）：边收 token / tool_calls 边上报进度，失败回退非流式 */
+  private async streamChatDraft(
+    request: ReturnType<typeof buildRequest>,
+    config: AiConfig,
+  ): Promise<{ text: string; toolCalls: Array<{ name: string; arguments: any }>; finish?: string } | null> {
+    if (config.apiShape !== 'chat') return null
+    let text = ''
+    let finish: string | undefined
+    const calls = new Map<number, { name: string; args: string }>()
+    let lastEmit = 0
+    const emit = (phase: string) => {
+      const now = Date.now()
+      if (now - lastEmit < 120 && phase === 'streaming') return
+      lastEmit = now
+      try {
+        ;(this.ctx.emit as any)('ai/workshop/progress', {
+          phase,
+          textLength: text.length,
+          toolCalls: calls.size,
+          elapsedMs: now,
+        })
+      } catch {
+        /* UI 未连接忽略 */
+      }
+    }
+    try {
+      await requestSse(
+        request.url,
+        {
+          headers: request.headers,
+          body: JSON.stringify({ ...(request.body as Record<string, unknown>), stream: true }),
+          timeoutMs: config.timeoutMs || 180_000,
+        },
+        (payload: any) => {
+          const choice = payload?.choices?.[0]
+          const delta = choice?.delta
+          if (typeof delta?.content === 'string' && delta.content) text += delta.content
+          if (Array.isArray(delta?.tool_calls)) {
+            for (const call of delta.tool_calls) {
+              const index = Number(call?.index ?? 0)
+              const current = calls.get(index) ?? { name: '', args: '' }
+              if (typeof call?.function?.name === 'string') current.name += call.function.name
+              if (typeof call?.function?.arguments === 'string') current.args += call.function.arguments
+              calls.set(index, current)
+            }
+          }
+          if (typeof choice?.finish_reason === 'string') finish = choice.finish_reason
+          emit('streaming')
+        },
+      )
+    } catch (error) {
+      this.ctx.logger.warn('工坊流式请求失败，回退非流式：%s', error instanceof Error ? error.message : String(error))
+      return null
+    }
+    const toolCalls: Array<{ name: string; arguments: any }> = []
+    for (const call of [...calls.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!call.name || !call.args.trim()) continue
+      try {
+        toolCalls.push({ name: call.name, arguments: JSON.parse(call.args) })
+      } catch {
+        /* 参数未完整/损坏；交给文本解析兜底 */
+      }
+    }
+    if (!text.trim() && !toolCalls.length) return null
+    emit('received')
+    return { text, toolCalls, finish }
+  }
+
   async draftPlugin(requirement: string): Promise<AiPluginDraft> {
     const demand = String(requirement ?? '').trim()
     if (!demand) throw new AiError('请先描述你想要的插件', 'BAD_REQUEST')
@@ -159,19 +228,40 @@ export class AiWorkshopService extends Service {
         PLUGIN_USER_PREFIX + demand + feedback,
         [PLUGIN_TOOL],
       )
-      const result = await requestJson(request.url, {
-        headers: request.headers,
-        body: request.body,
-        timeoutMs: base.timeoutMs || 180_000,
-        retries: base.retries ?? 1,
-      })
-      const parsed = parseResponse(base, result.payload)
+      try {
+        ;(this.ctx.emit as any)('ai/workshop/progress', { phase: 'request', textLength: 0, toolCalls: 0, elapsedMs: 0 })
+      } catch {
+        /* UI 未连接忽略 */
+      }
+      let parsed: any
+      let streamedToolArgs: any
+      const streamed = await this.streamChatDraft(request, base)
+      if (streamed) {
+        parsed = {
+          text: streamed.text,
+          reasoning: undefined,
+          finish: streamed.finish,
+          truncated: streamed.finish === 'length',
+          usage: undefined,
+          raw: {},
+          toolCalls: streamed.toolCalls,
+        }
+        streamedToolArgs = streamed.toolCalls.find((call: any) => call.name === 'emit_plugin')?.arguments
+      } else {
+        const result = await requestJson(request.url, {
+          headers: request.headers,
+          body: request.body,
+          timeoutMs: base.timeoutMs || 180_000,
+          retries: base.retries ?? 1,
+        })
+        parsed = parseResponse(base, result.payload)
+      }
       if (parsed.truncated) {
         lastError = `输出被截断（${parsed.finish ?? 'length'}）`
         feedback = '\n\n上一次输出被截断。请直接输出完整、可运行的代码，不要省略、不要 JSON 包装。'
         continue
       }
-      const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments ?? extractToolArgsFromText(parsed.text)
+      const toolArgs = streamedToolArgs ?? parsed.toolCalls?.find((call: any) => call.name === 'emit_plugin')?.arguments ?? extractToolArgsFromText(parsed.text)
       const packageFiles = normalizePluginFiles(toolArgs?.files) as AiPluginFile[]
       const packageManifest = normalizePluginManifest(toolArgs?.manifest) as PluginManifest | undefined
       const entryName = packageManifest?.entry || 'index.mjs'
@@ -186,6 +276,11 @@ export class AiWorkshopService extends Service {
         lastError = '模型没有返回有效的插件代码'
         feedback = '\n\n上一次没有返回有效代码。请输出 files 数组（至少包含入口文件），或输出单文件 code。'
         continue
+      }
+      try {
+        ;(this.ctx.emit as any)('ai/workshop/progress', { phase: 'validating', textLength: parsed.text.length, toolCalls: 1, elapsedMs: 0 })
+      } catch {
+        /* ignore */
       }
       const allowRelativeImports = packageFiles.length > 0
       // 模型偶尔会漏写 inject；对生成的草稿做一次保守的自动补全，避免静态校验/运行时失败
@@ -213,6 +308,11 @@ export class AiWorkshopService extends Service {
         continue
       }
       const matched = repairedCode.match(/(?:export\s+const\s+name\s*=|name\s*:)\s*['"]([a-zA-Z0-9_-]+)['"]/)
+      try {
+        ;(this.ctx.emit as any)('ai/workshop/progress', { phase: 'done', textLength: parsed.text.length, toolCalls: 1, elapsedMs: 0 })
+      } catch {
+        /* ignore */
+      }
       return {
         name: matched?.[1] ?? packageManifest?.id ?? 'ai-plugin',
         code: repairedCode,

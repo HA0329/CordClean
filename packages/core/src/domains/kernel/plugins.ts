@@ -446,7 +446,10 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     try {
       const plugin = await this.loadModule(record)
       if (!Object.keys(record.config).length) {
-        record.config = defaultConfigOf(plugin)
+        // 兼容旧状态/异常启动：record 为空时优先从已持久化的 settings 恢复配置，
+        // 而不是直接用默认值覆盖（否则 AI 工坊等插件的 API Key 会在启用时丢失）。
+        const stored = this.ctx.settings.get().plugins[record.entry.id]?.config
+        record.config = stored && Object.keys(stored).length ? stored : defaultConfigOf(plugin)
       }
       fiber = this.ctx.plugin(plugin as any, record.config) as Fiber
       await fiber

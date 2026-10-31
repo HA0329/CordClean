@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CATEGORIES, RISK_META } from '@cordclean/shared'
+import { buildPluginPageResponse, parsePluginPageRequest } from '../api/plugin-page-bridge.ts'
 import type {
   PluginPackageIssue,
   PluginPackageReview,
@@ -200,25 +201,18 @@ async function loadUiContributions(): Promise<void> {
 function onPageMessage(event: MessageEvent): void {
   const frame = pageFrame.value
   if (!frame || event.source !== frame.contentWindow) return
-  const data = event.data as
-    | { type?: string; id?: string; method?: string; resolverId?: string; params?: Record<string, unknown> }
-    | undefined
-  if (!data || data.type !== 'cordclean/plugin-page' || data.method !== 'resolve') return
-  const requestId = String(data.id ?? '')
-  const resolverId = String(data.resolverId ?? '')
-  if (!resolverId) return
-  void resolvePluginUi(pagePluginId.value, resolverId, data.params)
+  const request = parsePluginPageRequest(event.data)
+  if (!request) return
+  void resolvePluginUi(pagePluginId.value, request.resolverId, request.params)
     .then((value) => {
-      frame.contentWindow?.postMessage({ type: 'cordclean/plugin-page-result', id: requestId, ok: true, value }, '*')
+      frame.contentWindow?.postMessage(buildPluginPageResponse(request, { ok: true, value }), '*')
     })
     .catch((error: unknown) => {
       frame.contentWindow?.postMessage(
-        {
-          type: 'cordclean/plugin-page-result',
-          id: requestId,
+        buildPluginPageResponse(request, {
           ok: false,
           error: error instanceof Error ? error.message : String(error),
-        },
+        }),
         '*',
       )
     })

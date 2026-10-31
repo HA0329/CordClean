@@ -47,6 +47,7 @@ export type UiPluginRuntime = PluginRuntime & Pick<PluginRuntimeInfo, 'capabilit
 export interface UiState {
   aiStream: string
   aiStreamReasoning: string
+  workshopProgress?: { phase: string; textLength: number; toolCalls: number; elapsedMs: number }
   ready: boolean
   busy: boolean
   error?: string
@@ -117,6 +118,9 @@ function requireTransport(): ApiTransport {
 export async function init(): Promise<void> {
   try {
     state.transport = createTransport()
+    state.transport.on('ai/workshop/progress', (event) => {
+      state.workshopProgress = event
+    })
     state.transport.on('ai/stream', (event) => {
     if (event.kind === 'delta') {
       state.aiStream += event.text ?? ''
