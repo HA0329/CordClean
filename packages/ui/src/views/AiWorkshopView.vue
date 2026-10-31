@@ -8,7 +8,7 @@
 defineOptions({ name: 'AiWorkshopView' })
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { AiModelInfo, AiPluginDraft, AiWorkshopStatus } from '@cordclean/shared'
+import type { AiModelInfo, AiPluginDraft, AiWorkshopStatus, PluginManifest } from '@cordclean/shared'
 import {
   cancelAi,
   draftAiWorkshopPlugin,
@@ -37,7 +37,8 @@ const SHAPES = [
 
 const requirement = ref('')
 const draft = ref<AiPluginDraft | null>(null)
-const validation = ref<{ ok: boolean; errors: string[]; warnings: string[] } | null>(null)
+const validation = ref<{ ok: boolean; errors: string[]; warnings: string[]; manifest?: PluginManifest } | null>(null)
+const effectiveManifest = computed<PluginManifest>(() => (validation.value?.manifest ?? draft.value?.manifest ?? {}) as PluginManifest)
 const busy = ref(false)
 const installing = ref(false)
 const error = ref('')
@@ -97,7 +98,7 @@ const modelOptions = computed<Array<{ id: string; name?: string }>>(() => {
   return list
 })
 
-const entryPath = computed(() => draft.value?.manifest?.entry ?? 'index.mjs')
+const entryPath = computed(() => String(effectiveManifest.value.entry ?? 'index.mjs'))
 const files = computed<Array<{ path: string; content: string }>>(() => {
   const list = draft.value?.files ?? []
   if (list.length) return list
@@ -115,6 +116,15 @@ const dependencies = computed(() => Object.entries(draft.value?.dependencies ?? 
 function openPlugins(): void {
   state.page = 'plugins'
 }
+
+const generationStage = computed(() => {
+  const sec = elapsed.value
+  if (sec < 5) return '正在连接模型并理解需求…'
+  if (sec < 20) return '正在生成插件入口与清单…'
+  if (sec < 45) return '正在补写多文件内容 / 客户端页面…'
+  if (sec < 75) return '模型仍在生成较长页面，完成后会立刻做静态校验…'
+  return '仍在等待模型返回（超过 75 秒）；可继续等待或取消生成'
+})
 
 function startTimer(): void {
   elapsed.value = 0
@@ -243,7 +253,13 @@ async function revalidate(): Promise<void> {
       manifest: value.manifest as any,
       files: value.files,
     })
-    if (seq === validateSeq && draft.value?.code === value.code) validation.value = result
+    if (seq === validateSeq && draft.value?.code === value.code) {
+      validation.value = result
+      if (result.manifest && draft.value) {
+        draft.value.manifest = result.manifest
+        manifestText.value = JSON.stringify(result.manifest, null, 2)
+      }
+    }
   } catch (err) {
     if (seq === validateSeq && draft.value?.code === value.code) {
       validation.value = { ok: false, errors: [err instanceof Error ? err.message : String(err)], warnings: [] }
@@ -367,7 +383,7 @@ async function install(): Promise<void> {
       draft.value.mode === 'native',
       {
         format: draft.value.format,
-        manifest: draft.value.manifest as any,
+        manifest: effectiveManifest.value as any,
         files: draft.value.files,
         acknowledgePermissions: true,
       },
@@ -449,7 +465,19 @@ onUnmounted(stopTimer)
           </el-button>
           <el-button v-if="busy" @click="cancel">取消生成</el-button>
         </div>
-        <p v-if="busy" class="cc-hint">已等待 {{ elapsed }} 秒；生成后还会做静态契约与语法校验，大模型慢时可能需要 30~90 秒。</p>
+        <div v-if="busy" class="generation-progress">
+          <div class="generation-head">
+            <span>⏳ {{ generationStage }}</span>
+            <span class="cc-faint">已等待 {{ elapsed }} 秒</span>
+          </div>
+          <el-progress :percentage="100" :indeterminate="true" :show-text="false" :stroke-width="6" />
+          <p class="cc-faint">阶段提示按耗时估算；多文件/客户端页面通常需要 20~90 秒，完成后自动做静态契约与语法校验。</p>
+          <div class="generation-stages">
+            <span class="done">1 理解需求</span>
+            <span :class="{ active: elapsed >= 5 }">2 生成清单与代码</span>
+            <span :class="{ active: elapsed >= 45 }">3 校验准备</span>
+          </div>
+        </div>
         <p v-if="error" class="error-text">生成失败：{{ error }}</p>
         <p class="cc-hint" style="margin-top: 10px">
           输出默认是多文件 v2 插件包（manifest + files）；需要页面时模型会输出 <code>client/index.html</code>。第三方依赖会在暂存目录安装
@@ -490,20 +518,20 @@ onUnmounted(stopTimer)
         <template v-if="draft">
           <div class="pkg-head">
             <div>
-              <strong>{{ draft.manifest?.name ?? draft.name }}</strong>
-              <span class="cc-faint"> · v{{ draft.manifest?.version ?? '1.0.0' }} · {{ draft.kind ?? 'cleaner' }}</span>
+              <strong>{{ effectiveManifest?.name ?? draft.name }}</strong>
+              <span class="cc-faint"> · v{{ effectiveManifest?.version ?? '1.0.0' }} · {{ draft.kind ?? 'cleaner' }}</span>
             </div>
             <div class="pkg-chips">
-              <span class="cc-pill">id {{ draft.manifest?.id ?? draft.name }}</span>
-              <span class="cc-pill">兼容 {{ draft.manifest?.engines?.cordclean ?? '—' }}</span>
+              <span class="cc-pill">id {{ effectiveManifest?.id ?? draft.name }}</span>
+              <span class="cc-pill">兼容 {{ effectiveManifest?.engines?.cordclean ?? '—' }}</span>
               <span class="cc-pill">文件 {{ files.length }}</span>
-              <span class="cc-pill">client {{ draft.manifest?.client?.mode ?? 'declarative' }}</span>
+              <span class="cc-pill">client {{ effectiveManifest?.client?.mode ?? 'declarative' }}</span>
             </div>
           </div>
           <p class="cc-hint">
-            权限：{{ (draft.manifest?.permissions?.services ?? []).join(', ') || '无服务' }}
-            <span v-if="draft.manifest?.permissions?.network"> · 网络</span>
-            <span v-if="draft.manifest?.permissions?.subprocess"> · 子进程</span>
+            权限：{{ (effectiveManifest?.permissions?.services ?? []).join(', ') || '无服务' }}
+            <span v-if="effectiveManifest?.permissions?.network"> · 网络</span>
+            <span v-if="effectiveManifest?.permissions?.subprocess"> · 子进程</span>
             · 完整权限运行，无法沙箱隔离
           </p>
 
@@ -809,4 +837,9 @@ onUnmounted(stopTimer)
 @media (max-width: 1280px) { .workshop-grid { grid-template-columns: minmax(0, 380px) minmax(0, 1fr); } }
 @media (max-width: 1100px) { .workshop-grid { grid-template-columns: 1fr; } .review-body { grid-template-columns: 180px minmax(0, 1fr); } }
 @media (max-width: 760px) { .review-body { grid-template-columns: 1fr; } .file-sidebar { flex-direction: row; flex-wrap: wrap; } }
+.generation-progress { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--cc-border); border-radius: 8px; background: var(--cc-panel-2, rgba(0,0,0,0.02)); }
+.generation-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.generation-stages { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; color: var(--cc-text-faint); }
+.generation-stages .done { color: var(--cc-success, #2e9b62); }
+.generation-stages .active { color: var(--cc-primary); font-weight: 500; }
 </style>

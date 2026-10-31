@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'AiView' })
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { RISK_META, formatBytes, formatTime } from '@cordclean/shared'
 import {
   analyzeAi,
@@ -353,11 +353,22 @@ async function run() {
 }
 
 async function adoptRule(rule: any, index: number) {
+  const target = rule.target?.path || rule.target?.base || rule.target?.pattern || '未知目标'
+  try {
+    await ElMessageBox.confirm(
+      `将把 AI 规则「${rule.name}」写入自定义规则库并热加载。目标：${target}。\n\nAI 规则默认不勾选；请确认目标范围，避免清理正在运行的程序或用户数据。`,
+      '采纳 AI 规则',
+      { type: 'warning', confirmButtonText: '确认采纳', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
   try {
     const result = await applyAiRule(rule)
     if (result.applied) {
-      ElMessage.success('规则已加入规则库并生效')
       analysis.value?.ruleSuggestions?.splice(index, 1)
+      if (result.warnings?.length) ElMessage.warning(`规则已加入，但需注意：${result.warnings.join('；')}`)
+      else ElMessage.success('规则已加入规则库并生效；该任务默认不勾选，请手动确认后再扫描')
     } else {
       ElMessage.warning(result.reason ?? '规则被拒绝')
     }
@@ -435,17 +446,50 @@ function onVisionPaste(event: ClipboardEvent): void {
 }
 
 const rootSuggestions = computed(() => analysis.value?.rootSuggestions ?? [])
+const selectedRootPaths = ref<string[]>([])
+
+watch(
+  rootSuggestions,
+  (items) => {
+    const existing = new Set(state.settings?.analysis.roots ?? [])
+    // AI 的建议默认全部勾选；用户可以逐项取消。整个 AppData 等宽目录会标注“范围较大”，
+    // 但仍允许用户显式添加（用户明确选择优先于自动过滤）。
+    selectedRootPaths.value = items.filter((item) => !existing.has(item.path)).map((item) => item.path)
+  },
+  { immediate: true },
+)
+
+/** 仅用于提示：过宽的用户目录/系统目录，不阻止用户选择 */
+function isBroadSuggestedRoot(value: string): boolean {
+  const normalized = String(value ?? '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
+  if (!normalized) return true
+  if (/^[a-z]:$/.test(normalized)) return true
+  return /\\(appdata|desktop|documents|downloads|onedrive|music|pictures|videos|program files( \(x86\))?|windows|programdata)$/.test(normalized)
+}
+
+const broadRootCount = computed(() => rootSuggestions.value.filter((item) => isBroadSuggestedRoot(item.path)).length)
 
 async function addSuggestedRoots() {
+  const selected = rootSuggestions.value.filter((item) => selectedRootPaths.value.includes(item.path))
+  if (!selected.length) return
   const existing = state.settings?.analysis.roots ?? []
   const roots = [...existing]
-  for (const suggestion of rootSuggestions.value) {
+  for (const suggestion of selected) {
     if (!roots.includes(suggestion.path)) roots.push(suggestion.path)
   }
+  const broad = selected.filter((item) => isBroadSuggestedRoot(item.path))
   try {
+    await ElMessageBox.confirm(
+      `将新增 ${selected.length} 个扫描根，这会扩大后续扫描范围（磁盘遍历更慢）。` +
+        (broad.length ? `\n\n其中 ${broad.length} 个是范围较大的目录（如整个 AppData），请确认确实需要。` : '') +
+        `\n\n${selected.map((item) => item.path).join('\n')}`,
+      '添加 AI 建议的扫描根',
+      { type: 'warning', confirmButtonText: '确认添加', cancelButtonText: '取消' },
+    )
     await patchSettings({ analysis: { roots } })
-    ElMessage.success(`已添加 ${rootSuggestions.value.length} 个扫描根，下次扫描生效`)
+    ElMessage.success(`已添加 ${selected.length} 个扫描根，下次扫描生效`)
   } catch (error) {
+    if (error === 'cancel') return
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
@@ -971,9 +1015,13 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <el-input v-model="extra" type="textarea" :rows="2" placeholder="告诉 AI 你的使用习惯，建议会更准确…" />
       </div>
 
-      <div v-if="state.busy && state.aiStream" class="cc-card">
-        <div class="cc-card-title"><h3>⏳ 正在生成…</h3><span class="cc-faint">流式输出，完成后自动解析</span></div>
-        <pre class="stream-box">{{ state.aiStream }}</pre>
+      <div v-if="state.busy" class="cc-card">
+        <div class="cc-card-title"><h3>⏳ 正在分析…</h3><span class="cc-faint">已接收 {{ state.aiStream.length }} 字符，完成后显示结构化建议</span></div>
+        <el-collapse>
+          <el-collapse-item title="调试：流式原始输出（普通用户无需查看）">
+            <pre class="stream-box">{{ state.aiStream || '等待模型输出…' }}</pre>
+          </el-collapse-item>
+        </el-collapse>
       </div>
 
       <!-- 分析结果 -->
@@ -1024,13 +1072,21 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
           <h3>📁 AI 建议新增的扫描根</h3>
           <span class="cc-faint">只来自用户目录一级目录，确认后才写入设置</span>
         </div>
-        <div v-for="suggestion in rootSuggestions" :key="suggestion.path" class="root-suggestion">
-          <div>
-            <div class="root-path">{{ suggestion.path }}</div>
-            <div class="cc-faint">{{ formatBytes(suggestion.sizeBytes) }} · {{ suggestion.reason }}</div>
+        <p class="cc-faint">AI 建议的扫描根可逐项选择；整个 AppData 等宽目录会标注范围较大，添加前会再次确认。</p>
+        <el-checkbox-group v-model="selectedRootPaths" class="root-suggestion-list">
+          <div v-for="suggestion in rootSuggestions" :key="suggestion.path" class="root-suggestion">
+            <el-checkbox :value="suggestion.path" />
+            <div>
+              <div class="root-path">{{ suggestion.path }}</div>
+              <div class="cc-faint">{{ formatBytes(suggestion.sizeBytes) }} · {{ suggestion.reason }}</div>
+            </div>
+            <span v-if="isBroadSuggestedRoot(suggestion.path)" class="cc-pill">范围较大</span>
           </div>
-        </div>
-        <el-button type="primary" plain @click="addSuggestedRoots">添加这些扫描根</el-button>
+        </el-checkbox-group>
+        <p v-if="broadRootCount" class="cc-hint">其中 {{ broadRootCount }} 个为范围较大的目录，默认仍勾选；如不需要可取消勾选。</p>
+        <el-button type="primary" plain :disabled="!selectedRootPaths.length" @click="addSuggestedRoots">
+          添加选中的扫描根（{{ selectedRootPaths.length }}）
+        </el-button>
       </div>
 
       <div v-if="analysis.selection?.length" class="cc-card">
@@ -1351,4 +1407,9 @@ code {
 .workshop-pending p {
   margin: 4px 0 0;
 }
+.root-suggestion-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.root-suggestion { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border: 1px solid var(--cc-border); border-radius: 8px; }
+.root-suggestion > div { flex: 1; min-width: 0; }
+.root-suggestion .cc-pill { margin-left: auto; flex: none; }
+.root-path { word-break: break-all; font-family: Consolas, monospace; font-size: 12px; }
 </style>

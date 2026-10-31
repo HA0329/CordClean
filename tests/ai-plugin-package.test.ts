@@ -76,6 +76,42 @@ describe('AI 工坊 → v2 插件包', () => {
     expect(manifest.client?.entry).toBe('client/index.html')
   })
 
+  it('engines 不兼容时自动修正并给出 warning', async () => {
+    const result = await validateAiPluginPackage(
+      draft({
+        manifest: {
+          id: 'ai-pkg-demo',
+          name: 'AI 包示例',
+          version: '1.0.0',
+          apiVersion: 2,
+          engines: { cordclean: '>=1.0.0' },
+          kind: 'cleaner',
+          entry: 'index.mjs',
+          permissions: { services: ['cleaner'], fsRoots: [], network: false, subprocess: false },
+        },
+        files: [{ path: 'index.mjs', content: CODE }],
+      }),
+      '0.6.7',
+    )
+    expect(result.manifest?.engines.cordclean).toBe('^0.6.7')
+    expect(result.warnings.join(' ')).toContain('engines.cordclean')
+  })
+
+  it('client 页面使用错误 bridge 协议时校验失败', async () => {
+    const badHtml = `<script>parent.postMessage({type:'cordclean/plugin-page',action:'resolve',requestId:'1'},'*')</script>`
+    const result = await validateAiPluginPackage(
+      draft({
+        files: [
+          { path: 'index.mjs', content: CODE },
+          { path: 'client/index.html', content: badHtml },
+        ],
+      }),
+      '0.6.7',
+    )
+    expect(result.ok).toBe(false)
+    expect(result.errors.join(' ')).toContain('bridge')
+  })
+
   it('非法插件名被规范化为合法 id', () => {
     expect(normalizePluginId('AI 插件！')).toBe('ai')
     expect(normalizePluginId('')).toBe('ai-plugin')

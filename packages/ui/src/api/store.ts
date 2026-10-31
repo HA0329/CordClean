@@ -571,7 +571,7 @@ export async function validateAiPlugin(
   dependencies: Record<string, string> = {},
   native = false,
   extra: { format?: 'single-file' | 'package'; manifest?: PluginManifest; files?: AiPluginFile[] } = {},
-): Promise<{ ok: boolean; errors: string[]; warnings: string[] }> {
+): Promise<{ ok: boolean; errors: string[]; warnings: string[]; manifest?: PluginManifest }> {
   return requireTransport().request('ai/plugin/validate', { code, dependencies, native, ...extra })
 }
 
@@ -604,7 +604,7 @@ export async function dryRunAiRule(suggestion: Record<string, unknown>): Promise
   return requireTransport().request('ai/rules/dry-run', { suggestion: suggestion as any })
 }
 
-export async function applyAiRule(suggestion: unknown): Promise<{ applied: boolean; ruleId?: string; reason?: string }> {
+export async function applyAiRule(suggestion: unknown): Promise<{ applied: boolean; ruleId?: string; reason?: string; warnings?: string[] }> {
   const result = await requireTransport().request('ai/apply-rule', { suggestion: suggestion as any })
   if (result.applied) await refreshPlugins()
   return result

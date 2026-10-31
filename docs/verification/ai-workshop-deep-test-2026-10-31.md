@@ -127,3 +127,14 @@
 3. P1-1 engines 审阅阶段修复/告警；
 4. P1-2 扫描根高级化；
 5. P1-3 流式 UI 与工坊长等待反馈。
+
+
+## 7. 修复状态（v0.6.8）
+
+- **P0-1 已修**：新增 AI 规则安全门（拒绝 npm-cache 父缓存、AppData/Temp/盘符根等宽目录；AppData 直系子目录降级 caution）；AI 规则采纳前二次确认；AI 来源规则/项不再默认选中；新增 6 项安全测试。
+- **P0-2 已修**：工坊 prompt 写入精确 bridge 契约；校验阶段检查 client 页面 bridge，错误协议直接阻止安装；新增错误/正确协议测试。
+- **P1-1 已修**：engines 自动修正并显示具体 warning；审阅区展示修正后的清单并用于安装。
+- **P1-2 已修**：AI 扫描根保持逐项可选；AppData 等宽目录仍展示并默认勾选、标注“范围较大”，添加前二次确认（不强制过滤用户明确想加的目录）。
+- **P1-3 已修**：流式原始 JSON 折叠到调试面板，普通视图只显示生成进度；工坊生成增加阶段提示（理解需求/生成清单代码/校验准备）与已等待秒数。
+- 验证：全量 66 文件 / 483 用例通过；tsc/vue-tsc/build 通过。
+- 已复验：修复后重新真实生成一次 client 插件，页面发送 `type: 'cordclean/plugin-page'`、`method: 'resolve'`、`resolverId`，校验通过（仅有 engines 修正 warning）；P0-1 的 npm-cache 采纳也被实际拒绝，具体 Edge 缓存规则可采纳且任务 `defaultSelected=false`。

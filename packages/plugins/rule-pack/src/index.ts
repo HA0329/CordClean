@@ -456,7 +456,7 @@ export default defineCleanerPlugin<RulePackConfig>({
           category: category.categoryId,
           risk: category.risk,
           icon: ICONS[category.categoryId] ?? '🧹',
-          defaultSelected: category.risk === 'safe' && !adminRequired,
+          defaultSelected: category.risk === 'safe' && !adminRequired && !rules.some((rule) => rule.source === 'ai'),
           requiresAdmin: adminRequired,
           targets: expandedTargets,
           tips: [
@@ -487,7 +487,8 @@ export default defineCleanerPlugin<RulePackConfig>({
               scan.emit({
                 ...draft,
                 risk: result?.risk ?? rule.risk,
-                defaultSelected: result?.suggest === true && draft.recommended !== false,
+                defaultSelected: result?.suggest === true && draft.recommended !== false && rule.source !== 'ai',
+                ...(rule.source === 'ai' ? { recommended: false } : {}),
                 note: draft.note ?? result?.reason ?? rule.note,
                 meta: { ...draft.meta, ruleId: rule.id, ruleName: rule.name, strategy: result?.strategy },
               })

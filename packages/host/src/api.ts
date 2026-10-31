@@ -26,6 +26,7 @@ import type {
   ApiResult,
 } from '@cordclean/shared'
 import { dlog, exportDiagnostics, exportDiagnosticsJson, initDiagnostics, logDirPath, logFileStats, recentLogEntries, recentLogs } from './diagnostics.ts'
+import { assessAiRuleSuggestion } from './ai-rule-safety.ts'
 import {
   cleanupGeneratedPlugin,
   cleanupGeneratedPlugins,
@@ -675,29 +676,32 @@ export function createHandlers(api: ApiContext): HandlerMap {
       return { ok: count > 0, reason: count > 0 ? undefined : '没有命中任何文件或目录', count, bytes, samples, missing }
     },
   'ai/apply-rule': async ({ suggestion }) => {
+    const safety = assessAiRuleSuggestion(suggestion, ctx.system.env)
+    if (safety.blocked) return { applied: false as const, reason: safety.blocked, warnings: safety.warnings }
     const rule: any = {
       id: 'ai-' + Date.now().toString(36),
       category: suggestion.category || 'ai-custom',
       categoryLabel: suggestion.categoryLabel ?? suggestion.category ?? 'AI 建议',
       categoryId: 'apps',
       name: suggestion.name,
-      risk: suggestion.risk,
+      risk: safety.risk,
       source: 'ai',
       version: 1,
       target: suggestion.target,
       note: suggestion.reason,
     }
     const errors = ctx.rules.validate([rule]).filter((issue) => issue.level === 'error')
-    if (errors.length) return { applied: false as const, reason: errors[0].message }
+    if (errors.length) return { applied: false as const, reason: errors[0].message, warnings: safety.warnings }
     const roots = [rule.target.path, ...(rule.target.paths ?? []), rule.target.base, ...(rule.target.bases ?? [])].filter(Boolean).map(String)
-    const clear = rule.target.type === 'clear_dir' || (rule.target.type === 'glob_dirs' && rule.target.action !== 'delete')
     for (const root of roots) {
-      if (!clear && ctx.pathPolicy.isProtected(root)) return { applied: false as const, reason: '目标位于受保护目录：' + root }
+      if (ctx.pathPolicy.isProtected(root)) {
+        return { applied: false as const, reason: '目标位于受保护目录：' + root, warnings: safety.warnings }
+      }
     }
     const current = ctx.settings.get().rules.custom ?? []
     ctx.settings.patch({ rules: { custom: [...current, rule] } })
     await ctx.plugins.reload('rule-pack').catch(() => undefined)
-    return { applied: true as const, ruleId: rule.id }
+    return { applied: true as const, ruleId: rule.id, warnings: safety.warnings }
   },
   'ai/egress': async ({ limit }) => ({
     stats: ctx.egress.stats(),

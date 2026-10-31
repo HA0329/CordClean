@@ -194,7 +194,7 @@ export interface ApiMap {
       manifest?: PluginManifest
       files?: AiPluginFile[]
     }
-    result: { ok: boolean; errors: string[]; warnings: string[] }
+    result: { ok: boolean; errors: string[]; warnings: string[]; manifest?: PluginManifest }
   }
   'ai/plugin/install': {
     params: {
@@ -214,7 +214,7 @@ export interface ApiMap {
     params: { suggestion: AiRuleSuggestion }
     result: { ok: boolean; reason?: string; count: number; bytes: number; samples: Array<{ path: string; bytes: number; kind: string }>; missing: string[] }
   }
-  'ai/apply-rule': { params: { suggestion: AiRuleSuggestion }; result: { applied: boolean; ruleId?: string; reason?: string } }
+  'ai/apply-rule': { params: { suggestion: AiRuleSuggestion }; result: { applied: boolean; ruleId?: string; reason?: string; warnings?: string[] } }
   'ai/egress': { params: { limit?: number }; result: { stats: { requests: number; bytes: number; tokens: number }; records: EgressRecord[] } }
   'ai/egress/clear': { params: void; result: { ok: true } }
 }

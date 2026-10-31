@@ -4,6 +4,18 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.8 — 2026-10-31
+
+### AI 规则安全门 + 工坊 bridge/engines/扫描根/流式修复
+
+- AI 规则拒绝 npm-cache 父缓存、AppData/Temp/盘符根等宽目录；AI 规则默认不选中，采纳前二次确认；
+- 工坊 client 页面 bridge 契约写入 prompt，校验阶段错误协议直接阻止安装；
+- engines 自动修正并显示 warning；审阅区展示修正清单；
+- AI 扫描根逐项可选（AppData 等仍可显式添加）+ 范围提示/确认；流式原始 JSON 收进调试折叠面板；工坊生成增加阶段反馈；
+- 全量 66 文件 / 483 用例通过；详见 [深度验收报告](docs/verification/ai-workshop-deep-test-2026-10-31.md)。
+
+详细说明：[docs/release-notes-v0.6.8.md](docs/release-notes-v0.6.8.md)
+
 ## v0.6.7 — 2026-10-31
 
 ### %TEMP% 逐文件拆分 + 任务级批量操作

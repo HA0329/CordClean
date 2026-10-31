@@ -41,6 +41,30 @@ export interface AiPackageValidation {
   files?: Record<string, string>
 }
 
+/** 检查 client 页面是否按宿主 bridge 契约调用（P0-2） */
+export function inspectClientPageBridge(html: string): { errors: string[]; warnings: string[] } {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const source = String(html ?? '')
+  const usesBridge = /cordclean\/plugin-page|postMessage/.test(source)
+  if (!usesBridge) {
+    warnings.push('client 页面未使用宿主 bridge；如果页面需要数据，将无法取得宿主数据')
+    return { errors, warnings }
+  }
+  const hasType = /cordclean\/plugin-page['"]/.test(source)
+  const hasMethod = /method\s*:\s*['"]resolve['"]/.test(source)
+  const hasResolver = /resolverId/.test(source)
+  if (!hasType || !hasMethod || !hasResolver) {
+    errors.push(
+      'client 页面 bridge 协议不匹配：必须发送 {type:"cordclean/plugin-page", method:"resolve", id, resolverId, params}，不要使用 action/key/dataId/requestId/channel/source 等字段',
+    )
+  }
+  if (!/cordclean\/plugin-page-result/.test(source)) {
+    warnings.push('client 页面未监听 cordclean/plugin-page-result，可能收不到数据')
+  }
+  return { errors, warnings }
+}
+
 /** 把插件名/草稿名变成合法清单 id */
 export function normalizePluginId(name: unknown): string {
   const raw = String(name ?? '')
@@ -143,6 +167,7 @@ export async function validateAiPluginPackage(
     // AI 生成包面向当前应用，且模型清单字段经常不完整：
     // 统一补齐 id/name/version/entry/kind/permissions，修正 engines，丢弃不可信的 contributes。
     const expectedEngine = `^${appVersion}`
+    const originalEngine = (draft.manifest as any)?.engines?.cordclean
     const repaired: Record<string, any> = { ...draft.manifest }
     repaired.id = typeof repaired.id === 'string' && repaired.id.trim() ? repaired.id.trim() : normalizePluginId(draft.name)
     repaired.name = typeof repaired.name === 'string' && repaired.name.trim() ? repaired.name.trim() : String(draft.name || repaired.id)
@@ -150,6 +175,9 @@ export async function validateAiPluginPackage(
     repaired.description = typeof repaired.description === 'string' && repaired.description.trim() ? repaired.description : 'AI 工坊生成的插件包'
     repaired.apiVersion = 2
     repaired.engines = { cordclean: expectedEngine }
+    if (String(originalEngine ?? '') !== expectedEngine) {
+      warnings.push(`已修正 engines.cordclean：${String(originalEngine ?? '缺失')} → ${expectedEngine}`)
+    }
     repaired.kind = repaired.kind ?? draft.kind ?? 'cleaner'
     repaired.entry =
       typeof repaired.entry === 'string' && repaired.entry.trim()
@@ -220,6 +248,11 @@ export async function validateAiPluginPackage(
     if (manifest.client?.mode === 'page' && manifest.client.entry) {
       if (!files[manifest.client.entry]) errors.push(`缺少客户端页面：${manifest.client.entry}`)
       else if (!manifest.client.entry.startsWith('client/')) errors.push('客户端页面必须在 client/ 目录下')
+      else {
+        const bridge = inspectClientPageBridge(files[manifest.client.entry]!)
+        errors.push(...bridge.errors)
+        warnings.push(...bridge.warnings)
+      }
     }
     if (manifest.configSchema && !files[manifest.configSchema]) {
       errors.push(`缺少配置 schema：${manifest.configSchema}`)
