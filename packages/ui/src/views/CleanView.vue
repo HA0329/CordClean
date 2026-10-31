@@ -53,6 +53,29 @@ function clearTaskSelection() {
   selectedTaskIds.value = []
 }
 
+function selectAllTasks() {
+  selectedTaskIds.value = state.tasks.map((task) => task.id)
+}
+
+function invertTaskSelection() {
+  const selected = new Set(selectedTaskIds.value)
+  selectedTaskIds.value = state.tasks.filter((task) => !selected.has(task.id)).map((task) => task.id)
+}
+
+function categoryTaskState(tasks: TaskDescriptor[]) {
+  return selectionState(tasks.map((task) => task.id), new Set(selectedTaskIds.value))
+}
+
+function toggleTaskCategory(tasks: TaskDescriptor[], value: boolean) {
+  const ids = new Set(tasks.map((task) => task.id))
+  const next = new Set(selectedTaskIds.value)
+  for (const id of ids) {
+    if (value) next.add(id)
+    else next.delete(id)
+  }
+  selectedTaskIds.value = [...next]
+}
+
 /* ------------------------------------------------------------------ */
 /* 结果视图、筛选与选择状态                                              */
 /* ------------------------------------------------------------------ */
@@ -710,7 +733,7 @@ async function handleBulkCommand(command: string) {
         </div>
       </div>
       <div class="task-tools">
-        <el-input v-model="taskSearch" size="small" placeholder="搜索任务名 / 说明 / id" clearable style="width: 230px" />
+        <el-input v-model="taskSearch" size="small" placeholder="搜索任务名 / 说明 / id" clearable style="width: 210px" />
         <el-select v-model="taskRiskFilter" size="small" style="width: 118px">
           <el-option label="全部风险" value="all" />
           <el-option label="安全" value="safe" />
@@ -718,6 +741,11 @@ async function handleBulkCommand(command: string) {
           <el-option label="高风险" value="risky" />
         </el-select>
         <span class="cc-faint">显示 {{ filteredTaskCount }} / {{ tasks.length }} 个任务</span>
+        <el-button size="small" text :disabled="scanning || cleaning" @click="selectAllTasks">全选任务</el-button>
+        <el-button size="small" text :disabled="scanning || cleaning" @click="invertTaskSelection">反选</el-button>
+        <el-button size="small" type="primary" plain :disabled="!selectedTaskIds.length || scanning || cleaning" @click="runScan">
+          扫描选中任务
+        </el-button>
       </div>
       <p v-if="!tasksByCategory.length" class="cc-faint task-empty">没有匹配的任务，清空搜索条件试试。</p>
       <div class="task-scroll">
@@ -725,6 +753,12 @@ async function handleBulkCommand(command: string) {
         <div v-for="group in tasksByCategory" :key="group.category" class="task-group">
           <div class="group-label">
             <span class="group-dot" :style="{ background: group.meta?.color }" />
+            <el-checkbox
+              :model-value="categoryTaskState(group.tasks) === 'all'"
+              :indeterminate="categoryTaskState(group.tasks) === 'partial'"
+              :disabled="scanning || cleaning"
+              @change="(value: any) => toggleTaskCategory(group.tasks, !!value)"
+            />
             {{ group.meta?.name ?? group.category }}
           </div>
           <div class="task-grid">

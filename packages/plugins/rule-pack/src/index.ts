@@ -230,14 +230,38 @@ async function scanRule(
       const targetPaths = [target.path, ...(target.paths ?? [])].filter(Boolean).map((item) => String(item))
       const isWholeTempRoot =
         rule.category === 'system_temp' && targetPaths.some((item) => /^%(TEMP|TMP)%$/i.test(item))
+      if (isWholeTempRoot) {
+        // P3：用户临时目录不再作为一个整体项，而是逐条（顶层）上报，便于用户按文件/目录判断。
+        // 所有条目默认不勾选（临时文件可能正被程序占用），但仍可手动选择。
+        for await (const entry of walk(root, {
+          signal: scan.signal,
+          maxDepth: 1,
+          maxEntries: Math.max(1, options.maxItems),
+          onError: (targetPath, error) => scan.addError({ path: targetPath, message: String(error) }),
+        })) {
+          const entryKey = pathKey(entry.path)
+          if (entryKey === pathKey(root)) continue
+          // 不要把 CordClean 自己的数据目录当作临时项上报（便携/测试场景可能位于 TEMP 下）
+          if (entryKey.startsWith(pathKey(env.dataDir) + '\\')) continue
+          const entrySize = entry.isDirectory
+            ? (await folderSize(entry.path, { maxEntries: options.maxEntriesPerDir, signal: scan.signal })).bytes
+            : entry.size
+          push({
+            path: entry.path,
+            kind: entry.isDirectory ? 'directory' : 'file',
+            size: entrySize,
+            mtimeMs: entry.mtimeMs,
+            recommended: false,
+            note: '临时目录内容（默认不勾选；可能正被程序占用，确认后再选择）',
+            meta: { ruleId: rule.id, action: 'delete', parent: 'TEMP' },
+          })
+        }
+        continue
+      }
       push({
         path: root,
         kind: 'directory',
         size: size.bytes,
-        ...(isWholeTempRoot ? { recommended: false } : {}),
-        ...(isWholeTempRoot
-          ? { note: '整体清空用户临时目录，可能影响正在运行的程序；默认不勾选，建议确认无程序运行时再手动选择' }
-          : {}),
         meta: { ruleId: rule.id, action: 'clear', files: size.files },
       })
     }
@@ -464,7 +488,7 @@ export default defineCleanerPlugin<RulePackConfig>({
                 ...draft,
                 risk: result?.risk ?? rule.risk,
                 defaultSelected: result?.suggest === true && draft.recommended !== false,
-                note: result?.reason ?? rule.note,
+                note: draft.note ?? result?.reason ?? rule.note,
                 meta: { ...draft.meta, ruleId: rule.id, ruleName: rule.name, strategy: result?.strategy },
               })
             }
