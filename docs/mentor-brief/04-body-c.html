@@ -62,7 +62,7 @@
           <tr><td><b>第 3 章 需求分析</b></td><td>功能需求、非功能需求、用例</td><td>12 个插件 / 39 个任务清单；安全性与性能指标</td></tr>
           <tr><td><b>第 4 章 系统设计</b></td><td>分层架构、插件机制、引擎、安全模型</td><td>本页 02–05；<code>architecture.md</code> §5、§12（补偿链七步）</td></tr>
           <tr><td><b>第 5 章 系统实现</b></td><td>内核、引擎、插件、界面、外壳</td><td>源码 <code>packages/core</code>、<code>packages/plugins/*</code>、<code>packages/ui</code>；插件开发规范</td></tr>
-          <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 设计属性 / 缺陷改进</td><td>488 个测试、E7 卸载残留对照实验、<code>docs/defect-log.md</code>（67 个缺陷）、<code>docs/benchmark.md</code></td></tr>
+          <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 设计属性 / 缺陷改进</td><td>489 个测试、E7 卸载残留与 E8 依赖响应实验、<code>docs/defect-log.md</code>（67 个缺陷）、<code>docs/benchmark.md</code></td></tr>
           <tr><td><b>第 7 章 总结与展望</b></td><td>局限、后续工作</td><td>本页「局限与后续」；<code>architecture.md</code> §13 工程折中</td></tr>
         </tbody>
       </table>
@@ -166,7 +166,7 @@
           <div class="tl-item">
             <div class="tl-time">4:15 – 5:00</div>
             <div class="tl-title">安全链与测试：证明而不是宣称</div>
-            <div class="tl-desc">七步链动画 + 488 个测试 + 67 个缺陷（尤其 D-01 越界删除）收尾。</div>
+            <div class="tl-desc">七步链动画 + 489 个测试 + 67 个缺陷（尤其 D-01 越界删除）收尾。</div>
           </div>
         </div>
       </div>
@@ -206,13 +206,13 @@
           <details>
             <summary><span class="q">Q5</span>这个题的工作量够吗？<span class="plus">+</span></summary>
             <div class="qa-body">
-              <p>可量化：源码约 1.93 万行、测试 0.63 万行、脚本 0.57 万行；2591 次提交；12 个插件、39 个任务、271 条规则；13 份文档、67 条缺陷记录；488 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
+              <p>可量化：源码约 1.93 万行、测试 0.63 万行、脚本 0.57 万行；2591 次提交；12 个插件、39 个任务、271 条规则；13 份文档、67 条缺陷记录；489 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
             </div>
           </details>
           <details>
             <summary><span class="q">Q6</span>为什么选 Cordis，而不是自己写插件系统？<span class="plus">+</span></summary>
             <div class="qa-body">
-              <p>需要的能力恰好是它的强项：服务 DI、fiber 生命周期、<code>effect</code> 自动回收、Schemastery 配置校验、热重载。自己写会把时间花在生命周期与依赖管理上，偏离论文重点（清理架构与安全）。同时插件只依赖契约层，保留了替换框架的可能。E7 实验给出了 effect 回收与阴性对照的可复现数据（<code>docs/experiments/e7-unload-residue.md</code>）。</p>
+              <p>需要的能力恰好是它的强项：服务 DI、fiber 生命周期、<code>effect</code> 自动回收、Schemastery 配置校验、热重载。自己写会把时间花在生命周期与依赖管理上，偏离论文重点（清理架构与安全）。同时插件只依赖契约层，保留了替换框架的可能。E7/E8 实验给出了 effect 回收、依赖挂起与自动恢复的可复现数据（<code>docs/experiments/e7-unload-residue.md</code>、<code>docs/experiments/e8-dependency-response.md</code>）。</p>
             </div>
           </details>
           <details>

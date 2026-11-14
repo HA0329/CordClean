@@ -1,6 +1,6 @@
 # 测试设计（全量测试分层）
 
-当前规模：**68 个测试文件 / 488 个用例**（2026-11-14，含 E7 插件卸载残留对照实验）
+当前规模：**69 个测试文件 / 489 个用例**（2026-11-14，含 E7/E8 设计属性验证）
 
 日志系统：`tests/logging.test.ts`（轮转/保留/脱敏/RPC 降噪/内核日志统一）。
 
@@ -16,7 +16,7 @@
 | 平台/插件 | plugins / plugins-robust / worker-host / external-proxy / external-install / generic-plugin / plugin-window / architecture | 插件生命周期、worker 故障隔离、外部插件信任边界（fsRoots/env/clearRoot）、原生 Cordis 插件、UI 贡献/iframe/窗口托盘、依赖方向 |
 | 引擎/规则 | engine / engine-robust / rules / rule-pack-evaluator / plugin-rules / quarantine / sessions / scheduler / undo / in-use | 扫描清理、规则与 protected 语义、隔离恢复、会话中断、调度授权、占用预检 |
 | AI | ai / ai-shapes / ai-robust / ai-context / ai-selection / ai-tools / ai-vision / ai-stream-analyze / ai-model-metadata / ai-config-defaults / ai-budget / ai-plugin-workshop / ai-plugin-native-kinds | 三种接口形态、推理等级、重试、隐私脱敏、选择项校验、模型元数据、流式分析、原生插件提示词/契约 |
-| 设计属性 | e7-unload | E7：正例 `ctx.effect` 资源卸载归零；反例未登记资源残留对照（[实验设计](experiments/e7-unload-residue.md)） |
+| 设计属性 | e7-unload / e8-dependency | E7：正例 `ctx.effect` 资源卸载归零；反例未登记资源残留对照。E8：provider/consumer 依赖挂起与自动恢复（[E7](experiments/e7-unload-residue.md) / [E8](experiments/e8-dependency-response.md)） |
 | 选择交互 | selection | 推荐/分组/筛选/排序/汇总纯函数与千条级性能 |
 | 界面 | `scripts/e2e-ui.mjs`、`scripts/verify-clean-ui.mjs` | 6 页面渲染、扫描链路、v2 选择交互、无头 Edge 千条级验收 |
 | 审计/基准 | `scripts/audit-plugins.ts`、`scripts/audit-rules.ts`、`bench/scan.bench.ts` | 插件契约审计（只读）、规则库审计、性能基准 |
@@ -26,6 +26,7 @@
 ```bash
 pnpm test              # 全量（先构建 UI，再 vitest）
 pnpm exec vitest run tests/e7-unload.test.ts --reporter=verbose   # E7 卸载残留对照实验（输出 E7_RESULT）
+pnpm exec vitest run tests/e8-dependency.test.ts --reporter=verbose # E8 依赖响应实验（输出 E8_RESULT）
 pnpm test:security     # 安全/路径层
 pnpm test:platform     # 平台/插件边界层
 pnpm test:engine       # 清理引擎/规则层
@@ -52,6 +53,7 @@ pnpm bench && pnpm exec tsx scripts/audit-plugins.ts
 - `app/open-path` 命令注入修复（D-25）暂无专门单测，目前靠代码审阅 + E2E 覆盖；
 - Electron 外壳的 CSP / `sandbox: true` / 导航拦截（批次1）缺少自动化断言，依赖人工/E2E；
 - E2E 脚本覆盖主流程；AI 工坊、AI 分析结果渲染、插件状态/事件、插件 iframe 页面、悬浮窗与独立清理进度页本次用临时 CDP 专项验证，尚未固化为独立 `scripts/e2e-*.mjs`；
+- E8 发现 provider 禁用后 consumer 的 Cordis fiber 进入 PENDING，但插件管理器 status 仍为 active；实验只记录该差异，UI 状态同步待改进；
 - UI 无组件级单测（仅 CDP 端到端）；Vue 模板/脚本类型由 `pnpm typecheck:ui`（vue-tsc）覆盖并已接入 CI，但还没有 UI 组件渲染测试；
 - 没有性能回归门禁（bench 需手动跑，参考 `docs/benchmark.md`）。
 
