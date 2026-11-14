@@ -4,7 +4,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.9`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；67 个测试文件 / 487 个用例。
+当前版本 `0.6.9`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；68 个测试文件 / 488 个用例。
 
 更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md) · 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md) · 安全政策：[SECURITY.md](SECURITY.md)
 
@@ -49,7 +49,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 69 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（487 个用例 / 67 个文件）
+- **测试**：Vitest（488 个用例 / 68 个文件）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -267,7 +267,7 @@ PC-Cleaner v0.9.11 的即时通讯数据保护（`WeChat Files` / `Tencent Files
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 487 个用例 / 67 个文件
+pnpm test          # 488 个用例 / 68 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）
@@ -379,6 +379,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [全项目复审（2026-10-24）](docs/verification/project-review-2026-10-24.md) —— 概览实时性、轻量 system/live 采样、插件/AI 工坊与文档一致性复核
 - [安全与正确性复审（2026-10-24 追加）](docs/verification/security-audit-2026-10-24.md) —— 隔离区恢复穿越、取消清理、inject 兼容、插件启停竞态等修复
 - [测试设计](docs/test-plan.md) —— 测试分层、命令与已知缺口
+- [E7 插件卸载无残留实验](docs/experiments/e7-unload-residue.md) —— 正例/阴性对照设计、指标与实测数据（论文设计属性验证）
 - [规则库审计报告](docs/rules-report.md)
 - [依赖与升级策略](docs/dependency-policy.md) —— 版本锁定、已清理依赖、答辩后升级清单
 - [论文写作大纲](docs/thesis-outline.md) —— 章节结构、图表清单、数据引用
