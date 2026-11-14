@@ -2,7 +2,7 @@
 
 > 对应论文设计属性：**Cordis `inject` 的响应式依赖 → provider 服务变化时 consumer 自动挂起/恢复**。
 > 实验代码：[tests/e8-dependency.test.ts](../../tests/e8-dependency.test.ts)（自动化，可重复运行）。
-> 首次执行日期：2026-11-14；当前版本：CordClean 0.6.9。
+> 首次执行日期：2026-11-14；实验执行版本：CordClean 0.6.9；当前发布版本：0.6.10。
 
 ## 1. 实验目标
 
@@ -113,8 +113,8 @@ pnpm exec vitest run tests/e8-dependency.test.ts --reporter=verbose
 initial                 @97ms   provider=stopped  consumer=stopped  service=false task=false
 provider-enabled        @99ms   provider=active   consumer=stopped  service=true  task=false
 both-active             @100ms  provider=active   consumer=ACTIVE   service=true  task=true   consumerSetup=1
-after-disable-provider  @132ms  provider=stopped  consumer(PENDING) service=false task=false  consumerTeardown=1 providerTeardown=1
-after-reenable          @163ms  provider=active   consumer=ACTIVE   service=true  task=true   consumerSetup=2 consumerTeardown=1
+after-disable-provider  @132ms  provider=stopped  consumer=suspended(fiber PENDING) service=false task=false  consumerTeardown=1 providerTeardown=1
+after-reenable          @163ms  provider=active   consumer=active(ACTIVE) service=true  task=true   consumerSetup=2 consumerTeardown=1
 ```
 
 ### 7.1 生命周期序列
@@ -134,30 +134,38 @@ consumer:setup         ← consumer 自动恢复（没有手动 enable consumer�
 - provider 重新启用后：consumer fiber 自动回到 **ACTIVE**，任务重新注册，`ping()` 返回 `pong-2`，consumer setup 计数从 1 变为 2；
 - 全程没有对 consumer 调用 `enable`/`reload`。
 
-### 7.3 发现：插件管理器 status 与 Cordis fiber 状态不一致
+### 7.3 修复：插件管理器 status 与 Cordis fiber 状态同步
 
-provider 禁用后，Cordis 已把 consumer fiber 置为 **PENDING**，但插件管理器记录的 `consumerStatus` 仍为 **active**：
+provider 禁用后，Cordis 会把 consumer fiber 置为 **PENDING**；插件管理器现在从 fiber 状态派生 effective status：
+
+- `PluginInfo.status` 新增 `suspended`；
+- `PluginManager.list()` / `find()` 对运行中的插件读取 `fiber.state`：ACTIVE → `active`，PENDING → `suspended`，DISPOSED/UNLOADING → `stopped`；
+- `enabled` 对 suspended 仍为 true（插件仍处于启用状态，依赖恢复后会自动回来，不能把开关显示成关闭）；
+- 插件管理页显示「等待依赖」而不是「运行中」；CSS 增加 `.status-suspended`；
+- E8 测试已改为断言：禁用 provider 后 `plugins.list()` 的 consumer status 必须为 `suspended`，重新启用 provider 后恢复 `active`。
+
+修复后快照：
 
 ```json
 {
-  "managerStatus": "active",
+  "managerStatus": "suspended",
   "fiberState": "PENDING"
 }
 ```
 
-这会导致插件管理页/健康检查把“依赖被挂起”的 consumer 显示为“运行中”。E8 只记录该差异，不把它当作期望行为；后续可考虑让插件管理器从 fiber 状态派生 UI 状态，或在依赖挂起时发出 `plugins/changed` 事件。
+> 说明：这不会改变 Cordis 的依赖响应行为，只是把宿主管理器的 UI 口径与 fiber 的真实状态对齐。
 
 ## 8. 效度与局限
 
 - **单平台、单进程**：Windows 11，Cordis 4；未做跨平台；
 - **一次采样**：状态判定是 PENDING/ACTIVE 的离散值，不依赖毫秒精度；时间仅作参考；
 - **夹具简化**：provider 服务是内存对象；真实插件可能依赖外部资源（文件、网络、子进程），依赖挂起时这些资源的清理仍应由 provider 的 `ctx.effect` 负责；
-- **管理器差异**：E8 暴露了 UI 状态口径问题，但本实验不修改产品行为；
+- **管理器差异（已修复）**：`PluginManager.list()` 已从 fiber 状态派生 effective status，suspended 会显示为“等待依赖”；本实验同时保留修复前后的对照说明；
 - **未覆盖**：多个 provider/consumer、循环依赖、依赖服务可选注入（若 Cordis 支持）等场景。
 
 ## 9. 论文使用建议
 
 - 用第 7 节的快照与生命周期序列作为 E8 证据；
 - 明确写出“consumer 未手动重启”，这是响应式依赖与静态启动注入的核心区别；
-- 把 E8 发现的 manager status 差异作为“工程折中/后续改进”，不要写成 Cordis 的问题；这是宿主 UI 状态同步问题；
+- 可把「manager status 从 fiber 状态派生」写成宿主 UI 状态同步设计，而不是把差异归因于 Cordis；
 - E7/E8 可合并为“设计属性验证”，E8 不单独宣称清理安全性，只验证生命周期语义。

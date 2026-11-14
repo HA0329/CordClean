@@ -188,6 +188,13 @@ function packagePluginId(manifestId: string): string {
 
 /** cordis 的 FiberState.ACTIVE（const enum 在 isolatedModules 下不能直接引用，这里用等值常量） */
 const FIBER_STATE_ACTIVE = 2
+/** cordis 的 FiberState.PENDING：依赖服务暂不可用 */
+const FIBER_STATE_PENDING = 0
+/** cordis 的 FiberState.FAILED */
+const FIBER_STATE_FAILED = 3
+/** cordis 的 FiberState.DISPOSED / UNLOADING */
+const FIBER_STATE_DISPOSED = 4
+const FIBER_STATE_UNLOADING = 5
 
 /** 从 Schemastery 风格的 Config 推导默认配置 */
 export function defaultConfigOf(plugin: any): Record<string, any> {
@@ -367,9 +374,10 @@ export class PluginManagerService extends Service implements PluginManagerLike {
         source: record.entry.id.startsWith('external:') ? 'external' : 'builtin',
         version: record.entry.version ?? descriptor?.version ?? '0.1.0',
         taskCount: tasks.length,
-        status: record.status,
+        status: this.effectiveStatus(record),
         error: record.error,
         errorStack: record.errorStack,
+        // suspended 仍是“已启用”：依赖恢复后会自动回来，不能把开关显示成关闭
         enabled: record.status === 'active' || record.status === 'loading',
         tasks,
         config: record.config,
@@ -379,6 +387,24 @@ export class PluginManagerService extends Service implements PluginManagerLike {
         permissions: (record as any).permissions,
       }
     })
+  }
+
+  /**
+   * 插件管理器的 status 不能只存 record.status：provider 被禁用时，
+   * Cordis 会把 consumer fiber 自动置为 PENDING，但 consumer record 本身没有
+   * 经过 disable()。这里以 fiber 的真实状态为准，避免 UI 把“等待依赖”显示成“运行中”。
+   */
+  private effectiveStatus(record: RuntimeRecord): PluginRuntimeInfo['status'] {
+    const fiber = record.fiber
+    if (!fiber) return record.status
+    // error / loading 是管理器自己的瞬时状态，优先保留
+    if (record.status === 'error' || record.status === 'loading' || record.status === 'stopped') return record.status
+    const state = fiber.state as unknown as number
+    if (state === FIBER_STATE_ACTIVE) return 'active'
+    if (state === FIBER_STATE_PENDING) return 'suspended'
+    if (state === FIBER_STATE_FAILED) return 'error'
+    if (state === FIBER_STATE_DISPOSED || state === FIBER_STATE_UNLOADING) return 'stopped'
+    return record.status
   }
 
   /** 加载插件模块（带缓存） */

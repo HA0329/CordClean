@@ -227,8 +227,8 @@ export interface PluginInfo {
   version: string
   /** 插件对外提供的清理任务数 */
   taskCount: number
-  /** 运行时状态 */
-  status: 'active' | 'stopped' | 'error' | 'loading'
+  /** 运行时状态：suspended 表示插件已启用，但依赖的服务暂时不可用（Cordis fiber=PENDING） */
+  status: 'active' | 'stopped' | 'error' | 'loading' | 'suspended'
   error?: string
   /** 是否启用 */
   enabled: boolean

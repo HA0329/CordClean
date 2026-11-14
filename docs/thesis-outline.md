@@ -265,7 +265,7 @@ pnpm bench                                 # 性能基准
 | 禁用 provider | **PENDING** | 无 | 不可用 | consumer teardown=1 |
 | 重新启用 provider | **自动 ACTIVE** | 有 | 可用 | consumer setup=2 |
 
-整个恢复过程没有手动重启 consumer；同时观察到插件管理器的 `consumerStatus` 仍显示 `active`（与 fiber PENDING 不一致），这是宿主 UI 状态同步问题，论文中应作为“工程折中/后续改进”而不是 Cordis 缺陷。
+整个恢复过程没有手动重启 consumer；插件管理器从 fiber 状态派生 effective status，provider 禁用时 consumer 显示为 `suspended`（「等待依赖」），重新启用后自动恢复 `active`，解决了早期「fiber PENDING 但 UI 仍显示 active」的状态口径问题。
 
 ## 7. 总结与展望（约 1500 字）
 

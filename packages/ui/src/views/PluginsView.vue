@@ -553,7 +553,7 @@ function categoryName(id: string) {
         <div class="plugin-meta">
           <span class="cc-pill">{{ categoryName(plugin.category) }}</span>
           <span v-if="plugin.source === 'external'" class="cc-pill">工坊 / 外部</span>
-          <span class="cc-pill" :class="`status-${plugin.status}`">{{ plugin.status === 'active' ? '运行中' : plugin.status === 'error' ? '异常' : plugin.status === 'loading' ? '加载中' : '已停止' }}</span>
+          <span class="cc-pill" :class="`status-${plugin.status}`">{{ plugin.status === 'active' ? '运行中' : plugin.status === 'suspended' ? '等待依赖' : plugin.status === 'error' ? '异常' : plugin.status === 'loading' ? '加载中' : '已停止' }}</span>
           <span class="cc-pill">{{ plugin.taskCount }} 个任务</span>
           <el-button v-if="plugin.id === 'rule-pack'" size="small" @click="ruleOpen = true">规则命中</el-button>
           <span v-if="pluginStats(plugin).items" class="cc-pill">上次扫描 {{ pluginStats(plugin).items }} 项 · {{ (pluginStats(plugin).bytes / 1024 / 1024).toFixed(1) }} MB</span>

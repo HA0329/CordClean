@@ -53,7 +53,7 @@ pnpm bench && pnpm exec tsx scripts/audit-plugins.ts
 - `app/open-path` 命令注入修复（D-25）暂无专门单测，目前靠代码审阅 + E2E 覆盖；
 - Electron 外壳的 CSP / `sandbox: true` / 导航拦截（批次1）缺少自动化断言，依赖人工/E2E；
 - E2E 脚本覆盖主流程；AI 工坊、AI 分析结果渲染、插件状态/事件、插件 iframe 页面、悬浮窗与独立清理进度页本次用临时 CDP 专项验证，尚未固化为独立 `scripts/e2e-*.mjs`；
-- E8 发现 provider 禁用后 consumer 的 Cordis fiber 进入 PENDING，但插件管理器 status 仍为 active；实验只记录该差异，UI 状态同步待改进；
+- E8 曾发现 provider 禁用后 consumer 的 Cordis fiber 进入 PENDING、但插件管理器 status 仍为 active；已修复为从 fiber 状态派生 `suspended`（`tests/e8-dependency.test.ts` 覆盖）；
 - UI 无组件级单测（仅 CDP 端到端）；Vue 模板/脚本类型由 `pnpm typecheck:ui`（vue-tsc）覆盖并已接入 CI，但还没有 UI 组件渲染测试；
 - 没有性能回归门禁（bench 需手动跑，参考 `docs/benchmark.md`）。
 

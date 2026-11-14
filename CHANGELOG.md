@@ -4,6 +4,17 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.10 — 2026-11-14
+
+### 插件依赖挂起状态同步（E8）
+
+- 修复 provider 禁用后 consumer fiber PENDING、但插件管理器仍显示 active 的状态不同步；
+- 新增 `suspended` 状态，`list()/find()` 从 fiber 状态派生 effective status；UI 显示「等待依赖」；
+- E8 测试增加 suspended/active 状态同步断言；补充 E7/E8 实验材料；
+- 全量 69 文件 / 489 用例通过。
+
+详细说明：[docs/release-notes-v0.6.10.md](docs/release-notes-v0.6.10.md)
+
 ## v0.6.9 — 2026-10-31
 
 ### 剩余 P1/后续修复

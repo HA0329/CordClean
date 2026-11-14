@@ -105,6 +105,8 @@ describe('E8 插件依赖响应', () => {
       const snapshot = (label: string) => {
         const providerRecord = records.get('e8-provider')
         const consumerRecord = records.get('e8-consumer')
+        const providerInfo = app.ctx.plugins.list().find((plugin) => plugin.id === 'e8-provider')
+        const consumerInfo = app.ctx.plugins.list().find((plugin) => plugin.id === 'e8-consumer')
         const service = (() => {
           try {
             return typeof (app.ctx as any).e8Service?.ping === 'function'
@@ -114,9 +116,9 @@ describe('E8 插件依赖响应', () => {
         })()
         const value = {
           label,
-          providerStatus: providerRecord?.status,
+          providerStatus: providerInfo?.status,
           providerFiber: providerRecord?.fiber ? FIBER_STATE[providerRecord.fiber.state] : undefined,
-          consumerStatus: consumerRecord?.status,
+          consumerStatus: consumerInfo?.status,
           consumerFiber: consumerRecord?.fiber ? FIBER_STATE[consumerRecord.fiber.state] : undefined,
           consumerTask: app.ctx.cleaner.list().some((task) => task.id === 'e8-consumer-task'),
           service,
@@ -162,11 +164,11 @@ describe('E8 插件依赖响应', () => {
       expect(afterDisableProvider.service).toBe(false)
       expect(afterDisableProvider.state.consumerSetup).toBe(1)
       expect(afterDisableProvider.state.consumerTeardown).toBe(1)
-      // 观察项：插件管理器目前仍标记 consumer 为 active，而 Cordis fiber 实际为 PENDING。
-      // 这是 UI 状态口径问题，不改变依赖响应本身；这里只记录，不把它当作期望行为断言。
+      // 插件管理器必须从 fiber 状态派生 effectiveStatus：不能继续显示 active。
+      expect(afterDisableProvider.consumerStatus).toBe('suspended')
       transitions.push({
         atMs: Date.now() - startedAt,
-        note: 'managerStatusMismatch',
+        note: 'managerStatusSynced',
         managerStatus: afterDisableProvider.consumerStatus,
         fiberState: afterDisableProvider.consumerFiber,
       })
@@ -177,6 +179,7 @@ describe('E8 插件依赖响应', () => {
       await sleep(30)
       const afterReenable = snapshot('after-reenable')
       expect(afterReenable.providerStatus).toBe('active')
+      expect(afterReenable.consumerStatus).toBe('active')
       expect(afterReenable.consumerFiber).toBe('ACTIVE')
       expect(afterReenable.consumerTask).toBe(true)
       expect(afterReenable.service).toBe(true)
