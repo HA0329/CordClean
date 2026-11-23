@@ -11,7 +11,7 @@
 | 开题报告声明 | 仓库证据 | 核对方式 |
 | --- | --- | --- |
 | 题目：基于 Cordis 插件架构的 Windows 安全清理工具 | README 标题、`package.json` description、`docs/thesis-outline.md` 题目 | `pnpm docs:check` |
-| 当前版本 v0.6.10，自 2026-10 起持续迭代 | `package.json` 0.6.10；`git log` 2026-10-18 起 | `git log --reverse` |
+| 当前版本 v0.6.11，自 2026-10 起持续迭代 | `package.json` 0.6.11；`git log` 2026-10-18 起 | `git log --reverse` |
 | 12 个内置插件（8 个默认启用） | `packages/core/src/manifest.ts` + 运行时 `ctx.plugins.list()` | [project-facts.md](project-facts.md) |
 | 默认 38 个清理任务 | 运行时 `ctx.cleaner.list().length`（加载全部插件后） | [project-facts.md](project-facts.md) |
 | 72 个 RPC 方法 | `packages/shared/src/rpc.ts` 的 `ApiMap` | `pnpm facts` |

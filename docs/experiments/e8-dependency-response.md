@@ -2,7 +2,7 @@
 
 > 对应论文设计属性：**Cordis `inject` 的响应式依赖 → provider 服务变化时 consumer 自动挂起/恢复**。
 > 实验代码：[tests/e8-dependency.test.ts](../../tests/e8-dependency.test.ts)（自动化，可重复运行）。
-> 首次执行日期：2026-11-14；实验执行版本：CordClean 0.6.9；当前发布版本：0.6.10。
+> 首次执行日期：2026-11-14；实验执行版本：CordClean 0.6.9；当前发布版本：0.6.11。
 
 ## 1. 实验目标
 

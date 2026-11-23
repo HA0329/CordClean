@@ -7,7 +7,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.10`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、73 个 RPC 方法；95 个测试文件 / 716 个用例。
+当前版本 `0.6.11`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、73 个 RPC 方法；95 个测试文件 / 716 个用例。
 
 更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md) · 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md) · 安全政策：[SECURITY.md](SECURITY.md)
 
@@ -364,6 +364,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [真实用户走查（2026-10-31）](docs/verification/usability-walkthrough-2026-10-31.md) —— 全新配置下的扫描/选择/预演/清理/撤销/日志真实体验与问题清单
 - [AI 建议与插件工坊深度验收（2026-10-31）](docs/verification/ai-workshop-deep-test-2026-10-31.md) —— 真实模型分析/直答/截图、工坊生成与安装、客户端页面 bridge 验收
 - [发布流程](docs/release-process.md) —— 每次更新必须写说明、打 tag、确认 CI 的清单
+- [v0.6.11 发布说明](docs/release-notes-v0.6.11.md) —— 侧边栏与 7 区独立升级、12 插件逐个验证、工坊真实取消、AI 稳定错误码、撤销逐条原因、UI 规范统一
 - [v0.6.10 发布说明](docs/release-notes-v0.6.10.md) —— 插件依赖挂起状态同步（suspended）、E7/E8 实验材料
 - [v0.6.9 发布说明](docs/release-notes-v0.6.9.md) —— 旧 client 页面兼容、AI 产物过滤、工坊真实流式进度、Key 状态复核
 - [v0.6.8 发布说明](docs/release-notes-v0.6.8.md) —— P0 AI 规则安全门、client bridge 校验、engines/扫描根/流式修复

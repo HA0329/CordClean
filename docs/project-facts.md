@@ -1,12 +1,12 @@
 # CordClean 项目事实表
 
 > 本文件由 `pnpm facts` 从源码、`vitest list` 与规则 JSON 自动生成，**请勿手改**。
-> 生成时间：2026-11-23T13:24:21.752Z；commit：`2c29a56`；版本：`0.6.10`。
+> 生成时间：2026-11-23T14:11:39.307Z；commit：`882b6ed`；版本：`0.6.11`。
 > 论文、README、答辩材料引用数量时以本表为准；性能数字以 [benchmark.md](benchmark.md) 为唯一来源；历史发布说明保留发布时口径。
 
 | 项目 | 值 | 来源 |
 | --- | --- | --- |
-| 当前版本 | 0.6.10 | `package.json` |
+| 当前版本 | 0.6.11 | `package.json` |
 | 内置插件 | 12 个（默认启用 8 个，运行时 active 8 个） | `packages/core/src/manifest.ts` + 运行时 `ctx.plugins.list()` |
 | 默认清理任务 | 38 个 | 运行时 `ctx.cleaner.list()`（全部内置插件加载后） |
 | RPC 方法 | 73 个 | `packages/shared/src/rpc.ts` 的 `ApiMap` |

@@ -133,7 +133,7 @@ describe('系统摘要文本（复制用）', () => {
       memoryFree: 8 * GB,
       uptimeSeconds: 3725,
       disks: [{ mount: 'C:', total: 100 * GB, free: 20 * GB }],
-      version: '0.6.10',
+      version: '0.6.11',
     })
     expect(text).toContain('CordClean 系统摘要')
     expect(text).toContain('Windows 11 10.0.26100')

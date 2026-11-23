@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-23T13:24:21.752Z",
-  "commit": "2c29a56",
-  "version": "0.6.10",
+  "generatedAt": "2026-11-23T14:11:39.307Z",
+  "commit": "882b6ed",
+  "version": "0.6.11",
   "plugins": {
     "total": 12,
     "defaultEnabled": 8,
