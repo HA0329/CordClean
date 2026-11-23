@@ -1,11 +1,14 @@
 /**
  * 注册表问题清理插件（registry）。
  *
- * 采用「保守策略」：只处理两类**可以明确判定为无效**的注册表项，
+ * 采用「保守策略」：只处理三类**可以明确判定为无效**的注册表项，
  * 并且每一项在删除前都一定先导出 `.reg` 备份：
  *
  * 1. 无效卸载项：`Uninstall` 键中既没有 `DisplayName` 也没有 `UninstallString` 的垃圾键；
- * 2. 无效 `App Paths`：默认值（`(默认)`）指向的 exe 已经不存在的项。
+ * 2. 孤儿卸载项：`DisplayName` 存在，但 `InstallLocation` 指向的目录、
+ *    或 `UninstallString` 指向的卸载程序 exe 已经不存在（判定逻辑见 `./orphans.ts`，
+ *    只读、不执行任何 exe，网络路径/环境变量无法验证时一律跳过）；
+ * 3. 无效 `App Paths`：默认值（`(默认)`）指向的 exe 已经不存在的项。
  *
  * 刻意**不做**的事情（风险过高，收益不成比例）：
  * - 不做 `SharedDLLs` 引用计数清理；
@@ -17,7 +20,8 @@
  *
  * 中文编码：中文 Windows 上 `reg.exe` 输出为 GBK，按 UTF-8 解码会乱码，
  * 因此优先用 PowerShell 注册表提供程序 + `ConvertTo-Json`（真 Unicode），
- * 仅在 PowerShell 不可用时回退到 `reg query` + `parseRegValues`。
+ * 仅在 PowerShell 不可用时回退到 `reg query` + `parseRegValues`；回退时孤儿判定
+ * 只接受纯 ASCII 字段（乱码路径无法可靠验证存在性，宁可跳过也不能误报）。
  */
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
@@ -36,7 +40,12 @@ import {
   regDeleteKey,
   regExport,
   regQuery,
+  toLongPath,
 } from '@cordclean/utils'
+import { describeOrphanFailure, detectOrphanUninstall, isReliablyEncodedField } from './orphans.ts'
+import type { OrphanUninstall, UninstallEntrySnapshot } from './orphans.ts'
+
+export * from './orphans.ts'
 
 /* ------------------------------------------------------------------ */
 /* 常量                                                                */
@@ -73,7 +82,7 @@ export interface RegistryConfig {
 const Config = Schema.object({
   checkUninstall: Schema.boolean()
     .default(true)
-    .description('检查完全空、或没有任何有效标识的卸载项（保守判定，避免误删系统组件登记）'),
+    .description('检查无效卸载项：完全空/无有效标识的垃圾键，以及 DisplayName 存在但安装目录或卸载程序已不存在的孤儿项（保守判定）'),
   checkAppPaths: Schema.boolean()
     .default(true)
     .description('检查无效的 App Paths（默认值指向的 exe 已不存在）'),
@@ -100,12 +109,19 @@ export interface BrokenAppPath {
 
 /** 注册表探测结果（同时导出给自测脚本，证明扫描真实执行） */
 export interface RegistryProbe {
+  /** 无有效标识的垃圾卸载键（无 DisplayName，不会与孤儿项重叠） */
   junkUninstall: JunkUninstallKey[]
+  /** 孤儿卸载项：DisplayName 存在，但安装目录 / 卸载程序 exe 已不存在 */
+  orphanUninstall: OrphanUninstall[]
   brokenAppPaths: BrokenAppPath[]
   /** 实际检查过的卸载项数量 */
   checkedUninstall: number
   /** 实际检查过的 App Paths 数量 */
   checkedAppPaths: number
+  /** 孤儿判定中实际执行过只读存在性检查的路径数量 */
+  checkedOrphanPaths: number
+  /** 孤儿判定中因网络路径/环境变量/命令形式无法验证而跳过的字段数量 */
+  skippedOrphanFields: number
   warnings: string[]
 }
 
@@ -177,6 +193,7 @@ if ($key) {
         key = $key.Name + '\\' + $sub
         displayName = [string]$child.GetValue('DisplayName')
         uninstallString = [string]$child.GetValue('UninstallString')
+        installLocation = [string]$child.GetValue('InstallLocation')
         valueCount = $valueNames.Count
         valueNames = ($valueNames -join '|')
       }
@@ -298,6 +315,47 @@ function buildJunkUninstall(raw: any[]): JunkUninstallKey[] {
   return junk
 }
 
+/**
+ * PowerShell 结果 → 孤儿卸载项候选（只保留 DisplayName 非空的条目）。
+ *
+ * 显式排除已判定为垃圾键的条目，保证两类上报不会重复：
+ * 垃圾键按定义没有 DisplayName，而孤儿项按定义必须有 DisplayName，
+ * 这里的排除同时兜住「PowerShell 字段缺失导致判定口径不一致」的情况。
+ */
+function buildOrphanCandidates(raw: any[], junk: JunkUninstallKey[]): UninstallEntrySnapshot[] {
+  const junkKeys = new Set(junk.map((item) => item.key.toLowerCase()))
+  const candidates: UninstallEntrySnapshot[] = []
+  for (const item of raw) {
+    const key = normalizeKeyPath(str(item?.key))
+    if (!key || junkKeys.has(key.toLowerCase())) continue
+    const displayName = str(item?.displayName).trim()
+    if (!displayName) continue
+    candidates.push({
+      key,
+      displayName,
+      installLocation: str(item?.installLocation),
+      uninstallString: str(item?.uninstallString),
+    })
+  }
+  return candidates
+}
+
+/**
+ * 只读存在性探测：只有 ENOENT/ENOTDIR 才视为「确定不存在」。
+ *
+ * 权限不足（EACCES/EPERM）、IO 错误、非法字符等一律保守视为存在，
+ * 避免因为读不到目录就误报孤儿项并删除用户的卸载登记。
+ */
+async function registryPathExists(target: string): Promise<boolean> {
+  try {
+    await fs.lstat(toLongPath(target))
+    return true
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    return code !== 'ENOENT' && code !== 'ENOTDIR'
+  }
+}
+
 /** PowerShell 结果 → 失效 App Paths（存在性检查在调用方异步完成） */
 function buildAppPathCandidates(raw: any[], env: TaskEnv): Array<{ key: string; name: string; exe: string }> {
   const candidates: Array<{ key: string; name: string; exe: string }> = []
@@ -311,10 +369,21 @@ function buildAppPathCandidates(raw: any[], env: TaskEnv): Array<{ key: string; 
   return candidates
 }
 
-/** reg.exe 兜底：枚举卸载项中的垃圾键 */
-async function collectJunkUninstallViaReg(roots: string[]): Promise<{ junk: JunkUninstallKey[]; scanned: number }> {
+/**
+ * reg.exe 兜底：一次性枚举卸载项，同时收集「垃圾键」与「孤儿项候选」，
+ * 避免为了两类判定把每个子键查询两遍。
+ *
+ * 孤儿候选必须所有字段都能可靠解码（`isReliablyEncodedField`）：回退路径把 GBK
+ * 输出按 UTF-8 解码，中文路径会乱码，拿去 lstat 必然不存在，从而把正常登记
+ * 误报成孤儿。`untrusted` 是因此**放弃孤儿判定**的条目数，用于向上如实说明。
+ */
+async function collectUninstallViaReg(
+  roots: string[],
+): Promise<{ junk: JunkUninstallKey[]; candidates: UninstallEntrySnapshot[]; scanned: number; untrusted: number }> {
   const junk: JunkUninstallKey[] = []
+  const candidates: UninstallEntrySnapshot[] = []
   let scanned = 0
+  let untrusted = 0
   for (const root of roots) {
     const subKeys = parseRegSubKeys(await regQuery(root))
     scanned += subKeys.length
@@ -323,12 +392,33 @@ async function collectJunkUninstallViaReg(roots: string[]): Promise<{ junk: Junk
       if (!output) return undefined
       const values = parseRegValues(output).filter((value) => !DEFAULT_VALUE_NAME.test(value.name))
       const names = values.map((value) => value.name)
-      if (!isJunkUninstall(names, names.length)) return undefined
-      return { key: normalizeKeyPath(key), valueCount: names.length }
+      const normalizedKey = normalizeKeyPath(key)
+      if (isJunkUninstall(names, names.length)) {
+        return { junk: { key: normalizedKey, valueCount: names.length } }
+      }
+      const lookup = new Map(values.map((value) => [value.name.toLowerCase(), value.value]))
+      const candidate: UninstallEntrySnapshot = {
+        key: normalizedKey,
+        displayName: lookup.get('displayname') ?? '',
+        installLocation: lookup.get('installlocation') ?? '',
+        uninstallString: lookup.get('uninstallstring') ?? '',
+      }
+      if (!candidate.displayName?.trim()) return undefined
+      const trusted =
+        isReliablyEncodedField(candidate.displayName ?? '') &&
+        isReliablyEncodedField(candidate.installLocation ?? '') &&
+        isReliablyEncodedField(candidate.uninstallString ?? '')
+      if (!trusted) return { untrusted: true }
+      return { candidate }
     })
-    for (const item of found) if (item) junk.push(item)
+    for (const item of found) {
+      if (!item) continue
+      if (item.junk) junk.push(item.junk)
+      if (item.candidate) candidates.push(item.candidate)
+      if (item.untrusted) untrusted++
+    }
   }
-  return { junk, scanned }
+  return { junk, candidates, scanned, untrusted }
 }
 
 /** reg.exe 兜底：枚举 App Paths 默认值 */
@@ -369,7 +459,16 @@ export async function probeRegistryProblems(env: TaskEnv, options: RegistryProbe
   const warnings: string[] = []
 
   if (!checkUninstall && !checkAppPaths) {
-    return { junkUninstall: [], brokenAppPaths: [], checkedUninstall: 0, checkedAppPaths: 0, warnings }
+    return {
+      junkUninstall: [],
+      orphanUninstall: [],
+      brokenAppPaths: [],
+      checkedUninstall: 0,
+      checkedAppPaths: 0,
+      checkedOrphanPaths: 0,
+      skippedOrphanFields: 0,
+      warnings,
+    }
   }
 
   const pick = (roots: string[]) => roots.filter((root) => includeHklm || !/^HKLM\\/i.test(root))
@@ -377,6 +476,7 @@ export async function probeRegistryProblems(env: TaskEnv, options: RegistryProbe
   const appPathRoots = checkAppPaths ? pick(APP_PATH_ROOTS) : []
 
   let junkUninstall: JunkUninstallKey[] = []
+  let orphanCandidates: UninstallEntrySnapshot[] = []
   let appPathCandidates: Array<{ key: string; name: string; exe: string }> = []
   let checkedUninstall = 0
   let checkedAppPaths = 0
@@ -388,21 +488,44 @@ export async function probeRegistryProblems(env: TaskEnv, options: RegistryProbe
 
   if (viaPowerShell) {
     junkUninstall = buildJunkUninstall(viaPowerShell.uninstall)
+    orphanCandidates = buildOrphanCandidates(viaPowerShell.uninstall, junkUninstall)
     appPathCandidates = buildAppPathCandidates(viaPowerShell.appPaths, env)
     checkedUninstall = viaPowerShell.uninstall.length
     checkedAppPaths = viaPowerShell.appPaths.length
   } else {
     warnings.push('PowerShell 不可用，已回退到 reg.exe（中文路径可能乱码）')
     if (uninstallRoots.length) {
-      const result = await collectJunkUninstallViaReg(uninstallRoots)
+      const result = await collectUninstallViaReg(uninstallRoots)
       junkUninstall = result.junk
+      orphanCandidates = result.candidates
       checkedUninstall = result.scanned
+      if (result.untrusted > 0) {
+        warnings.push(
+          `reg.exe 回退输出按 UTF-8 解码，${result.untrusted} 条含非 ASCII 字段的卸载项编码不可靠，已跳过孤儿判定（避免乱码路径被误判为不存在）`,
+        )
+      }
     }
     if (appPathRoots.length) {
       const result = await collectAppPathsViaReg(appPathRoots, env)
       appPathCandidates = result.candidates
       checkedAppPaths = result.scanned
     }
+  }
+
+  // 孤儿卸载项：只读存在性检查（网络路径/无法展开的变量/未知盘符已在纯函数内跳过，
+  // 不会发起网络探测，也不会执行任何 UninstallString）
+  let orphanUninstall: OrphanUninstall[] = []
+  let checkedOrphanPaths = 0
+  let skippedOrphanFields = 0
+  if (checkUninstall && orphanCandidates.length > 0) {
+    const detection = await detectOrphanUninstall(orphanCandidates, {
+      exists: registryPathExists,
+      env: (name) => env.get(name),
+      knownDrives: env.drives,
+    })
+    orphanUninstall = detection.orphans
+    checkedOrphanPaths = detection.checkedPaths
+    skippedOrphanFields = detection.skipped.length
   }
 
   // 存在性检查并发执行（每个 App Paths 一次 lstat）
@@ -416,9 +539,12 @@ export async function probeRegistryProblems(env: TaskEnv, options: RegistryProbe
 
   return {
     junkUninstall,
+    orphanUninstall,
     brokenAppPaths: checked.filter((item): item is BrokenAppPath => !!item),
     checkedUninstall,
     checkedAppPaths,
+    checkedOrphanPaths,
+    skippedOrphanFields,
     warnings,
   }
 }
@@ -440,7 +566,7 @@ function resolveBackupDir(env: TaskEnv, configured: string): string {
 export default defineCleanerPlugin<RegistryConfig>({
   name: 'registry',
   version: '1.0.0',
-  description: '清理无效的卸载项与失效的 App Paths（删除前自动导出 .reg 备份）',
+  description: '清理无效/孤儿卸载项与失效的 App Paths（删除前自动导出 .reg 备份）',
   tasks: ['registry'],
   inject: ['cleaner', 'system'],
   Config,
@@ -453,7 +579,7 @@ export default defineCleanerPlugin<RegistryConfig>({
       ctx.cleaner.define({
         id: 'registry',
         name: '注册表问题',
-        description: '清理无效的卸载项与失效的 App Paths，删除前自动导出 .reg 备份',
+        description: '清理无效/孤儿卸载项与失效的 App Paths，删除前自动导出 .reg 备份',
         category: 'system',
         risk: 'risky',
         icon: '🗃️',
@@ -463,6 +589,7 @@ export default defineCleanerPlugin<RegistryConfig>({
         targets: [...UNINSTALL_ROOTS, ...APP_PATH_ROOTS],
         tips: [
           '所有删除操作前都会导出 .reg 备份到数据目录 backups 文件夹',
+          '孤儿卸载项指 DisplayName 存在、但安装目录或卸载程序 exe 已不存在的卸载登记（默认不勾选）',
           '非管理员权限下只能处理 HKCU 下的项',
         ],
         async scan(scan) {
@@ -484,7 +611,8 @@ export default defineCleanerPlugin<RegistryConfig>({
           })
           for (const warning of probe.warnings) scan.logger.warn(warning)
           scan.logger.info(
-            `注册表检查完成：${probe.checkedUninstall} 个卸载项（无效 ${probe.junkUninstall.length} 个）、` +
+            `注册表检查完成：${probe.checkedUninstall} 个卸载项（无效 ${probe.junkUninstall.length} 个、孤儿 ${probe.orphanUninstall.length} 个，` +
+              `孤儿候选实际验证路径 ${probe.checkedOrphanPaths} 条 / 跳过 ${probe.skippedOrphanFields} 条）、` +
               `${probe.checkedAppPaths} 个 App Paths（失效 ${probe.brokenAppPaths.length} 个），范围：${elevated ? 'HKLM + HKCU' : 'HKCU'}`,
           )
 
@@ -508,7 +636,27 @@ export default defineCleanerPlugin<RegistryConfig>({
             }
           }
 
-          // ② 失效 App Paths
+          // ② 孤儿卸载项：DisplayName 存在，但安装目录 / 卸载程序 exe 已不存在。
+          // 判定只读（lstat）+ 纯函数，绝不执行 UninstallString；风险标 caution、
+          // 默认不勾选，清理时同样先导出 .reg 备份（复用下方 clean 的备份逻辑）。
+          if (checkUninstall()) {
+            for (const orphan of probe.orphanUninstall) {
+              scan.throwIfAborted()
+              const detail = orphan.failures.map((failure) => describeOrphanFailure(failure)).join('；')
+              scan.emit({
+                path: orphan.key,
+                title: orphan.displayName || basename(orphan.key) || orphan.key,
+                kind: 'registry',
+                size: 0,
+                risk: 'caution',
+                defaultSelected: false,
+                note: `孤儿卸载登记：${detail}（清理前会先导出 .reg 备份）`,
+                meta: { kind: 'uninstall-orphan', reason: orphan.reason, detail: `孤儿卸载项：${detail}` },
+              })
+            }
+          }
+
+          // ③ 失效 App Paths
           if (checkAppPaths()) {
             for (const broken of probe.brokenAppPaths) {
               scan.throwIfAborted()
