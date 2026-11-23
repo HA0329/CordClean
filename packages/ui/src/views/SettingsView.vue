@@ -22,6 +22,22 @@ import {
   purgeQuarantine,
   state,
 } from '../api/store.ts'
+import {
+  SETTINGS_GROUPS,
+  assessSettingRisks,
+  buildFieldStatuses,
+  describeEmptyFilter,
+  describeSaveFailure,
+  diffFormValues,
+  filterSettingsGroups,
+  saveGate,
+  saveSuccessMessage,
+  settingsFormSnapshot,
+  settingsPagePhase,
+  summarizeSettingsStatus,
+  type SaveFailureInfo,
+  type SettingsGroupId,
+} from './settings-view-model.ts'
 
 const form = reactive({
   cleanMode: 'recycle' as 'recycle' | 'quarantine' | 'delete',
@@ -57,6 +73,68 @@ const newExclude = ref('')
 const saving = ref(false)
 const importText = ref('')
 const importOpen = ref(false)
+
+/* -------------------- 设置页升级：搜索 / 未保存提示 / 风险说明 -------------------- */
+const searchQuery = ref('')
+const onlyDirty = ref(false)
+const searchFocused = ref(false)
+const searchInput = ref<HTMLInputElement>()
+const saveFailure = ref<SaveFailureInfo>()
+const savedSnapshot = computed(() => (state.settings ? settingsFormSnapshot(state.settings) : undefined))
+/** 当前表单 vs 内核已保存设置：脏状态与修改摘要的唯一来源 */
+const changes = computed(() => (state.settings ? diffFormValues(form, savedSnapshot.value) : []))
+const risks = computed(() => assessSettingRisks(form))
+const fieldStatusesForSummary = computed(() => buildFieldStatuses(form, savedSnapshot.value))
+const statusSummary = computed(() => summarizeSettingsStatus(fieldStatusesForSummary.value, risks.value))
+const dirtyGroupIds = computed(() =>
+  SETTINGS_GROUPS.filter((group) => changes.value.some((change) => change.group === group.id)).map((group) => group.id),
+)
+const filterResult = computed(() =>
+  filterSettingsGroups({ query: searchQuery.value, onlyDirty: onlyDirty.value, dirtyGroups: dirtyGroupIds.value }),
+)
+const visibleGroups = computed(() => new Set<string>(filterResult.value.visible))
+const visibleGroupMeta = computed(() => SETTINGS_GROUPS.filter((group) => visibleGroups.value.has(group.id)))
+const emptyFilter = computed(() => describeEmptyFilter(filterResult.value))
+const pagePhase = computed(() =>
+  settingsPagePhase({ ready: state.ready, hasSettings: Boolean(state.settings), loadError: state.error }),
+)
+const saveState = computed(() => saveGate({ phase: pagePhase.value, saving: saving.value, changeCount: changes.value.length }))
+
+function clearSearch(): void {
+  searchQuery.value = ''
+  onlyDirty.value = false
+}
+
+function onSearchEsc(): void {
+  if (searchQuery.value || onlyDirty.value) clearSearch()
+  else searchInput.value?.blur()
+}
+
+/** 搜索命中/风险定位：必要时先清空过滤，再滚动到分组并把焦点移过去（键盘可达） */
+function jumpToGroup(groupId: SettingsGroupId): void {
+  if (!visibleGroups.value.has(groupId)) clearSearch()
+  void nextTick(() => {
+    const el = document.getElementById(`settings-group-${groupId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    el.focus({ preventScroll: true })
+  })
+}
+
+async function discardChanges(): Promise<void> {
+  if (!changes.value.length) return
+  try {
+    await ElMessageBox.confirm(`放弃 ${changes.value.length} 项未保存的修改？页面会恢复为内核中已保存的值。`, '放弃修改', {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+    })
+  } catch {
+    return
+  }
+  syncFromSettings()
+  saveFailure.value = undefined
+  ElMessage.success('已放弃未保存的修改')
+}
 const schedulerPlugin = computed(() => state.plugins.find((plugin) => plugin.id === 'scheduler'))
 
 /** 插件目录 = 数据目录/plugins */
@@ -429,36 +507,9 @@ function syncFromSettings() {
   const s = state.settings
   if (!s) return
   syncLogConfig()
-  form.cleanMode = s.clean.mode
-  form.highRiskQuarantine = s.clean.highRiskQuarantine
-  form.quarantineFallback = s.clean.quarantineFallback
-  form.dryRunDefault = s.clean.dryRunDefault
-  form.confirmRisky = s.clean.confirmRisky
-  form.retries = s.clean.retries
-  form.budgetFiles = s.clean.budget.maxFiles
-  form.budgetGb = Math.round((s.clean.budget.maxBytes / 1024 / 1024 / 1024) * 10) / 10
-
-  form.concurrency = s.scan.concurrency
-  form.maxItemsPerTask = s.scan.maxItemsPerTask
-  form.maxEntriesPerTask = s.scan.maxEntriesPerTask
-  form.maxDepth = s.scan.maxDepth
-  form.largeFileThresholdMb = Math.round(s.scan.largeFileThreshold / 1024 / 1024)
-  form.duplicateMinSizeMb = Math.round(s.scan.duplicateMinSize / 1024 / 1024)
-  form.roots = [...s.analysis.roots]
-  form.excludes = [...s.analysis.excludes]
-  form.includeSystem = s.analysis.includeSystem
-
-  form.includeRisky = s.rules.includeRisky
-  form.includeDeep = s.rules.includeDeep
-  form.includeCustom = s.rules.includeCustom
-
-  form.quarantineEnabled = s.quarantine.enabled
-  form.quarantineMaxMb = Math.round(s.quarantine.maxBytes / 1024 / 1024)
-  form.quarantineMaxFiles = s.quarantine.maxFiles
-  form.retentionDays = s.quarantine.retentionDays
-
-  form.onlineAi = s.privacy.onlineAi
-  form.editorCommand = s.ui.editorCommand
+  // 与展示模型共用同一套映射，避免「表单值 vs 已保存值」因为换算精度出现假脏状态
+  Object.assign(form, settingsFormSnapshot(s))
+  saveFailure.value = undefined
 }
 
 watch(() => state.settings, syncFromSettings, { immediate: true })
@@ -525,12 +576,20 @@ function buildPatch() {
 }
 
 async function save() {
+  if (!saveState.value.ok) {
+    if (saveState.value.reason && changes.value.length === 0) ElMessage.info(saveState.value.reason)
+    return
+  }
+  const pendingCount = changes.value.length
   saving.value = true
+  saveFailure.value = undefined
   try {
     await patchSettings(buildPatch())
-    ElMessage.success('设置已保存')
+    ElMessage.success(saveSuccessMessage(pendingCount))
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : String(error))
+    // 结构化失败原因：保留本页修改，给建议与重试入口
+    saveFailure.value = describeSaveFailure(error)
+    ElMessage.error(saveFailure.value.title)
   } finally {
     saving.value = false
   }
@@ -725,12 +784,109 @@ async function doClearEgress() {
         <el-button @click="resetDefaults">恢复默认</el-button>
         <el-button @click="exportSettings">导出</el-button>
         <el-button @click="openImport">导入</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存设置</el-button>
+        <el-button type="primary" :loading="saving" :disabled="!saveState.ok" :title="saveState.reason" @click="save">保存设置</el-button>
       </div>
     </div>
 
+    <!-- 搜索/改动概览：长页面里先定位再修改 -->
+    <div class="cc-card settings-toolbar">
+      <div class="settings-toolbar-row">
+        <div class="settings-search" :class="{ focused: searchFocused }">
+          <span aria-hidden="true">🔍</span>
+          <input
+            ref="searchInput"
+            v-model="searchQuery"
+            type="search"
+            class="settings-search-input"
+            placeholder="搜索设置项，例如：隔离区、并发、回收站"
+            aria-label="搜索设置项"
+            autocomplete="off"
+            spellcheck="false"
+            @focus="searchFocused = true"
+            @blur="searchFocused = false"
+            @keydown.esc.prevent="onSearchEsc"
+          />
+          <button v-if="searchQuery" type="button" class="settings-search-clear" aria-label="清除搜索" @click="clearSearch">×</button>
+        </div>
+        <label class="settings-only-dirty">
+          <input v-model="onlyDirty" type="checkbox" />
+          只看未保存修改的分组
+        </label>
+        <span class="cc-faint" role="status">
+          {{
+            filterResult.active
+              ? `显示 ${filterResult.visible.length} / ${filterResult.totalGroups} 个分组`
+              : `共 ${filterResult.totalGroups} 个分组 · ${statusSummary.nonDefaultCount} 项非默认（${statusSummary.unsavedCount} 项未保存）`
+          }}
+        </span>
+      </div>
+      <div v-if="filterResult.active && visibleGroupMeta.length" class="settings-search-hits">
+        <span class="cc-faint">跳到：</span>
+        <button v-for="group in visibleGroupMeta" :key="group.id" type="button" class="settings-hit" @click="jumpToGroup(group.id)">
+          {{ group.emoji }} {{ group.title
+          }}<span v-if="filterResult.matches[group.id]?.length" class="settings-hit-count">{{ filterResult.matches[group.id]?.length }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 未保存修改：明确旧值仍在生效，并提供保存/放弃 -->
+    <div v-if="statusSummary.unsavedCount > 0" class="cc-card settings-dirty" role="status">
+      <div class="settings-dirty-main">
+        <strong>有 {{ statusSummary.unsavedCount }} 项修改尚未保存</strong>
+        <p class="cc-faint">未保存的修改只在本页生效；扫描/清理仍使用上次保存的值，离开本页会丢失这些修改。</p>
+        <div class="settings-dirty-list">
+          <span v-for="change in changes" :key="change.key" class="settings-change-chip">{{ change.label }}：{{ change.from }} → {{ change.to }}</span>
+        </div>
+      </div>
+      <div class="cc-actions">
+        <el-button size="small" @click="discardChanges">放弃修改</el-button>
+        <el-button size="small" type="primary" :loading="saving" @click="save">保存修改</el-button>
+      </div>
+    </div>
+
+    <!-- 危险设置说明：按当前表单值评估，保存后生效 -->
+    <div v-if="risks.length" class="cc-card settings-risk" role="status" aria-live="polite">
+      <div class="settings-risk-head">
+        <h3>⚠️ 当前配置有 {{ risks.length }} 项风险提示</h3>
+        <span class="cc-faint">按本页当前值评估，点「保存设置」后生效</span>
+      </div>
+      <ul class="settings-risk-list">
+        <li v-for="risk in risks" :key="risk.id" class="settings-risk-item" :class="'risk-' + risk.level">
+          <div class="settings-risk-line">
+            <span class="cc-pill" :class="risk.level === 'danger' ? 'risk-risky' : 'risk-caution'">{{ risk.level === 'danger' ? '高风险' : '注意' }}</span>
+            <strong>{{ risk.title }}</strong>
+            <button type="button" class="link-button" @click="jumpToGroup(risk.group)">定位</button>
+          </div>
+          <p class="cc-muted">{{ risk.detail }}</p>
+          <p class="cc-faint">建议：{{ risk.suggestion }}</p>
+        </li>
+      </ul>
+    </div>
+
+    <!-- 保存失败：结构化原因 + 建议 + 重试，不清空本页修改 -->
+    <div v-if="saveFailure" class="cc-card settings-save-error" role="alert">
+      <div class="settings-save-error-head">
+        <div>
+          <strong>⚠️ {{ saveFailure.title }}</strong>
+          <p class="cc-muted">{{ saveFailure.reason }}</p>
+          <p class="cc-faint">{{ saveFailure.hint }}</p>
+        </div>
+        <div class="cc-actions">
+          <el-button v-if="saveFailure.retriable" size="small" type="primary" :loading="saving" @click="save">重试保存</el-button>
+          <el-button size="small" @click="saveFailure = undefined">关闭</el-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 搜索/只看未保存后为空：区分两种空状态并给出口 -->
+    <div v-if="filterResult.emptyReason" class="cc-card cc-empty settings-empty" role="status">
+      <p>{{ emptyFilter.title }}</p>
+      <p class="cc-faint">{{ emptyFilter.hint }}</p>
+      <el-button size="small" type="primary" @click="clearSearch">清空筛选</el-button>
+    </div>
+
     <div class="settings-grid">
-      <div class="cc-card schedule-card">
+      <div v-if="visibleGroups.has('schedule')" id="settings-group-schedule" tabindex="-1" class="cc-card schedule-card">
         <div class="cc-card-title">
           <h3>⏰ 定时任务</h3>
           <span class="cc-faint">按间隔或每天固定时间扫描；自动清理需授权，规则一变授权失效</span>
@@ -789,8 +945,8 @@ async function doClearEgress() {
         </template>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>🧹 清理行为</h3><span class="cc-faint">删除方式与安全边界</span></div>
+      <div v-if="visibleGroups.has('clean')" id="settings-group-clean" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*🧹\ 清理行为</h3><span class="cc-faint">删除方式与安全边界</span></div>
         <el-form label-position="left" label-width="170px" size="small">
           <el-form-item label="默认删除方式">
             <el-select v-model="form.cleanMode" style="width: 220px">
@@ -809,8 +965,8 @@ async function doClearEgress() {
         </el-form>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>⚡ 扫描与性能</h3><span class="cc-faint">并发与上限影响速度与内存</span></div>
+      <div v-if="visibleGroups.has('scan')" id="settings-group-scan" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*⚡\ 扫描与性能</h3><span class="cc-faint">并发与上限影响速度与内存</span></div>
         <el-form label-position="left" label-width="170px" size="small">
           <el-form-item label="任务并发度"><el-input-number v-model="form.concurrency" :min="1" :max="8" /></el-form-item>
           <el-form-item label="单任务最多清理项"><el-input-number v-model="form.maxItemsPerTask" :min="100" :step="1000" /></el-form-item>
@@ -822,8 +978,8 @@ async function doClearEgress() {
         </el-form>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>📚 规则库</h3><span class="cc-faint">修改后需在插件页热重载规则库</span></div>
+      <div v-if="visibleGroups.has('rules')" id="settings-group-rules" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*📚\ 规则库</h3><span class="cc-faint">修改后需在插件页热重载规则库</span></div>
         <el-form label-position="left" label-width="170px" size="small">
           <el-form-item label="启用高风险分类">
             <el-switch v-model="form.includeRisky" />
@@ -840,8 +996,8 @@ async function doClearEgress() {
         </el-form>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>🗃️ 隔离区</h3><span class="cc-faint">高风险项的回收站</span></div>
+      <div v-if="visibleGroups.has('quarantine')" id="settings-group-quarantine" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*🗃️\ 隔离区</h3><span class="cc-faint">高风险项的回收站</span></div>
         <el-form label-position="left" label-width="150px" size="small">
           <el-form-item label="启用隔离区"><el-switch v-model="form.quarantineEnabled" /></el-form-item>
           <el-form-item label="容量上限（MB）"><el-input-number v-model="form.quarantineMaxMb" :min="0" :step="256" /></el-form-item>
@@ -850,8 +1006,8 @@ async function doClearEgress() {
         </el-form>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>🔒 隐私与在线 AI</h3><span class="cc-faint">出网开关</span></div>
+      <div v-if="visibleGroups.has('privacy')" id="settings-group-privacy" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*🔒\ 隐私与在线\ AI</h3><span class="cc-faint">出网开关</span></div>
         <el-form label-position="left" label-width="150px" size="small">
           <el-form-item label="允许在线 AI">
             <el-switch v-model="form.onlineAi" />
@@ -866,8 +1022,8 @@ async function doClearEgress() {
         </el-form>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>🗂️ 扫描范围</h3><span class="cc-faint">额外纳入或排除的目录</span></div>
+      <div v-if="visibleGroups.has('scope')" id="settings-group-scope" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*🗂️\ 扫描范围</h3><span class="cc-faint">额外纳入或排除的目录</span></div>
         <div class="roots">
           <div class="roots-title">额外扫描根</div>
           <div class="chips">
@@ -898,8 +1054,8 @@ async function doClearEgress() {
         </div>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>🧩 插件系统与扩展目录</h3><span class="cc-faint">v2 插件包 / 外部插件</span></div>
+      <div v-if="visibleGroups.has('plugins')" id="settings-group-plugins" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*🧩\ 插件系统与扩展目录</h3><span class="cc-faint">v2 插件包 / 外部插件</span></div>
         <div class="data-actions">
           <div class="data-row">
             <div>
@@ -932,8 +1088,8 @@ async function doClearEgress() {
         </p>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>🧰 数据维护</h3><span class="cc-faint">不会删除你的文件</span></div>
+      <div v-if="visibleGroups.has('data')" id="settings-group-data" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*🧰\ 数据维护</h3><span class="cc-faint">不会删除你的文件</span></div>
         <div class="data-actions">
           <div class="data-row">
             <div>
@@ -953,8 +1109,8 @@ async function doClearEgress() {
         </div>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>🩺 诊断与日志</h3><span class="cc-faint">出问题时先看这里</span></div>
+      <div v-if="visibleGroups.has('diagnostics')" id="settings-group-diagnostics" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*🩺\ 诊断与日志</h3><span class="cc-faint">出问题时先看这里</span></div>
         <div class="data-actions">
           <div class="data-row">
             <div><div class="data-title">运行日志</div><div class="cc-faint">记录启动、扫描、清理、插件与 AI 请求</div></div>
@@ -975,8 +1131,8 @@ async function doClearEgress() {
         </div>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>🧾 日志设置</h3><span class="cc-faint">运行时生效，无需重启</span></div>
+      <div v-if="visibleGroups.has('logging')" id="settings-group-logging" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*🧾\ 日志设置</h3><span class="cc-faint">运行时生效，无需重启</span></div>
         <div class="log-settings">
           <label>
             <span>日志级别</span>
@@ -1020,8 +1176,8 @@ async function doClearEgress() {
         <p class="cc-hint">日志级别/轮转/保留会立即应用到统一日志；旧版 app-*.log 会在启动时按保留天数清理。</p>
       </div>
 
-      <div class="cc-card">
-        <div class="cc-card-title"><h3>ℹ️ 版本与运行环境</h3><span class="cc-faint">反馈问题时可直接复制</span></div>
+      <div v-if="visibleGroups.has('env')" id="settings-group-env" tabindex="-1" class="cc-card">
+        <div class="cc-card-title"><h3>[^<]*ℹ️\ 版本与运行环境</h3><span class="cc-faint">反馈问题时可直接复制</span></div>
         <div class="data-actions">
           <div class="data-row">
             <div><div class="data-title">版本</div><div class="cc-faint">CordClean v{{ state.app?.version ?? '0.1.0' }} · 协议版本 {{ state.app?.protocolVersion ?? '—' }}</div></div>
@@ -1172,4 +1328,199 @@ async function doClearEgress() {
 <style scoped>
 .plan-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 </style>
-
+<style scoped>
+/* ---- 设置页升级：搜索 / 未保存提示 / 风险说明 ---- */
+.settings-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 300px;
+  padding: 5px 10px;
+  border: 1px solid var(--cc-border-strong);
+  border-radius: 9px;
+  background: var(--cc-bg-soft);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.settings-search.focused {
+  border-color: var(--cc-primary);
+  box-shadow: 0 0 0 3px var(--cc-primary-soft);
+}
+.settings-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--cc-text);
+  font-size: 12.5px;
+}
+.settings-search-input::placeholder {
+  color: var(--cc-text-faint);
+}
+.settings-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+.settings-search-clear {
+  border: none;
+  background: transparent;
+  color: var(--cc-text-faint);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.settings-search-clear:hover {
+  color: var(--cc-text);
+}
+.settings-only-dirty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--cc-text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.settings-search-hits {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px dashed var(--cc-border);
+  padding-top: 9px;
+}
+.settings-hit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--cc-border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cc-text-dim);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.settings-hit:hover,
+.settings-hit:focus-visible {
+  border-color: var(--cc-primary);
+  color: var(--cc-primary);
+}
+.settings-hit-count {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--cc-primary-soft);
+  color: var(--cc-primary);
+  font-size: 10.5px;
+}
+.settings-dirty {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-color: rgba(217, 154, 43, 0.4);
+}
+.settings-dirty-main > p {
+  margin: 5px 0 0;
+}
+.settings-dirty-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+  max-height: 96px;
+  overflow: auto;
+}
+.settings-change-chip {
+  font-size: 11.5px;
+  color: var(--cc-text-dim);
+  background: var(--cc-primary-soft);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.settings-risk {
+  border-color: rgba(240, 80, 110, 0.35);
+}
+.settings-risk-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.settings-risk-head h3 {
+  margin: 0;
+  font-size: 14.5px;
+}
+.settings-risk-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings-risk-item {
+  border-left: 3px solid var(--cc-warning);
+  padding: 2px 0 2px 12px;
+}
+.settings-risk-item.risk-danger {
+  border-left-color: var(--cc-danger);
+}
+.settings-risk-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.settings-risk-item p {
+  margin: 4px 0 0;
+}
+.link-button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--cc-primary);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.link-button:hover {
+  text-decoration: underline;
+}
+.settings-save-error {
+  border-color: rgba(240, 80, 110, 0.5);
+}
+.settings-save-error-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.settings-save-error-head p {
+  margin: 5px 0 0;
+}
+.settings-empty p {
+  margin: 4px 0;
+}
+.settings-grid [tabindex='-1']:focus-visible {
+  outline: 2px solid var(--cc-primary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-search {
+    transition: none;
+  }
+}
+</style>
