@@ -8,12 +8,13 @@
  * - `quarantinedBytes`：进了隔离区的字节（可恢复）；
  * - `vanished`：执行前发现目标已不存在（不虚报释放量）。
  */
-import { open, readdir, stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { Service, type Context } from 'cordis'
 import type { CleanItemResult } from '@cordclean/shared'
 import { clearDirectory, compactSqlite, deletePath, describeDeleteError, mapLimit, pathKey } from '@cordclean/utils'
 import type { QuarantineSession } from './quarantine.ts'
 import { isCleanTicket, type CleanTicket, type CleanTicketItem } from './compensate.ts'
+import { protectedComponentName } from './path-policy.ts'
 
 export interface ExecuteOptions {
   signal?: AbortSignal
@@ -34,37 +35,52 @@ export interface ExecuteOutcome {
   cancelled: boolean
 }
 
-/** 删除前预检：递归尝试以读写方式打开每个文件；被占用/无权限即判整目录不可删 */
-export async function preflightDirectory(root: string, limit = 5000): Promise<{ ok: boolean; path?: string; message: string }> {
-  let visited = 0
-  const walk = async (dir: string): Promise<{ ok: boolean; path?: string; message: string }> => {
-    let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>
+/** 目录预检结果：只拦“连顶层目录都读不了”的情况 */
+export type PreflightResult = { ok: true; entries: number } | { ok: false; path: string; message: string }
+
+/**
+ * 目录预检：只做「顶层目录能否读取」的快速检查，不递归、不逐文件试探。
+ *
+ * 早期实现递归 `open(file, 'r+')`：超过 5000 项或遇到只读/占用文件就整目录跳过，
+ * 浏览器缓存、`%TEMP%` 这类大目录会永远清不掉。现在大目录/占用子项交给逐项删除
+ * （`clearDirectory`）并如实返回部分结果，预检只负责拦住"连目录都读不了"的情况。
+ */
+export async function preflightDirectory(root: string): Promise<PreflightResult> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true })
+    return { ok: true, entries: entries.length }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? 'UNKNOWN'
+    return { ok: false, path: root, message: '无法读取目录（' + code + '），已跳过' }
+  }
+}
+
+/**
+ * 递归扫描目录子树，返回第一个命中的受保护目录（`.git` / `.venv` / 微信数据等）。
+ *
+ * `PathPolicyService.containsProtected()` 只覆盖「系统保护目录前缀树」，
+ * 不会检查普通目录里嵌着 `.git` 这类受保护名目录；递归删除前必须单独扫一遍，
+ * 否则删除 `D:\Projects\foo` 会把 `foo\.git` 一起删掉（defect-log D-72）。
+ */
+async function findProtectedDescendant(root: string): Promise<string | undefined> {
+  const stack: string[] = [root]
+  while (stack.length) {
+    const dir = stack.pop()!
+    let entries
     try {
       entries = await readdir(dir, { withFileTypes: true })
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      return { ok: false, path: dir, message: '无法读取目录（' + (code ?? '未知错误') + '），已跳过' }
+    } catch {
+      continue
     }
     for (const entry of entries) {
-      if (++visited > limit) return { ok: false, path: dir, message: '目录项过多（超过 ' + limit + '），已跳过' }
-      const full = dir + (dir.endsWith('\\\\') ? '' : '\\\\') + entry.name
-      if (entry.isDirectory()) {
-        const nested = await walk(full)
-        if (!nested.ok) return nested
-        continue
-      }
-      if (!entry.isFile()) continue
-      try {
-        const handle = await open(full, 'r+')
-        await handle.close()
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code ?? 'UNKNOWN'
-        return { ok: false, path: full, message: '文件可能正被占用或不可写（' + code + '），已跳过整目录' }
-      }
+      // 符号链接/联接点不跟进去（删除时也只删链接本身）
+      if (!entry.isDirectory()) continue
+      const full = dir + (dir.endsWith('\\') ? '' : '\\') + entry.name
+      if (protectedComponentName(entry.name)) return full
+      stack.push(full)
     }
-    return { ok: true, message: '' }
   }
-  return walk(root)
+  return undefined
 }
 
 export class ExecutorService extends Service {
@@ -97,6 +113,10 @@ export class ExecutorService extends Service {
       }
       return outcome
     }
+    // 一次性令牌：真正执行前先消费（dryRun 只是预览，不烧票）。
+    // 过期或重放都在这里拒绝，且消费在第一个 await 之前完成，天然原子。
+    const consumed = this.ctx.compensate.consume(ticket)
+    if (!consumed.ok) throw new Error(`执行器拒绝：${consumed.message}`)
 
     const settings = this.ctx.settings.get()
     const recycleQueue: CleanTicketItem[] = []
@@ -175,21 +195,36 @@ export class ExecutorService extends Service {
         const result = await compactSqlite(item.path)
         return { itemId: item.itemId, path: item.path, ok: true, bytes: result.freed }
       }
-      // 目录预检：任一子项被占用/无权限就整目录跳过，避免"删了一半"
+      // 目录预检：只拦“连顶层目录都读不了”的情况；大目录/占用子项降级为逐项删除
       if (item.kind === 'directory' || item.action === 'clear') {
         const preflight = await preflightDirectory(item.path)
         if (!preflight.ok) return fail(preflight.message)
+        // 子树里嵌着受保护目录名（.git/.venv/微信数据等）时整项拒绝：
+        // 策略层的 containsProtected 只覆盖系统保护目录，不覆盖这类名字。
+        const protectedDescendant = await findProtectedDescendant(item.path)
+        if (protectedDescendant) {
+          return fail(`目录包含受保护目录（${protectedDescendant}），已拒绝整项删除`)
+        }
       }
       if (options.signal?.aborted) return undefined
-      // 清空语义：只删子项，保留目录
+      // 清空语义：只删子项，保留目录；部分失败时如实返回已释放字节
       if (item.action === 'clear') {
         const result = await clearDirectory(item.path, { retries, signal: options.signal })
-        if (result.cancelled) return fail('清理已取消，当前目录可能已部分清空')
+        if (result.cancelled) {
+          return { itemId: item.itemId, path: item.path, ok: false, bytes: result.bytes, error: '清理已取消，当前目录可能已部分清空' }
+        }
         if (result.failed.length) {
-          return fail(`清空目录时有 ${result.failed.length} 个子项失败（可能被占用或无权限）`)
+          return {
+            itemId: item.itemId,
+            path: item.path,
+            ok: false,
+            bytes: result.bytes,
+            error: `清空目录时有 ${result.failed.length} 个子项失败（可能被占用或无权限），其余已删除`,
+          }
         }
         return { itemId: item.itemId, path: item.path, ok: true, bytes: result.bytes || item.size }
       }
+      if (item.kind === 'directory') return await this.deleteDirectory(item, options, retries)
       if (options.signal?.aborted) return undefined
       const before = await stat(item.path).then((info) => info.size).catch(() => item.size)
       const result = await deletePath(item.path, { recursive: true, retries })
@@ -200,14 +235,53 @@ export class ExecutorService extends Service {
     }
   }
 
-  /** 汇总单个结果（隔离区与永久删除分开计量） */
+  /**
+   * 删除目录：先清空子项、再删空目录。
+   *
+   * 不再因为「子项过多/某个子项被占用」整目录跳过；能删多少删多少，
+   * 并如实返回已释放字节与失败子项数（部分结果不虚报成功）。
+   */
+  private async deleteDirectory(item: CleanTicketItem, options: ExecuteOptions, retries: number): Promise<CleanItemResult> {
+    const cleared = await clearDirectory(item.path, { retries, signal: options.signal })
+    const bytes = cleared.bytes
+    if (cleared.cancelled) {
+      return { itemId: item.itemId, path: item.path, ok: false, bytes, error: '清理已取消，当前目录可能已部分清空' }
+    }
+    if (cleared.failed.length) {
+      return {
+        itemId: item.itemId,
+        path: item.path,
+        ok: false,
+        bytes,
+        error: `目录已部分清理：${cleared.failed.length} 个子项失败（可能被占用或无权限），其余已删除`,
+      }
+    }
+    try {
+      const removed = await deletePath(item.path)
+      return { itemId: item.itemId, path: item.path, ok: true, bytes: bytes + removed.bytes }
+    } catch (error) {
+      return {
+        itemId: item.itemId,
+        path: item.path,
+        ok: false,
+        bytes,
+        error: `目录内容已清空，但目录本身删除失败：${describeDeleteError(error)}`,
+      }
+    }
+  }
+
+  /** 汇总单个结果（隔离区与永久删除分开计量；部分清理也如实计入已释放字节） */
   private absorb(outcome: ExecuteOutcome, result: CleanItemResult): void {
     outcome.results.push(result)
-    if (!result.ok) {
-      outcome.failed++
+    if (result.quarantined) {
+      outcome.quarantinedBytes += result.bytes
       return
     }
-    if (result.quarantined) outcome.quarantinedBytes += result.bytes
-    else outcome.freedBytes += result.bytes
+    if (result.ok) {
+      outcome.freedBytes += result.bytes
+      return
+    }
+    outcome.failed++
+    if (result.bytes > 0) outcome.freedBytes += result.bytes
   }
 }

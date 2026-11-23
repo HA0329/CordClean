@@ -62,7 +62,7 @@
           <tr><td><b>第 3 章 需求分析</b></td><td>功能需求、非功能需求、用例</td><td>12 个插件 / 38 个任务清单；安全性与性能指标</td></tr>
           <tr><td><b>第 4 章 系统设计</b></td><td>分层架构、插件机制、引擎、安全模型</td><td>本页 02–05；<code>architecture.md</code> §5、§12（补偿链七步）</td></tr>
           <tr><td><b>第 5 章 系统实现</b></td><td>内核、引擎、插件、界面、外壳</td><td>源码 <code>packages/core</code>、<code>packages/plugins/*</code>、<code>packages/ui</code>；插件开发规范</td></tr>
-          <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 设计属性 / 缺陷改进</td><td>489 个测试、E7 卸载残留与 E8 依赖响应实验、<code>docs/defect-log.md</code>（67 个缺陷）、<code>docs/benchmark.md</code></td></tr>
+          <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 设计属性 / 缺陷改进</td><td>500 个测试、E7 卸载残留与 E8 依赖响应实验、<code>docs/defect-log.md</code>（72 个缺陷）、<code>docs/benchmark.md</code></td></tr>
           <tr><td><b>第 7 章 总结与展望</b></td><td>局限、后续工作</td><td>本页「局限与后续」；<code>architecture.md</code> §13 工程折中</td></tr>
         </tbody>
       </table>
@@ -103,7 +103,7 @@
         <tbody>
           <tr><td>仅支持 Windows（路径策略、回收站、注册表均针对 Windows）</td><td>抽象平台层，评估 Linux / macOS 适配成本</td></tr>
           <tr><td>Node 没有真正的插件沙箱：加载即全权限，需人工审阅</td><td>插件签名、权限声明、安装前静态扫描</td></tr>
-          <tr><td>永久删除模式下目录仍可能部分完成（预检降低概率）</td><td>更细粒度的临时快照 / 文件级日志</td></tr>
+          <tr><td>逐项删除失败时返回部分结果并如实计量（不再静默跳过）</td><td>更细粒度的临时快照 / 文件级日志</td></tr>
           <tr><td>AI 依赖外网 API，离线不可用</td><td>本地小模型或离线规则建议作为兜底</td></tr>
           <tr><td>无代码签名与安装包；计划任务型启动项只报告</td><td>electron-builder 打包、签名、自动更新</td></tr>
           <tr><td>调度目前是单计划（间隔或每天）</td><td>多计划调度、按磁盘水位触发</td></tr>
@@ -115,7 +115,7 @@
       <span class="callout-title">可直接发给导师的配套材料</span>
       <code>docs/architecture.md</code>（架构与补偿链）、<code>docs/plugin-authoring.md</code>（插件规范）、
       <code>docs/benchmark.md</code>（性能基准）、<code>docs/rules-report.md</code>（规则审计）、
-      <code>docs/defect-log.md</code>（67 个缺陷）、<code>docs/test-plan.md</code>（测试计划）、
+      <code>docs/defect-log.md</code>（72 个缺陷）、<code>docs/test-plan.md</code>（测试计划）、
       <code>docs/thesis-outline.md</code>（论文大纲与图表清单）。
     </div>
   </div>
@@ -166,7 +166,7 @@
           <div class="tl-item">
             <div class="tl-time">4:15 – 5:00</div>
             <div class="tl-title">安全链与测试：证明而不是宣称</div>
-            <div class="tl-desc">七步链动画 + 489 个测试 + 67 个缺陷（尤其 D-01 越界删除）收尾。</div>
+            <div class="tl-desc">七步链动画 + 500 个测试 + 72 个缺陷（尤其 D-01 越界删除）收尾。</div>
           </div>
         </div>
       </div>
@@ -206,7 +206,7 @@
           <details>
             <summary><span class="q">Q5</span>这个题的工作量够吗？<span class="plus">+</span></summary>
             <div class="qa-body">
-              <p>可量化：源码约 3.12 万行、测试 1.09 万行、脚本 0.61 万行；284 次提交；12 个插件、38 个任务、401 条规则；41 份文档、67 条缺陷记录；489 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
+              <p>可量化：源码约 3.12 万行、测试 1.09 万行、脚本 0.61 万行；284 次提交；12 个插件、38 个任务、401 条规则；41 份文档、72 条缺陷记录；500 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
             </div>
           </details>
           <details>

@@ -9,6 +9,7 @@
  *
  * 任何一步失败都返回结构化拒绝原因，由执行器与界面如实呈现（论文 5.3 / 表 5-2）。
  */
+import { randomUUID } from 'node:crypto'
 import { lstat, open, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { Service, type Context } from 'cordis'
@@ -69,6 +70,10 @@ export class CleanTicket {
     readonly mode: CleanMode,
     readonly items: CleanTicketItem[],
     readonly issuedAt: number,
+    /** 一次性身份：执行器消费后同一令牌不能再次执行 */
+    readonly nonce: string,
+    /** 有效期截止时间：过期令牌一律拒绝（防签发后长时间休眠再执行） */
+    readonly expiresAt: number,
   ) {}
 }
 
@@ -77,6 +82,8 @@ export interface CleanTicketItem {
   path: string
   kind: 'file' | 'directory'
   size: number
+  /** 签发时的 mtime：执行前复核同路径内容是否被替换 */
+  mtimeMs: number
   /** clear = 清空目录内容、保留目录 */
   action: 'delete' | 'clear' | 'compact'
   /** 该项实际采用的删除方式（回收站不可用时逐项回落隔离区） */
@@ -91,6 +98,12 @@ export function isCleanTicket(value: unknown): value is CleanTicket {
 
 /** 预览一致性阈值：不一致比例超过 5% 整批中止 */
 export const CHANGE_RATIO_LIMIT = 0.05
+
+/** 令牌有效期：签发后超过该时间未执行，一律拒绝（防“签发后休眠再执行”） */
+export const TICKET_TTL_MS = 5 * 60_000
+
+/** 执行前复核允许的 mtime 偏差（文件系统时间精度与快速写入） */
+const RECHECK_MTIME_TOLERANCE_MS = 2000
 
 export class CompensateService extends Service {
   static inject = ['pathPolicy', 'settings', 'recycleBin']
@@ -202,9 +215,11 @@ export class CompensateService extends Service {
 
       // ⑤ 预览一致性：扫描后文件被改过/删掉，不按旧预览删除
       let currentSize = item.size
+      let currentMtime = 0
       try {
         const info = await stat(canonical)
         currentSize = info.size
+        currentMtime = info.mtimeMs
         // 目录的 stat.size 只是目录项大小（通常为 0），不能和聚合体积比较
         if (item.mtimeMs && item.mtimeMs > 0 && Math.abs(info.mtimeMs - item.mtimeMs) > 2000) {
           stats.changed++
@@ -240,6 +255,7 @@ export class CompensateService extends Service {
         path: canonical,
         kind: item.kind,
         size: currentSize,
+        mtimeMs: currentMtime,
         action,
         mode,
         taskId: item.taskId,
@@ -265,13 +281,51 @@ export class CompensateService extends Service {
     }
 
     if (!candidates.length) return { rejections, stats }
-    const ticket = new CleanTicket(`t${Date.now().toString(36)}`, request.mode, candidates, Date.now())
+    const issuedAt = Date.now()
+    const ticket = new CleanTicket(
+      `t${issuedAt.toString(36)}-${randomUUID().slice(0, 8)}`,
+      request.mode,
+      candidates,
+      issuedAt,
+      randomUUID(),
+      issuedAt + TICKET_TTL_MS,
+    )
     return { ticket, rejections, stats }
   }
 
   /**
+   * 消费令牌（同步、原子）：执行器在真正删除前调用。
+   *
+   * - 过期令牌拒绝（签发后超过 `TICKET_TTL_MS` 未执行）；
+   * - 已消费令牌拒绝（同一张票不能执行第二次，防重放）。
+   *
+   * 进程内单线程执行，`has` + `set` 之间没有 await，天然原子。
+   */
+  consume(ticket: CleanTicket): { ok: true } | { ok: false; reason: 'replay' | 'expired'; message: string } {
+    const now = Date.now()
+    if (now > ticket.expiresAt) {
+      return { ok: false, reason: 'expired', message: `令牌已过期（有效期 ${Math.round(TICKET_TTL_MS / 1000)} 秒），拒绝执行` }
+    }
+    if (this.consumed.has(ticket.nonce)) {
+      return { ok: false, reason: 'replay', message: '令牌已被使用过（重放），拒绝执行' }
+    }
+    this.consumed.set(ticket.nonce, ticket.expiresAt)
+    // 顺手清理过期记录，避免长时间运行内存增长
+    if (this.consumed.size > 64) {
+      for (const [nonce, expiry] of this.consumed) {
+        if (expiry < now) this.consumed.delete(nonce)
+      }
+    }
+    return { ok: true }
+  }
+
+  /** 已消费令牌：nonce → 过期时间（只用于防重放，进程内存储） */
+  private readonly consumed = new Map<string, number>()
+
+  /**
    * 执行前的逐项复核（不信任令牌内容，论文 5.3 "令牌化入口"）。
-   * 只做便宜且必须的检查：路径规范化 + 策略 + 存在性。
+   * 检查：路径策略 + 清空链接 + 存在性 + 签发后的 size/mtime 一致性。
+   * 只做便宜且必须的检查；真正的删除仍由执行器完成。
    */
   async recheck(item: CleanTicketItem): Promise<CompensateRejection | undefined> {
     const policy: PathPolicyLike = this.ctx.pathPolicy
@@ -284,10 +338,30 @@ export class CompensateService extends Service {
     if (item.action === 'clear' && (await isLinkPath(item.path))) {
       return { itemId: item.itemId, path: item.path, reason: 'protected', message: '执行前复核：清空目标已变成联接点/符号链接' }
     }
+    let info
     try {
-      await stat(item.path)
+      info = await stat(item.path)
     } catch {
       return { itemId: item.itemId, path: item.path, reason: 'vanished', message: '执行前复核：目标已不存在' }
+    }
+    // 签发后同路径内容被替换：按签发时的 size/mtime 复核，不能只看“还在不在”
+    if (item.kind === 'file') {
+      if (item.size > 0 && info.size !== item.size) {
+        return {
+          itemId: item.itemId,
+          path: item.path,
+          reason: 'changed',
+          message: `执行前复核：文件大小已变化（签发 ${item.size} → 现在 ${info.size}）`,
+        }
+      }
+    }
+    if (item.mtimeMs > 0 && Math.abs(info.mtimeMs - item.mtimeMs) > RECHECK_MTIME_TOLERANCE_MS) {
+      return {
+        itemId: item.itemId,
+        path: item.path,
+        reason: 'changed',
+        message: `执行前复核：修改时间已变化（签发 ${item.mtimeMs} → 现在 ${info.mtimeMs}）`,
+      }
     }
     return undefined
   }

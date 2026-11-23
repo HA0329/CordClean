@@ -4,7 +4,7 @@
 > 关键流程、安全模型与工程折中。所有结论均可在源码中找到对应实现。
 >
 > 事实基准：12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法、
-> 69 个测试文件 / 489 个用例、规则库 37 类/401 条（catalog 28 类/271 条 + extra 9 类/130 条）。数字由
+> 70 个测试文件 / 500 个用例、规则库 37 类/401 条（catalog 28 类/271 条 + extra 9 类/130 条）。数字由
 > [`pnpm facts`](../scripts/collect-facts.ts) 生成，口径见 [项目事实表](project-facts.md)。
 > 安全边界与残余风险另见 [威胁模型与信任边界](threat-model.md)。
 
@@ -162,14 +162,14 @@ clean({ items | itemIds, dryRun, forceQuarantine })
 | --- | --- | --- |
 | 1. 路径策略 | `PathPolicyService.check()` | 误删系统目录、越权删除（插件 bug）、驱动器根目录、尾点/短名写法绕过 |
 | 2. 链接祖先检查 | `findLinkAncestor()` + 清理引擎 | 辖区内 junction 把删除引到辖区外（越界删除） |
-| 3. 补偿链 | `CompensateService.issue()` 七步复核 + `CleanTicket` | 未过策略、条件不成立、预览变化、批量超预算的删除请求 |
-| 4. 执行器 | 用户数据唯一删除入口（内部维护路径除外）+ 逐项 `recheck()` | 伪造票据、类型不符的路径、扫描后已不存在的文件 |
+| 3. 补偿链 | `CompensateService.issue()` 七步复核 + `CleanTicket`（nonce + 5 分钟 TTL + 一次性消费） | 未过策略、条件不成立、预览变化、批量超预算的删除请求 |
+| 4. 执行器 | 用户数据唯一删除入口（内部维护路径除外）+ 逐项 `recheck()`（策略/存在性/签发后 size·mtime） | 伪造票据、类型不符的路径、扫描后已不存在的文件 |
 | 5. 隔离区/回收站 | `QuarantineService` / 回收站逐项回执 | 用户误勾选高风险项、清理后想找回；可恢复副本与 manifest |
 | 6. 审计 | 清理历史、报表、诊断日志 | “删了什么、为什么删、失败在哪一步”不可追溯 |
 
 > 注册表类插件另有 `reg export` 备份：导出失败则放弃删除，作为插件内的附加保护。
-> `CleanTicket` 的消费标记/TTL 与签发时 size/mtime 复核仍在补齐中，详见
-> [proposal-alignment.md](proposal-alignment.md) 的 D1。
+> `CleanTicket` 已实现一次性消费（`nonce` + 5 分钟 TTL）与签发后 `size`/`mtimeMs` 复核，
+> 回归用例见 `tests/safety-hardening.test.ts`；设计动机与残余风险见 [proposal-alignment.md](proposal-alignment.md) 的 D1。
 
 ### 5.2 路径策略判定顺序
 
@@ -327,7 +327,7 @@ ctx.effect(() => {
 
 | 层次 | 方式 | 覆盖 |
 | --- | --- | --- |
-| 单元 / 集成 | Vitest（69 个测试文件 / **489 个用例**，口径见 [项目事实表](project-facts.md)） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
+| 单元 / 集成 | Vitest（70 个测试文件 / **500 个用例**，口径见 [项目事实表](project-facts.md)） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
 | 设计属性 | `tests/e7-unload.test.ts` / `tests/e8-dependency.test.ts` | E7 卸载无残留；E8 provider/consumer 依赖挂起与自动恢复（见 [E7](experiments/e7-unload-residue.md) / [E8](experiments/e8-dependency-response.md)） |
 | 插件审计 | `scripts/audit-plugins.ts` | 12 个内置插件真实扫描 + 清理项契约不变量（只读） |
 | 插件自测 | `scripts/check-*.ts` | 现有插件的定向验证（只扫描，清理只用 dryRun） |
@@ -344,7 +344,7 @@ AI 插件的测试使用本地 HTTP Mock：验证请求体（隐私约束：不�
 JSON 解析（含 ```json 围栏）、字段兜底（风险值非法时降级为 caution）、
 接口 500、超时、非 JSON 输出、环境变量凭据。
 
-自测阶段、各功能迭代与批次安全加固共发现并修复 **67 个缺陷**（D-01~D-67），
+自测阶段、各功能迭代与批次安全加固共发现并修复 **72 个缺陷**（D-01~D-72），
 记录在 [缺陷记录](defect-log.md)。其中 D-01（越界删除）、D-10（路径校验性能）、
 D-19（DNS rebinding/Origin）与 D-26（清空白名单放大）具有代表性，可作为论文第 6 章
 「测试发现的问题与改进」的素材。

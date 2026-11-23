@@ -94,6 +94,17 @@ function protectedComponentOf(path: string): string | undefined {
   return undefined
 }
 
+/**
+ * 受保护目录名判定（对外只读工具）：`protectedComponentOf` 的单段版本。
+ *
+ * 清理引擎在递归删除目录前，用它对子树里的目录名做一次扫描，
+ * 避免 `D:\Projects\foo` 这种路径本身合法、但子树里含 `.git`/`.venv`/
+ * 微信数据目录时被整树删除（见 defect-log D-72）。
+ */
+export function protectedComponentName(name: string): string | undefined {
+  return protectedComponentOf(name)
+}
+
 /* ------------------------------------------------------------------ */
 /* 纯函数热路径                                                        */
 /* ------------------------------------------------------------------ */
@@ -355,9 +366,15 @@ export class PathPolicyService extends Service implements PathPolicyLike {
   }
 
   /** 声明一个允许清理的根目录，返回撤销函数（通常由插件在 apply 中调用） */
-  addRoot(target: string, _source?: string): () => void {
+  addRoot(target: string, source?: string): () => void {
     const key = pathKey(target)
     if (!key) return () => {}
+    // 清理辖区不允许是驱动器根目录：整盘可清理会突破“最小辖区”原则。
+    // AI 建议的扫描根、外部插件声明的 targets、用户设置的分析范围都会经过这里。
+    if (/^[a-z]:\\?$/.test(key)) {
+      this.ctx.logger?.warn?.('拒绝把驱动器根目录登记为清理辖区（来源 %s）：%s', source ?? 'unknown', target)
+      return () => {}
+    }
     const roots = this.hot.allowRoots
     roots.set(key, (roots.get(key) ?? 0) + 1)
     return () => {
@@ -371,6 +388,10 @@ export class PathPolicyService extends Service implements PathPolicyLike {
   addUserRoot(target: string): () => void {
     const key = pathKey(target)
     if (!key) return () => {}
+    if (/^[a-z]:\\?$/.test(key)) {
+      this.ctx.logger?.warn?.('拒绝把驱动器根目录登记为用户扫描根：%s', target)
+      return () => {}
+    }
     const roots = this.hot.userRoots
     roots.set(key, (roots.get(key) ?? 0) + 1)
     return () => {

@@ -452,9 +452,12 @@ watch(
   rootSuggestions,
   (items) => {
     const existing = new Set(state.settings?.analysis.roots ?? [])
-    // AI 的建议默认全部勾选；用户可以逐项取消。整个 AppData 等宽目录会标注“范围较大”，
-    // 但仍允许用户显式添加（用户明确选择优先于自动过滤）。
-    selectedRootPaths.value = items.filter((item) => !existing.has(item.path)).map((item) => item.path)
+    // 宽目录（AppData/Desktop/Downloads 等）默认不勾选：扩大清理辖区必须由用户显式选择，
+    // 不能因为 AI 建议而默认扩大删除范围。
+    selectedRootPaths.value = items
+      .filter((item) => !existing.has(item.path))
+      .filter((item) => !isBroadSuggestedRoot(item.path))
+      .map((item) => item.path)
   },
   { immediate: true },
 )
@@ -470,7 +473,10 @@ function isBroadSuggestedRoot(value: string): boolean {
 const broadRootCount = computed(() => rootSuggestions.value.filter((item) => isBroadSuggestedRoot(item.path)).length)
 
 async function addSuggestedRoots() {
-  const selected = rootSuggestions.value.filter((item) => selectedRootPaths.value.includes(item.path))
+  // 盘符根永远不允许写入分析范围（扩大清理辖区）；宽目录必须用户手动勾选
+  const selected = rootSuggestions.value.filter(
+    (item) => selectedRootPaths.value.includes(item.path) && !/^[a-zA-Z]:\\?$/.test(String(item.path).trim()),
+  )
   if (!selected.length) return
   const existing = state.settings?.analysis.roots ?? []
   const roots = [...existing]
@@ -1083,7 +1089,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
             <span v-if="isBroadSuggestedRoot(suggestion.path)" class="cc-pill">范围较大</span>
           </div>
         </el-checkbox-group>
-        <p v-if="broadRootCount" class="cc-hint">其中 {{ broadRootCount }} 个为范围较大的目录，默认仍勾选；如不需要可取消勾选。</p>
+        <p v-if="broadRootCount" class="cc-hint">其中 {{ broadRootCount }} 个为范围较大的目录，默认不勾选；确认确实需要后再手动选择。</p>
         <el-button type="primary" plain :disabled="!selectedRootPaths.length" @click="addSuggestedRoots">
           添加选中的扫描根（{{ selectedRootPaths.length }}）
         </el-button>

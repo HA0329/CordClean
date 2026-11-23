@@ -564,6 +564,11 @@ export interface RecycleLike {
 export interface CompensateLike {
   issue(request: { items: CleanItem[]; mode: CleanMode; signal?: AbortSignal }): Promise<any>
   recheck(item: any): Promise<{ itemId: string; path: string; reason: string; message: string } | undefined>
+  /**
+   * 消费一次性令牌：执行器在真正删除前同步调用。
+   * 过期（`TICKET_TTL_MS`）或重复消费（重放）必须拒绝。
+   */
+  consume(ticket: unknown): { ok: true } | { ok: false; reason: 'replay' | 'expired'; message: string }
 }
 
 /** 执行器能力（`ctx.executor`） */

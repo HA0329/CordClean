@@ -18,7 +18,7 @@
 | 插件可注册任务、卡片、状态项、命令、页面 | `packages/shared/src/plugin-api.ts`、`packages/core/src/domains/kernel/ui.ts` | `pnpm test:platform` |
 | inject 声明依赖、effect 登记副作用、卸载回退 | `packages/core/src/domains/kernel/plugins.ts`；E7/E8 | `tests/e7-unload.test.ts`、`tests/e8-dependency.test.ts` |
 | 六层删除安全链（路径策略—链接祖先—补偿链—执行器—隔离恢复—审计） | `packages/core/src/domains/safety/{path-policy,compensate,executor,quarantine,recycle-bin}.ts`、`domains/engine/history.ts` | `pnpm test:security`、`pnpm test:engine` |
-| 补偿链七步复核 + `CleanTicket` 票据 | `compensate.issue()` 七步；执行器只接受 `isCleanTicket()`；**消费标记/TTL 仍待补，见 D1** | `tests/compensate.test.ts`、`tests/engine.test.ts` |
+| 补偿链七步复核 + `CleanTicket` 票据 | `compensate.issue()` 七步；执行器只接受 `isCleanTicket()`；nonce + 5 分钟 TTL + 一次性消费（见 D1） | `tests/compensate.test.ts`、`tests/engine.test.ts` |
 | 取消清理返回已执行部分，不丢报告 | `executor.execute()` 返回 `ExecuteOutcome.cancelled`；`cleaner.clean()` 保留 partial report | `tests/engine.test.ts`、`tests/compensate.test.ts` |
 | 隔离区保存副本 + manifest，可恢复 | `quarantine.ts`、`tests/quarantine.test.ts`、S-01 修复记录 | `tests/quarantine.test.ts` |
 | 回收站逐项回执 | `recycle-bin.ts` 的 PowerShell JSON 回执 | `tests/recycle.test.ts`（如存在）/ `pnpm test:engine` |
@@ -36,26 +36,26 @@
 | “三层安全模型”（旧版论文大纲） | “六层删除安全链” | 旧大纲的“路径策略—隔离区—注册表备份”已过期，论文统一写六层 |
 | “安全清理” | 删除行为可约束、可恢复、可审计 | 不是杀毒/防护软件；摘要第一段就要定义 |
 
-## 3. 仍需补的差异（开题后优先）
+## 3. 已补 / 待补差异（开题后优先）
 
-### 🔴 D1. “一次性令牌”目前不是一次性的
+### ✅ D1. 一次性令牌与执行前复核（2026-11-23 已补齐）
 
-- 代码现状：`CleanTicket` 只有 `issuedAt`，没有 `consumed` 标记 / TTL；`executor.recheck()` 只校验路径策略、存在性和 clear 链接，不核对签发时的 `size`/`mtimeMs`。同一 ticket 可以重复 `execute`；签发后同路径文件被替换，也可能按旧票据删除。
-- 开题报告写法：在补齐前，不要把“一次性令牌”写成已完全实现；可写“令牌化入口 + 执行前复核”，并把消费校验列为开题后工作。
-- 建议实现：`CleanTicket` 增加 `consumed`/nonce + TTL；`CompensateService.recheck()` 对文件比较 `size`/`mtimeMs`；补“重放票据”“同路径替换”两个回归用例。
+- 现状：CleanTicket 增加 
+once + 5 分钟 TTL；执行器在真正删除前同步 consume()，同一票据第二次执行、超时执行都直接拒绝。echeck() 现在按签发时记录的 size/mtimeMs 复核，签发后同路径文件被替换会被跳过（eason=changed）。dryRun 预览不消费票据。
+- 证据：	ests/safety-hardening.test.ts（重放/过期/替换/mtime 变化/dryRun 不烧票）；功能探针复测：重放返回「令牌已被使用过（重放）」，替换后 reedBytes=0 且文件仍在。
+- 残余：消费记录在进程内存，票据本身不落盘，因此没有跨进程重放窗口；若要跨重启审计，需要把票据/消费记录落盘（未做）。
 
-### 🔴 D2. AI 根建议没有过路径策略
+### 🟡 D2. AI 根建议的扩权闸门（部分补齐）
 
-- 代码现状：`AiView.vue` 把模型返回的 `roots` 直接加入 `analysis.roots`；`large-files`/`empty-dirs` 又把每个 `analysis.roots` 注册为 `addRoot` + `addUserRoot`。UI 只对 AppData/Windows 等宽目录做提示，`C:\`、`C:\Users` 仍可加。
-- 开题报告写法：对普通建议成立，对 `roots` 不成立；不要写成“AI 的全部输出都经路径策略校验”。
-- 建议实现：root 建议默认不勾选；单独走 `pathPolicy.check`（或新增 `checkSuggestedRoot`），拒绝盘符根/系统目录/用户根；或把“分析范围”和“清理辖区”拆成两个概念。
+- 现状：AI 建议的宽目录（AppData/Desktop/Downloads 等）**默认不勾选**，必须由用户显式选择；pathPolicy.addRoot/addUserRoot 拒绝把驱动器根登记为清理辖区/用户扫描根（AI 建议、外部插件 targets、用户分析范围三条入口都经过这里）。仍未做：nalysis.roots 与「清理辖区」仍复用一套设置，AI roots 没有逐条走 pathPolicy.check（用户手动确认后仍可能把系统目录/用户根加进分析范围）。
+- 证据：packages/core/src/domains/safety/path-policy.ts 的盘符根拒绝；packages/ui/src/views/AiView.vue 的默认勾选逻辑；	ests/safety-hardening.test.ts「驱动器根目录不能被登记为清理辖区」。
+- 建议：下一步把「分析范围」和「清理辖区」拆成两个概念，AI roots 只进分析范围。
 
-### 🔴 D3. `preflightDirectory` 会让大于 5000 项的目录整体跳过
+### ✅ D3. preflightDirectory 不再让大目录整体跳过（2026-11-23 已修）
 
-- 代码现状：`executor.ts` 的 `preflightDirectory` 递归 `open(file,'r+')`，`visited > 5000` 直接返回“目录项过多，已跳过”；浏览器缓存、`%TEMP%` 很容易超过 5000 项；只读文件也会 EACCES 导致整目录跳过。
-- 影响：核心清理场景（大缓存目录）可能永远清不掉；benchmark 的 4000 文件数据集覆盖不到。
-- 建议实现：预检只做顶层抽样，或超限时降级为逐项删除 + partial 报告；`r+` 只用于占用探测；补 5 万项目录用例。
-
+- 现状：预检改为只检查顶层目录可读性，不再递归 open(file,'r+')；超过 5000 项、只读子项都不再阻塞，删除降级为逐项执行（先 clearDirectory 再删空目录），失败子项如实返回 ok:false，已释放字节照实计入，不再静默跳过。
+- 证据：	ests/safety-hardening.test.ts（5001 项目录被完整删除、只读文件不再阻塞）、	ests/in-use.test.ts（预检语义改为顶层可读性）；功能探针：5001 项目录 reedBytes=5001、目录已删除。
+- 残余：逐项删除时若个别子项被占用，会留下部分内容并返回失败结果（不再保证「要么全删要么不动」）。
 ### 🟡 D4. “唯一删除入口”有内部维护路径例外
 
 - 代码现状：`plugins/recycle` 直接 `fs.unlink` 删 `$I` 元数据；`plugin-installer`、`mover`、AI 临时目录也有直接 `rm/unlink`。
@@ -66,6 +66,11 @@
 - 现状：2026-11-23 在 Windows 11（Ryzen 5 5600 / 12 线程 / Node 24.22.1）用 v0.6.10 重跑 `pnpm bench`，`docs/benchmark.md` 与 `docs/benchmark.json` 为同一次快照（6.5 ms / 167.6 ms / 25 786 文件·秒^-1 / 2 031 文件·秒^-1）。
 - 注意：性能数字随机器与磁盘状态波动，论文表 6-2 引用时写清本次快照的日期、CPU/内存/磁盘、Windows 版本与 commit。
 
+### ✅ D6. 递归删除绕过受保护目录名（2026-11-23 已修）
+
+- 现状：执行器在目录递归删除/清空前扫描子树，命中 `.git`、`.venv`、`.idea`、`.vscode`、微信/QQ 数据目录等受保护名即整项拒绝，不再把受保护目录随父目录一起删掉。
+- 证据：`tests/safety-hardening.test.ts` 两条用例；独立审计 P0（2026-11-23）。
+- 残余：这是删除前的额外一次全树遍历（大目录 IO 成本约 +1 遍），极端超大目录的扫描时间与删除本身同量级。
 ## 4. 论文里建议怎么写
 
 - 已对齐的部分：直接引用 [project-facts.md](project-facts.md) 与 [benchmark.md](benchmark.md)，不要在各章手抄数字。
