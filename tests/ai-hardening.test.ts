@@ -10,7 +10,7 @@
 import { createServer, type Server } from 'node:http'
 import { rmSync } from 'node:fs'
 import path from 'node:path'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '@cordclean/core'
 import aiPlugin from '@cordclean/plugin-ai'
 import {
@@ -458,41 +458,158 @@ describe('服务层边界', () => {
 
   it('流式请求中取消：立刻以 CANCELLED 结束，不回退非流式再打一次请求', async () => {
     const app = await boot(baseConfig('sse-cancel'), 'sse-cancel')
-    try {
-      let cancelled = false
-      app.ctx.on('ai/stream' as any, (event: any) => {
-        if (!cancelled && event?.kind === 'delta') {
-          cancelled = true
-          app.ctx.ai!.cancelAnalyze!()
+    const chatCalls: string[] = []
+    const firstEvent = 'data: {"choices":[{"delta":{"content":"{\\"summary\\":\\"x\\""}}]}\n\n'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: any, init: any) => {
+        const url = String(input)
+        if (url.includes('/models')) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
         }
-      })
-      await expect(app.ctx.ai!.analyze()).rejects.toMatchObject({ code: 'CANCELLED' })
-      expect(cancelled).toBe(true)
-      expect(calls).toBe(1)
+        chatCalls.push(url)
+        const signal = init?.signal as AbortSignal | undefined
+        const encoder = new TextEncoder()
+        let controllerRef: ReadableStreamDefaultController<Uint8Array> | undefined
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controllerRef = controller
+            controller.enqueue(encoder.encode(firstEvent))
+            // 故意不 close：模拟服务端保持连接，必须靠取消信号中断
+          },
+          cancel() {},
+        })
+        signal?.addEventListener(
+          'abort',
+          () => {
+            try {
+              controllerRef?.error(new DOMException('Aborted', 'AbortError'))
+            } catch {
+              /* already closed */
+            }
+          },
+          { once: true },
+        )
+        return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      }),
+    )
+    try {
+      const pending = app.ctx.ai!.analyze()
+      // 等真实请求进入流式读取后再取消（CI 上插件启动/画像采集可能较慢，最多等 10s；不是放宽被测超时）
+      for (let i = 0; i < 1000 && chatCalls.length === 0; i++) await new Promise((r) => setTimeout(r, 10))
+      expect(chatCalls.length).toBe(1)
+      app.ctx.ai!.cancelAnalyze!()
+      await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' })
+      // 取消后不得回退非流式再打一次请求
+      expect(chatCalls.length).toBe(1)
     } finally {
+      vi.unstubAllGlobals()
       await app.dispose()
     }
   }, 30_000)
 
-  it('流式被 max_tokens 截断时报「输出被截断」而不是「JSON 不合法」', async () => {
-    const app = await boot(baseConfig('sse-truncated'), 'sse-truncated')
+  it('流式被 max_tokens 截断时报「输出被截断」而不是「JSON 不合法」（服务端不结束也不等待）', async () => {
+    const app = await boot({ ...baseConfig('sse-truncated'), timeoutMs: 5_000 }, 'sse-truncated')
+    let cancelledStreams = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: any, init: any) => {
+        const url = String(input)
+        if (url.includes('/models')) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+        }
+        const encoder = new TextEncoder()
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"{\\"summary\\":\\"被截断"}}]}\n\n'))
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'))
+            // 故意不 close：验证识别 finish_reason 后主动停止，而不是等服务端结束/超时
+          },
+          cancel() {
+            cancelledStreams++
+          },
+        })
+        return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      }),
+    )
     try {
       await expect(app.ctx.ai!.analyze()).rejects.toThrow(/输出被截断/)
       await expect(app.ctx.ai!.analyze()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+      // 关键证据：识别 finish_reason 后主动 cancel 剩余流，而不是等 5s 超时/回退
+      expect(cancelledStreams).toBeGreaterThanOrEqual(1)
     } finally {
+      vi.unstubAllGlobals()
       await app.dispose()
     }
   }, 30_000)
 
   it('流式接口 401 时不回退非流式（只请求一次，保留 AUTH 码）', async () => {
     const app = await boot(baseConfig('sse-auth'), 'sse-auth')
+    const chatCalls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: any, init: any) => {
+        const url = String(input)
+        if (url.includes('/models')) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+        }
+        chatCalls.push(url)
+        return new Response(JSON.stringify({ error: { message: 'invalid api key' } }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' },
+        })
+      }),
+    )
     try {
       await expect(app.ctx.ai!.analyze()).rejects.toMatchObject({ code: 'AUTH', status: 401 })
-      expect(calls).toBe(1)
+      expect(chatCalls.length).toBe(1)
     } finally {
+      vi.unstubAllGlobals()
       await app.dispose()
     }
   })
+
+  it('流式超时后不继续回退非流式（不把一次请求拖成两次超时）', async () => {
+    const app = await boot({ ...baseConfig('sse-hang'), timeoutMs: 300 }, 'sse-hang')
+    const chatCalls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: any, init: any) => {
+        const url = String(input)
+        if (url.includes('/models')) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+        }
+        chatCalls.push(url)
+        const signal = (init?.signal ?? undefined) as AbortSignal | undefined
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            // 永不发送任何数据、也不结束：只能由 timeout 中断（真实 fetch 会因 abort 结束 body）
+            signal?.addEventListener(
+              'abort',
+              () => {
+                try {
+                  controller.error(new DOMException('Aborted', 'AbortError'))
+                } catch {
+                  /* already closed */
+                }
+              },
+              { once: true },
+            )
+          },
+          cancel() {},
+        })
+        return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      }),
+    )
+    try {
+      await expect(app.ctx.ai!.analyze()).rejects.toMatchObject({ code: 'TIMEOUT' })
+      // 单请求即证明没有回退非流式（若回退，第二次请求会继续挂到超时或使 chatCalls=2）
+      expect(chatCalls.length).toBe(1)
+    } finally {
+      vi.unstubAllGlobals()
+      await app.dispose()
+    }
+  }, 30_000)
 
   it('分析结果里的虚构 taskId 不会出现在建议里，真实任务则保留', async () => {
     const app = await boot(baseConfig('analysis', { stream: false }), 'analysis-taskid')

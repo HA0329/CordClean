@@ -217,9 +217,17 @@ export async function requestJson(url: string, options: RequestOptions): Promise
 /** SSE 流式读取（chat/messages/responses 共用）：逐条回调 data JSON */
 export async function requestSse(
   url: string,
-  options: { headers: Record<string, string>; body: string; timeoutMs?: number; signal?: AbortSignal },
+  options: {
+    headers: Record<string, string>
+    body: string
+    timeoutMs?: number
+    signal?: AbortSignal
+    /** 每收完一个 chunk 后询问是否提前停止（例如已识别到 finish_reason=length） */
+    stopWhen?: () => boolean
+  },
   onData: (payload: any) => void,
 ): Promise<void> {
+  if (options.signal?.aborted) throw new AiError('请求已取消', 'CANCELLED')
   const controller = new AbortController()
   let timedOut = false
   const onAbort = () => controller.abort()
@@ -235,6 +243,7 @@ export async function requestSse(
       body: options.body,
       signal: controller.signal,
     })
+    if (options.signal?.aborted) throw new AiError('请求已取消', 'CANCELLED')
     if (!response.ok || !response.body) {
       const text = await response.text().catch(() => '')
       // 带上稳定错误码：上层据此决定「回退非流式」还是「直接报错」，不再只靠文案猜
@@ -259,10 +268,16 @@ export async function requestSse(
           try { onData(JSON.parse(data)) } catch { /* 忽略非 JSON 心跳 */ }
         }
       }
+      // 已识别到截断等终止信号时主动取消剩余流：不依赖服务端是否及时结束响应，
+      // 避免「服务端保持连接」把测试/真实请求拖到超时。
+      if (options.stopWhen?.()) {
+        await reader.cancel().catch(() => undefined)
+        break
+      }
     }
   } catch (error) {
-    if (error instanceof AiError) throw error
     if (options.signal?.aborted) throw new AiError('请求已取消', 'CANCELLED')
+    if (error instanceof AiError) throw error
     if (timedOut) throw new AiError(`流式请求超时（超过 ${options.timeoutMs ?? 120_000} ms）`, 'TIMEOUT')
     const message = error instanceof Error ? error.message : String(error)
     throw new AiError(`流式请求失败：${message}`, 'NETWORK')

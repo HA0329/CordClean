@@ -698,11 +698,14 @@ export class AiService extends Service implements AiLike {
       options.image,
     )
     this.gate('analyze', request.url, request.body)
+    // 构建画像/上下文期间用户可能已取消：此时不要发任何请求
+    if (signal.aborted) throw new AiError('请求已取消', 'CANCELLED')
 
     let result: any
     let parsed: any
     if (config.stream !== false) {
       const streamStartedAt = Date.now()
+      let truncatedInStream = false
       try {
         let text = ''
         let reasoning = ''
@@ -712,6 +715,9 @@ export class AiService extends Service implements AiLike {
           body: JSON.stringify({ ...request.body, stream: true }),
           timeoutMs: config.timeoutMs,
           signal,
+          // 已识别到 finish_reason=length 时立刻停止读取：真实服务端/测试 mock 可能保持连接，
+          // 不能依赖「响应自然结束」才发现截断。
+          stopWhen: () => truncatedInStream,
         }, (payload) => {
           const delta = parseSseDelta(config.apiShape, payload)
           if (delta.text) {
@@ -725,6 +731,7 @@ export class AiService extends Service implements AiLike {
           // 结束原因只在最后一个增量里，必须单独记录：否则被 max_tokens 截断的流式输出
           // 会被误判成「JSON 不合法」，用户不知道其实是 token 不够。
           finish = sseFinishReason(config.apiShape, payload) ?? finish
+          if (isTruncatedFinish(finish)) truncatedInStream = true
         })
         if (text.trim()) {
           ;(this.ctx.emit as any)('ai/stream', { kind: 'done', text })
@@ -733,7 +740,7 @@ export class AiService extends Service implements AiLike {
             text,
             reasoning: reasoning || undefined,
             finish: finish ?? 'stop',
-            truncated: isTruncatedFinish(finish),
+            truncated: truncatedInStream || isTruncatedFinish(finish),
             usage: undefined,
             raw: {},
           }
@@ -743,8 +750,11 @@ export class AiService extends Service implements AiLike {
         if (signal.aborted || (error instanceof AiError && error.code === 'CANCELLED')) {
           throw new AiError('请求已取消', 'CANCELLED')
         }
-        // 鉴权类错误重试也不会成功，直接把稳定错误码抛给界面（避免无意义地再请求一次）
-        if (error instanceof AiError && error.code === 'AUTH') throw error
+        if (error instanceof AiError) {
+          // 这些错误回退非流式也不会成功（鉴权/限流/超时/断网），直接抛稳定错误码；
+          // 只有「服务端不支持流式/返回体不是 SSE」这类请求级错误才值得回退一次。
+          if (['AUTH', 'TIMEOUT', 'NETWORK', 'RATE_LIMIT', 'CANCELLED'].includes(error.code)) throw error
+        }
         this.ctx.logger.info('流式请求失败，回退非流式：%s', errorMessage(error))
       }
     }
