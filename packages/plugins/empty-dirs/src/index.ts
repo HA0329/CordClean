@@ -24,6 +24,7 @@ import Schema from 'schemastery'
 import { defineCleanerPlugin } from '@cordclean/shared'
 import type { TaskScanContext } from '@cordclean/shared'
 import { errorMessage, isSubPath, mapLimit, normalizePath, pathKey, safeLstat, toLongPath } from '@cordclean/utils'
+import { buildSkipPrefixes, isWhitelistedPath } from './whitelist.ts'
 
 export interface EmptyDirsConfig {
   /** 最大递归深度（相对扫描根，扫描根自身深度为 0） */
@@ -49,6 +50,31 @@ const SKIP_DIR_NAMES = new Set([
   '$recycle.bin',
   'recycler',
   'config.msi',
+  // Windows 用户主目录下的 shell 文件夹：删掉会破坏资源管理器/用户资料入口
+  'desktop',
+  'documents',
+  'downloads',
+  'music',
+  'pictures',
+  'videos',
+  'contacts',
+  'favorites',
+  'links',
+  'saved games',
+  'searches',
+  '3d objects',
+  'onedrive',
+  '文档',
+  '下载',
+  '音乐',
+  '图片',
+  '视频',
+  '收藏夹',
+  '链接',
+  '联系人',
+  '保存的游戏',
+  '搜索',
+  '3d 对象',
 ])
 /** 防御性上限：单次扫描最多读取的目录数量（防止误把 C:\ 配成扫描根时长时间占用磁盘） */
 const MAX_SCANNED_DIRS = 120_000
@@ -105,7 +131,7 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
 async function findEmptyDirs(
   scan: TaskScanContext,
   roots: string[],
-  options: { maxDepth: number; limit: number; excludes: string[] },
+  options: { maxDepth: number; limit: number; excludes: string[]; whitelist: string[] },
 ): Promise<{ dirs: EmptyDir[]; scannedDirs: number; truncated: boolean }> {
   const nodes = new Map<string, DirNode>()
   const levels: string[][] = []
@@ -190,12 +216,18 @@ async function findEmptyDirs(
           continue
         }
         const name = entry.name.toLowerCase()
-        if (SKIP_DIR_NAMES.has(name)) {
+        if (name.startsWith('.') || SKIP_DIR_NAMES.has(name)) {
           node.hasContent = true
           continue
         }
         const childPath = path.join(node.path, entry.name)
         if (isExcluded(childPath)) {
+          node.hasContent = true
+          continue
+        }
+        // 白名单（AppData/Program Files/Windows/ProgramData/自身数据目录等）：不进入、不上报，
+        // 并让父目录保持「非空」，避免把白名单目录连同父目录一起删掉
+        if (isWhitelistedPath(childPath, options.whitelist)) {
           node.hasContent = true
           continue
         }
@@ -306,7 +338,7 @@ export default defineCleanerPlugin<EmptyDirsConfig>({
         .map((root) => normalizePath(root))
       const raw = configured.length
         ? configured
-        : [normalizePath(env.localAppData), normalizePath(path.join(env.userProfile, 'Downloads'))]
+        : [normalizePath(env.userProfile)]
       const unique = [...new Set(raw.filter(Boolean))]
       // 去掉被其它扫描根包含的重复范围（例如同时配置了 D:\Data 与 D:\Data\Cache）
       return unique.filter((root) => !unique.some((other) => other !== root && isSubPath(other, root)))
@@ -363,12 +395,14 @@ export default defineCleanerPlugin<EmptyDirsConfig>({
           '空目录里没有任何文件，删除不影响数据',
           '默认跳过 node_modules、.git、系统卷信息与回收站等目录，以及所有符号链接/联接点',
           '父子目录都为空时只上报最外层目录，删除一次即可',
+          'AppData、Program Files、Windows、ProgramData 与 CordClean 自身数据目录已列入白名单，不会上报',
           '可以在「设置 - 分析范围」中自定义要扫描的目录',
         ],
         async scan(scan) {
           const maxDepth = clampInt(config.maxDepth, 1, 32, 8)
           const limit = clampInt(config.limit, 1, 50_000, 3000)
           const excludes = ctx.settings.get().analysis.excludes ?? []
+          const whitelist = buildSkipPrefixes(scan.env)
 
           const roots: string[] = []
           for (const root of scanRoots()) {
@@ -390,7 +424,7 @@ export default defineCleanerPlugin<EmptyDirsConfig>({
             return
           }
 
-          const result = await findEmptyDirs(scan, roots, { maxDepth, limit, excludes })
+          const result = await findEmptyDirs(scan, roots, { maxDepth, limit, excludes, whitelist })
           for (const dir of result.dirs) {
             scan.emit({
               path: dir.path,
