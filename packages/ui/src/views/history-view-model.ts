@@ -787,6 +787,80 @@ export function describeRestoreResult(
   }
 }
 
+export interface UndoResultLike {
+  restored: number
+  recyclePending?: number
+  permanent?: number
+  failed?: number
+  /** 逐条失败原因；旧内核没有该字段时按 failed 数量兜底 */
+  failures?: Array<{ id?: string; path?: string; reason?: string }>
+}
+
+export interface UndoResultView {
+  restored: number
+  failedCount: number
+  recyclePending: number
+  permanent: number
+  /** 「原始路径 — 失败原因」列表（最多 50 条） */
+  details: string[]
+  tone: 'success' | 'warning' | 'error'
+  title: string
+  message: string
+}
+
+/**
+ * 撤销上次清理的结果：把后端逐条失败原因转成可展示结构。
+ * 旧内核只给 failed 数量时仍能工作（details 为空，文案按数量提示）。
+ */
+export function describeUndoResult(result: UndoResultLike): UndoResultView {
+  const restored = nonNegative(result?.restored, true)
+  const failures = Array.isArray(result?.failures) ? result.failures : []
+  const failedCount = Math.max(nonNegative(result?.failed, true), failures.length)
+  const recyclePending = nonNegative(result?.recyclePending, true)
+  const permanent = nonNegative(result?.permanent, true)
+  const details = failures
+    .slice(0, 50)
+    .map((item) => `${textOf(item?.path, 500) || '未知原始路径'} — ${textOf(item?.reason, 500) || '未知原因'}`)
+  const boundaryParts: string[] = []
+  if (recyclePending > 0) boundaryParts.push(`回收站 ${recyclePending} 项需在 Windows 回收站中手动还原`)
+  if (permanent > 0) boundaryParts.push(`永久删除 ${permanent} 项不可恢复`)
+  const boundary = boundaryParts.length ? `${boundaryParts.join('；')}。` : ''
+  if (failedCount > 0) {
+    return {
+      restored,
+      failedCount,
+      recyclePending,
+      permanent,
+      details,
+      tone: 'warning',
+      title: `部分隔离项恢复失败（${failedCount} 项）`,
+      message: `已恢复 ${restored} 项；${failedCount} 项仍留在隔离区，可稍后重试。${boundary}`,
+    }
+  }
+  if (restored > 0) {
+    return {
+      restored,
+      failedCount: 0,
+      recyclePending,
+      permanent,
+      details,
+      tone: 'success',
+      title: '撤销完成',
+      message: `已恢复 ${restored} 项到清理前的原始位置。${boundary}`,
+    }
+  }
+  return {
+    restored: 0,
+    failedCount: 0,
+    recyclePending,
+    permanent,
+    details,
+    tone: 'warning',
+    title: '没有恢复任何项目',
+    message: `撤销凭据已失效或对应隔离项已不存在（只保留最近一次）。${boundary}`,
+  }
+}
+
 export interface PurgeResultView {
   removed: number
   requested: number

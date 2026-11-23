@@ -51,6 +51,7 @@ import {
   quarantineEmptyKind,
   restoreConfirmCopy,
   restoreGate,
+  describeUndoResult,
   sortHistoryRows,
   summarizeHistoryRows,
   summarizeQuarantineRows,
@@ -196,24 +197,13 @@ async function undoLast(): Promise<void> {
   busyAction.value = 'undo'
   try {
     const result = await undoLastClean()
-    const failed = Math.max(0, Math.round(result.failed))
-    const boundary = `回收站 ${result.recyclePending} 项需在 Windows 回收站中手动还原；永久删除 ${result.permanent} 项不可恢复。`
-    if (failed > 0) {
-      undoFeedback.value = {
-        tone: 'warning',
-        title: `部分隔离项恢复失败（${failed} 项）`,
-        message: `已恢复 ${result.restored} 项；${failed} 项仍留在隔离区，可稍后重试。${boundary}`,
-      }
-      ElMessage.warning('部分隔离项恢复失败，详见页面提示')
-    } else if (result.restored > 0) {
-      undoFeedback.value = { tone: 'success', title: '撤销完成', message: `已恢复 ${result.restored} 项到清理前的原始位置。${boundary}` }
-      ElMessage.success(`已恢复 ${result.restored} 项`)
+    const view = describeUndoResult(result)
+    undoFeedback.value = { tone: view.tone, title: view.title, message: view.message, details: view.details }
+    if (view.failedCount > 0) {
+      ElMessage.warning(`部分隔离项恢复失败（${view.failedCount} 项），详见页面提示`)
+    } else if (view.restored > 0) {
+      ElMessage.success(`已恢复 ${view.restored} 项`)
     } else {
-      undoFeedback.value = {
-        tone: 'warning',
-        title: '没有恢复任何项目',
-        message: `撤销凭据已失效或对应隔离项已不存在（只保留最近一次）。${boundary}`,
-      }
       ElMessage.warning('没有可恢复的隔离项')
     }
   } catch (error) {
@@ -711,6 +701,9 @@ onMounted(() => {
     >
       <template #title>{{ undoFeedback.title }}</template>
       <p v-if="undoFeedback.message" class="report-message">{{ undoFeedback.message }}</p>
+      <ul v-if="undoFeedback.details && undoFeedback.details.length" class="report-list">
+        <li v-for="(line, index) in undoFeedback.details" :key="index">{{ line }}</li>
+      </ul>
     </el-alert>
 
     <el-alert

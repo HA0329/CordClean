@@ -479,7 +479,13 @@ export async function fetchUndoState(): Promise<{ available: boolean; at?: numbe
   return requireTransport().request('clean/undo-state', undefined)
 }
 
-export async function undoLastClean(): Promise<{ restored: number; recyclePending: number; permanent: number; failed: number }> {
+export async function undoLastClean(): Promise<{
+  restored: number
+  recyclePending: number
+  permanent: number
+  failed: number
+  failures?: Array<{ id?: string; path?: string; reason: string }>
+}> {
   const result = await requireTransport().request('clean/undo', undefined)
   await Promise.all([refreshHistory(), refreshQuarantine()])
   return result

@@ -309,13 +309,25 @@ export function createHandlers(api: ApiContext): HandlerMap {
       if (!state?.items?.length) return { restored: 0, recyclePending: 0, permanent: 0, failed: 0 }
       const quarantinePaths = new Set(state.items.filter((item: any) => item.mode === 'quarantine').map((item: any) => item.path))
       const entries = (await ctx.quarantine.list()).filter((entry) => quarantinePaths.has(entry.originalPath))
+      const pathById = new Map(entries.map((entry) => [entry.id, entry.originalPath]))
       const result = await ctx.quarantine.restore(entries.map((entry) => entry.id))
       const recyclePending = state.items.filter((item: any) => item.mode === 'recycle').length
       const permanent = state.items.filter((item: any) => item.mode === 'delete').length
       // 只有全部隔离项都恢复成功才清空撤销凭据；部分失败时保留，允许用户重试
       if (result.failed.length === 0) rmSync(UNDO_FILE, { force: true })
       else dlog('warn', 'undo', '部分隔离项恢复失败，保留撤销凭据', { failed: result.failed.length })
-      return { restored: result.restored, recyclePending, permanent, failed: result.failed.length }
+      return {
+        restored: result.restored,
+        recyclePending,
+        permanent,
+        failed: result.failed.length,
+        // 逐条原因：界面直接展示「原始路径 — 失败原因」，不再只报数量
+        failures: result.failed.map((item) => ({
+          id: item.id,
+          path: pathById.get(item.id) ?? '',
+          reason: item.message,
+        })),
+      }
     },
     // 只接受 itemIds：从最近一次扫描结果解析清理项，绝不信任界面回传的路径/大小/风险
     'clean/start': async ({ itemIds, dryRun, forceQuarantine }) => {
