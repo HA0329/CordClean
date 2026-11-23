@@ -35,11 +35,16 @@
  * - bit6 HasIconLocation：存在 ICON_LOCATION（自定义图标路径）；
  * - bit7 IsUnicode：以上 StringData 使用 UTF-16LE 编码（置 0 时为 ANSI 代码页）。
  *
- * ## 为什么 `shell` / `url` 必须跳过（而不是判成死链）
- * - `shell`：目标是 Shell 命名空间项（此电脑、回收站、某个 UWP 应用入口），
- *   它「存不存在」由 Shell 解释，文件系统永远查不到；按查不到就删会误删系统入口；
+ * ## 为什么 `shell` / `url` / 广告式（MSI advertised）必须跳过（而不是判成死链）
+ * - `shell`：目标是 Shell 命名空间项（此电脑、回收站、UWP/Store 应用入口
+ *   `shell:AppsFolder\...` 等），它「存不存在」由 Shell 解释，文件系统永远查不到；
+ *   按查不到就删会误删系统入口；
  * - `url`：目标是网址（http/https/ftp/mailto），网络暂时不可达 != 快捷方式失效，
  *   离线误判会直接删掉用户的书签式快捷方式，代价远大于收益；
+ * - `advertised`（MSI advertised）：Windows Installer 的「广告式快捷方式」没有普通
+ *   文件系统目标，安装信息由 MSI 的 Darwin 描述符在首次启动时按需安装；它的
+ *   LinkFlags 带 HasDarwinID（bit11）且 ExtraData 里有 DarwinDataBlock。这类文件
+ *   目标往往为空或指向安装器内部路径，按文件存在性判定必然误判，一律跳过；
  * - `unknown`：结构损坏、被截断或使用了本解析器不认识的存储方式，无法确证目标，
  *   一律按「不判定」处理。
  *
@@ -62,9 +67,21 @@ export interface LnkFlagsInfo {
 /** 解析结果 */
 export interface LnkParseResult {
   kind: LnkTargetKind
-  /** 解析出的目标（`shell` / `unknown` 时缺省）；尚未展开环境变量 */
+  /** 解析出的目标（`unknown` 时缺省；`shell` 且目标为 `shell:` 路径时保留原文）；尚未展开环境变量 */
   target?: string
   flags: LnkFlagsInfo
+  /**
+   * 是否为 MSI「广告式快捷方式」（advertised shortcut）。
+   *
+   * 判据（满足其一即可）：
+   * 1. LinkFlags bit11 HasDarwinID —— 标准做法，表示 ExtraData 里有 DarwinDataBlock；
+   * 2. 文件里确实存在 DarwinDataBlock（Size=0x314 + Signature=0xA0000006）的固定前缀，
+   *    用于兜底个别生成器没置 flag 的情况。
+   *
+   * 广告式快捷方式的「目标」不是普通文件：它由 Windows Installer 在首次启动时
+   * 按 Darwin 描述符安装/解析，因此文件系统查不到不代表失效，必须跳过。
+   */
+  advertised: boolean
 }
 
 /* ------------------------------------------------------------------ */
@@ -91,6 +108,14 @@ const FLAG_HAS_LINK_INFO = 1 << 1
 const FLAG_HAS_NAME = 1 << 2
 /** bit7：IsUnicode（StringData 使用 UTF-16LE；此处仅作文档说明，解析 LinkInfo 时以结构内部为准） */
 const FLAG_IS_UNICODE = 1 << 7
+/** bit11：HasDarwinID —— ExtraData 中存在 DarwinDataBlock（MSI 广告式快捷方式） */
+const FLAG_HAS_DARWIN_ID = 1 << 11
+
+/**
+ * DarwinDataBlock 的固定前缀（8 字节）：Size=0x314（4+4+260+520），
+ * Signature=0xA0000006。仅用于 LinkFlags 没置 HasDarwinID 时的兜底识别。
+ */
+const DARWIN_BLOCK_PREFIX = Buffer.from([0x14, 0x03, 0x00, 0x00, 0x06, 0x00, 0x00, 0xa0])
 
 /* LinkInfo 结构内部常量 */
 /** LinkInfo 头部固定长度（无 Unicode 偏移时） */
@@ -252,55 +277,92 @@ export function isUrlTarget(target: string): boolean {
 }
 
 /**
+ * 目标是否是 Shell 命名空间路径（不是文件系统路径）。
+ *
+ * 典型形态：
+ * - `shell:AppsFolder\<包族名>!<AppId>`：UWP/Store 应用入口；
+ * - `shell:...`：其它 Shell 命名空间（控制面板、库等）；
+ * - `::{GUID}`：CLSID 形式的命名空间项（如此电脑、回收站）。
+ *
+ * 这类目标的存在性由 Shell 解释，文件系统查询必然失败，只能跳过。
+ */
+export function isShellTarget(target: string): boolean {
+  const lower = target.trim().toLowerCase()
+  return lower.startsWith('shell:') || lower.startsWith('::{')
+}
+
+/**
+ * 文件中是否存在 DarwinDataBlock（MSI 广告式快捷方式的标志）。
+ *
+ * 正常由 LinkFlags bit11 标识；这里按块头固定前缀做一次兜底扫描，
+ * 只用于提高对「flag 缺失但确实带广告属性」的畸形文件的防御性。
+ */
+function hasDarwinDataBlock(buffer: Buffer): boolean {
+  if (buffer.length <= HEADER_SIZE) return false
+  return buffer.indexOf(DARWIN_BLOCK_PREFIX, HEADER_SIZE) !== -1
+}
+
+/**
  * 解析 .lnk 二进制内容。
  *
  * 返回 `kind: 'file'` 时 `target` 为尚未展开环境变量的目标路径；
- * 返回 `kind: 'url'` 时 `target` 为网址；`shell` / `unknown` 时没有可信目标。
+ * 返回 `kind: 'url'` 时 `target` 为网址；`kind: 'shell'` 时 `target` 可能是
+ * `shell:` 原文（也可能为空）；`unknown` 时没有可信目标。
+ * `advertised` 为 true 表示这是 MSI 广告式快捷方式，调用方必须跳过。
  *
  * 该函数不访问文件系统、不抛异常，可以安全地用于任何用户提供的字节流。
  */
 export function parseLnkTarget(buffer: Buffer): LnkParseResult {
   const flags: LnkFlagsInfo = { hasLinkTargetIdList: false, hasLinkInfo: false, hasName: false }
+  let advertised = false
+
+  /** 统一出口：保证任何分支都带上最新的 advertised 标记 */
+  const finish = (kind: LnkTargetKind, target?: string): LnkParseResult => ({ kind, target, flags, advertised })
+
   try {
     // ① 校验 Header：长度至少 0x4C，HeaderSize == 0x4C，CLSID 匹配
-    if (!Buffer.isBuffer(buffer) || buffer.length < HEADER_SIZE) return { kind: 'unknown', flags }
-    if (readUInt32(buffer, 0) !== HEADER_SIZE) return { kind: 'unknown', flags }
-    if (!buffer.subarray(4, 20).equals(LINK_CLSID)) return { kind: 'unknown', flags }
+    if (!Buffer.isBuffer(buffer) || buffer.length < HEADER_SIZE) return finish('unknown')
+    if (readUInt32(buffer, 0) !== HEADER_SIZE) return finish('unknown')
+    if (!buffer.subarray(4, 20).equals(LINK_CLSID)) return finish('unknown')
 
     // ② 读 LinkFlags
     const linkFlags = readUInt32(buffer, LINK_FLAGS_OFFSET)
-    if (linkFlags === undefined) return { kind: 'unknown', flags }
+    if (linkFlags === undefined) return finish('unknown')
     flags.hasLinkTargetIdList = (linkFlags & FLAG_HAS_LINK_TARGET_ID_LIST) !== 0
     flags.hasLinkInfo = (linkFlags & FLAG_HAS_LINK_INFO) !== 0
     flags.hasName = (linkFlags & FLAG_HAS_NAME) !== 0
+    // 广告式快捷方式：flag 是主判据，DarwinDataBlock 前缀是兜底（见 LnkParseResult.advertised）
+    advertised = (linkFlags & FLAG_HAS_DARWIN_ID) !== 0 || hasDarwinDataBlock(buffer)
 
     // ③ 跳过 LinkTargetIDList：uint16 长度（只统计 IDList 内容，不含长度字段自身）
     let cursor = HEADER_SIZE
     if (flags.hasLinkTargetIdList) {
       const idListSize = readUInt16(buffer, cursor)
-      if (idListSize === undefined || idListSize < 2) return { kind: 'unknown', flags }
+      if (idListSize === undefined || idListSize < 2) return finish('unknown')
       cursor += 2 + idListSize
-      if (cursor > buffer.length) return { kind: 'unknown', flags }
+      if (cursor > buffer.length) return finish('unknown')
     }
 
     // ④ 解析 LinkInfo（本地/网络目标的路径来源）
     let target = ''
     if (flags.hasLinkInfo) {
       const paths = parseLinkInfo(buffer, cursor)
-      if (!paths) return { kind: 'unknown', flags }
+      if (!paths) return finish('unknown')
       target = joinTarget(paths.base, paths.suffix)
     }
 
-    // ⑤ 分类
+    // ⑤ 分类：网址 / Shell 命名空间（含 shell:AppsFolder）/ 本地文件
     if (target) {
-      return { kind: isUrlTarget(target) ? 'url' : 'file', target, flags }
+      if (isUrlTarget(target)) return finish('url', target)
+      if (isShellTarget(target)) return finish('shell', target)
+      return finish('file', target)
     }
     // 有 IDList 但没有 LinkInfo：目标是 Shell 命名空间对象（此电脑 / 回收站等），
     // 拿不到文件系统路径，只能标记为 shell，绝不参与死链判定
-    if (flags.hasLinkTargetIdList && !flags.hasLinkInfo) return { kind: 'shell', flags }
-    return { kind: 'unknown', flags }
+    if (flags.hasLinkTargetIdList && !flags.hasLinkInfo) return finish('shell')
+    return finish('unknown')
   } catch {
     // 任何意外（畸形长度、索引越界）都退化为 unknown：解析器不允许把异常抛给扫描流程
-    return { kind: 'unknown', flags }
+    return finish('unknown')
   }
 }
