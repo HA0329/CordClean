@@ -42,7 +42,7 @@ export const Config = Schema.object({
   modelsPath: Schema.string().default('/models').description('模型列表路径（相对 baseUrl）'),
   modelsUrl: Schema.string().default('').description('模型列表完整 URL（优先于 modelsPath）'),
   model: Schema.string().default('deepseek-flash').description('工坊生成插件使用的模型；建议 deepseek-flash（1M 上下文，适合长代码）'),
-  maxTokens: Schema.number().default(65_536).min(0).max(1_000_000).description('单次生成最大输出 token；0 表示使用默认值 131072 内收敛'),
+  maxTokens: Schema.number().default(65_536).min(0).max(1_000_000).description('单次生成最大输出 token；0 表示使用默认值 131072 内收敛；小于等于 2048 的值会被自动提升为 65536，避免代码输出被截断'),
   temperature: Schema.number().default(-1).min(-1).max(2).description('温度；-1 表示不发送'),
   timeoutMs: Schema.number().default(180_000).min(0).max(600_000).description('单次请求超时（毫秒）；0=默认 180 秒'),
   retries: Schema.number().default(1).min(0).max(5).description('失败重试次数（截断/契约不通过会额外重试）'),

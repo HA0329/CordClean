@@ -4,6 +4,24 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.13 — 2026-11-23
+
+### 真实用户模拟 + 真实模型验证补做
+
+- AI 顾问/工坊用临时 Key 真调模型：16/16 通过（分析、生成→校验→安装→启用→真实扫描→卸载、
+  AUTH/NETWORK/CANCELLED/截断/视觉不支持等失败态）；
+- 真实用户矩阵 15/15：首次使用/空数据/乱序越界/取消/断网/无权限/长路径/大目录/并发/重启恢复等；
+- 新增 `scripts/ai-live-verify.ts`、`scripts/user-sim-matrix.ts` 与验证记录文档（Key 仅环境变量）。
+
+### 修复
+
+- AI 顾问/工坊 `maxTokens` 配置说明补充「≤2048 自动提升为 65536」，消除真实测试发现的误导。
+
+### 验证
+
+- 106 文件 / 931 用例通过；typecheck/build/docs:check/e2e 通过；真实模型 16/16；用户矩阵 15/15。
+
+详细说明：[docs/release-notes-v0.6.13.md](docs/release-notes-v0.6.13.md)
 ## v0.6.12 — 2026-11-23
 
 ### AI 插件加固（不做无 Key 绕过）
