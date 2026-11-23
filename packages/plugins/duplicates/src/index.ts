@@ -22,6 +22,7 @@ import Schema from 'schemastery'
 import type { TaskScanContext } from '@cordclean/shared'
 import { basename, defineCleanerPlugin, formatBytes } from '@cordclean/shared'
 import { errorMessage, exists, hashFile, mapLimit, normalizePath, pathKey, walk } from '@cordclean/utils'
+import { shouldExcludeDuplicateFile } from './exclude.ts'
 
 export interface DuplicatesConfig {
   /** 最小文件体积（MB），0 表示跟随全局设置 scan.duplicateMinSize */
@@ -117,6 +118,8 @@ async function collectBySize(
     maxEntries: number
     maxDepth: number
     shouldEnter(dir: string): boolean
+    /** 返回 true 表示该文件不参与重复比较（运行时/程序/系统数据库等） */
+    skipFile?(target: string): boolean
   },
   stats: ScanStats,
 ): Promise<Map<number, Candidate[]>> {
@@ -148,6 +151,7 @@ async function collectBySize(
         scan.logger.info(`已遍历 ${stats.scanned} 个文件，同尺寸候选 ${bySize.size} 组`)
       }
       if (entry.size < options.minSize) continue
+      if (options.skipFile?.(entry.path)) continue
       const key = pathKey(entry.path)
       if (seen.has(key)) continue
       seen.add(key)
@@ -274,6 +278,7 @@ export default defineCleanerPlugin<DuplicatesConfig>({
           '每组只上报副本，保留项（修改时间最早）不会被上报，也不会被删除',
           '默认只分析不小于 1 MB 的文件，可在插件配置里调整',
           '默认跳过 node_modules、.git、回收站与系统卷信息目录',
+          '排除应用/系统目录与运行库（.dll/.exe/.onnx 等），避免删除应用内部副本',
           '删除会经过内核隔离区，可在隔离区中恢复',
         ],
         estimatedMs: 15000,
@@ -309,9 +314,17 @@ export default defineCleanerPlugin<DuplicatesConfig>({
             groups: 0,
           }
           const startedAt = Date.now()
+          let excludedFiles = 0
+          const skipFile = (target: string): boolean => {
+            if (shouldExcludeDuplicateFile(target, env)) {
+              excludedFiles++
+              return true
+            }
+            return false
+          }
 
           // 第 1 级：按体积分组
-          const bySize = await collectBySize(scan, roots, { minSize, maxEntries, maxDepth, shouldEnter }, stats)
+          const bySize = await collectBySize(scan, roots, { minSize, maxEntries, maxDepth, shouldEnter, skipFile }, stats)
           const candidates = [...bySize.values()].filter((group) => group.length >= 2).flat()
           // 体积大的文件重复时节省的空间更多，优先占用哈希预算
           candidates.sort((a, b) => b.size - a.size || a.path.localeCompare(b.path))

@@ -18,6 +18,7 @@
 import Schema from 'schemastery'
 import { basename, defineCleanerPlugin, formatBytes, formatTime } from '@cordclean/shared'
 import { errorMessage, exists, isSubPath, normalizePath, parentPath, pathKey, walk } from '@cordclean/utils'
+import { shouldExcludeLargeFile } from './exclude.ts'
 
 export interface LargeFilesConfig {
   /** 阈值（MB），0 表示跟随全局设置 scan.largeFileThreshold */
@@ -204,6 +205,7 @@ export default defineCleanerPlugin<LargeFilesConfig>({
         tips: [
           '本任务只做分析，默认不会勾选任何文件',
           '默认跳过 node_modules、.git、回收站、系统卷信息与临时目录',
+          '排除应用/系统目录与运行库（.dll/.exe/.sys 等），避免把程序文件当垃圾',
           '位于受保护目录（文档、桌面、下载等）的文件只能手动删除',
           '删除会经过内核隔离区，可在隔离区中恢复',
         ],
@@ -245,6 +247,7 @@ export default defineCleanerPlugin<LargeFilesConfig>({
           let traversed = 0
           let remaining = maxEntries
           let hits = 0
+          let excluded = 0
           let truncated = false
 
           for (const root of roots) {
@@ -274,6 +277,11 @@ export default defineCleanerPlugin<LargeFilesConfig>({
                 scan.logger.info(`已遍历 ${traversed} 个条目，当前候选大文件 ${hits} 个`)
               }
               if (entry.size < threshold) continue
+              // 运行库/程序/安装包不算可清理大文件（避免把应用运行时 DLL 推给用户删）
+              if (shouldExcludeLargeFile(entry.path, scan.env)) {
+                excluded++
+                continue
+              }
               if (trackSeen) {
                 const key = pathKey(entry.path)
                 if (seen.has(key)) continue
