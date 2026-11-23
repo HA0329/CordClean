@@ -26,12 +26,16 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
+      # rpc.test.ts 的静态资源/SPA 回退用例需要 packages/ui/dist；先构建再收集/跑测试
+      - name: Build UI
+        run: pnpm build:ui
+      - name: Project facts
+        run: pnpm facts
+      - name: Docs consistency
+        run: pnpm docs:check
       - name: Typecheck
         run: pnpm typecheck
       - name: Typecheck UI (vue-tsc)
         run: pnpm typecheck:ui
-      # rpc.test.ts 的静态资源/SPA 回退用例需要 packages/ui/dist；先构建再跑测试
-      - name: Build UI
-        run: pnpm build:ui
       - name: Unit / integration tests
         run: pnpm vitest run

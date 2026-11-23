@@ -1,5 +1,8 @@
 # PC-Cleaner 规则库同步验收（2026-10-28）
 
+> **历史快照**：本报告记录当时的版本、数量与运行环境；当前项目口径见 [project-facts.md](../project-facts.md)。历史数据不回改，也不与最新 benchmark 混用。
+
+
 - 上游：https://github.com/HA0329/PC-Cleaner
 - 上游版本：`pyproject.toml` = **0.9.11**，最新提交 `af45d0a`（2026-09-28，Add files via upload）
 - 上游规则文件：`pc_cleaner/rules.json`（version **0.9.9**，30 分类 / 276 目标）

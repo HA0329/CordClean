@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-23T08:59:47.136Z",
+  "commit": "08507de",
+  "version": "0.6.10",
+  "plugins": {
+    "total": 12,
+    "defaultEnabled": 8,
+    "activeAtRuntime": 8,
+    "ids": [
+      "rule-pack",
+      "scheduler",
+      "shortcuts",
+      "recycle",
+      "large-files",
+      "duplicates",
+      "empty-dirs",
+      "leftovers",
+      "startup",
+      "registry",
+      "ai-workshop",
+      "ai"
+    ]
+  },
+  "tasks": 38,
+  "rpcMethods": 72,
+  "tests": {
+    "files": 69,
+    "cases": 489
+  },
+  "rules": {
+    "catalogCategories": 28,
+    "catalogRules": 271,
+    "extraCategories": 9,
+    "extraRules": 130,
+    "totalCategories": 37,
+    "totalRules": 401
+  },
+  "benchmark": {
+    "file": "docs/benchmark.md",
+    "snapshotDate": "2026/11/23 16:58:41",
+    "environment": "win32 10.0.26100 · 12 核 · Node 24.22.1"
+  }
+}

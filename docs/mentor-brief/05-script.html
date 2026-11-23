@@ -156,7 +156,7 @@
       role: '把内核服务翻译成面向界面的 API，不包含任何传输代码；Web 与桌面两种外壳复用同一份 createHandlers()。',
       files: ['packages/host/src/api.ts', 'packages/host/src/server.ts', 'packages/shared/src/rpc.ts'],
       points: [
-        '55 个 RPC 方法，由 ApiMap 单一事实源约束参数与返回值，前端有类型提示。',
+        '72 个 RPC 方法，由 ApiMap 单一事实源约束参数与返回值，前端有类型提示。',
         '事件通知：scan/progress、clean/done、plugins/changed，与内核事件一一映射。',
         '安全：Web 外壳只监听本机回环地址，/api/rpc 与 WebSocket 升级都校验 token；请求体过大直接拒绝（D-05）。'
       ]
@@ -176,7 +176,7 @@
       tag: '可插拔',
       title: '插件层 · Plugins',
       role: '每个清理能力是一个独立包：有自己的 package.json、schema 配置、生命周期与清理辖区；只依赖契约层。',
-      files: ['packages/plugins/*（11 个）', 'packages/plugins/rule-pack'],
+      files: ['packages/plugins/*（12 个）', 'packages/plugins/rule-pack'],
       points: [
         '用 ctx.cleaner.define({ id, scan, clean? }) 注册任务；默认只实现 scan，文件类清理交给引擎。',
         '用 ctx.effect 登记辖区与任务，卸载时自动回收，不留下悬空监听。',

@@ -45,17 +45,20 @@
       </div>
     </div>
 
-    <div class="subhead">四层防护与它们拦截的威胁</div>
+    <div class="subhead">六层删除安全链与它们拦截的威胁</div>
     <div class="table-wrap">
       <table>
         <thead><tr><th style="width:17%">防护层</th><th style="width:30%">实现</th><th>拦截的威胁</th></tr></thead>
         <tbody>
-          <tr><td><b>路径策略</b></td><td><code>PathPolicyService.check()</code> + 前缀树</td><td>误删系统目录、插件 bug 越权、驱动器根目录、尾点 / 8.3 短名写法绕过</td></tr>
-          <tr><td><b>链接祖先检查</b></td><td><code>findLinkAncestor()</code> + 清理引擎</td><td>辖区内 junction 把删除引到辖区外（真实发生过的 D-01 越界删除）</td></tr>
-          <tr><td><b>隔离区</b></td><td><code>QuarantineService</code> + manifest.jsonl</td><td>用户误勾选高风险项、清理后想找回；支持一键恢复</td></tr>
-          <tr><td><b>注册表备份</b></td><td>插件内 <code>reg export</code></td><td>误删启动项、误删卸载项；导出失败则放弃删除</td></tr>
+          <tr><td><b>1. 路径策略</b></td><td><code>PathPolicyService.check()</code> + 前缀树</td><td>误删系统目录、插件 bug 越权、驱动器根目录、尾点 / 8.3 短名写法绕过</td></tr>
+          <tr><td><b>2. 链接祖先</b></td><td><code>findLinkAncestor()</code> + 清理引擎</td><td>辖区内 junction 把删除引到辖区外（真实发生过的 D-01 越界删除）</td></tr>
+          <tr><td><b>3. 补偿链</b></td><td>七步复核 + <code>CleanTicket</code> 票据</td><td>未过策略、条件不成立、批量超预算的删除请求；执行器只认合法票据</td></tr>
+          <tr><td><b>4. 执行器</b></td><td>用户数据唯一删除入口（内部维护路径除外）+ 逐项 <code>recheck()</code></td><td>伪造票据、类型不符的路径、扫描后已不存在的文件</td></tr>
+          <tr><td><b>5. 隔离区/回收站</b></td><td><code>QuarantineService</code> + manifest.jsonl / 回收站回执</td><td>用户误勾选高风险项、清理后想找回；支持一键恢复</td></tr>
+          <tr><td><b>6. 审计</b></td><td>清理历史、报表、诊断日志</td><td>“删了什么、为什么删、失败在哪一步”不可追溯；报告不静默丢失</td></tr>
         </tbody>
       </table>
+      <p class="card-note">注册表类插件另有 <code>reg export</code> 备份：导出失败则放弃删除，作为插件内的附加保护。</p>
     </div>
 
     <div class="grid g2" style="margin-top:16px">
@@ -171,7 +174,7 @@
 
     <div class="kpi-row">
       <div class="kpi"><div class="k">规则分类</div><div class="v">28</div><div class="d">覆盖开发工具、浏览器、系统、游戏、办公等</div></div>
-      <div class="kpi"><div class="k">规则条数</div><div class="v">271</div><div class="d">从 PC-Cleaner 0.9.9 导入并保留来源</div></div>
+      <div class="kpi"><div class="k">规则条数</div><div class="v">401</div><div class="d">从 PC-Cleaner 0.9.9 导入并保留来源</div></div>
       <div class="kpi"><div class="k">候选根目录</div><div class="v">284</div><div class="d">本机可命中 136 个</div></div>
       <div class="kpi"><div class="k">结构审计</div><div class="v">0<small>错误</small></div><div class="d">0 条「暂未实现类型」</div></div>
     </div>
@@ -377,8 +380,8 @@
 
     <div class="kpi-row">
       <div class="kpi"><div class="k">自动化测试</div><div class="v">489<small>用例</small></div><div class="d">69 个测试文件 · 全部通过</div></div>
-      <div class="kpi"><div class="k">修复缺陷</div><div class="v">14<small>个</small></div><div class="d">含 1 个高危数据安全缺陷</div></div>
-      <div class="kpi"><div class="k">代码提交</div><div class="v">151<small>次</small></div><div class="d">源码 + 测试 + 脚本约 3.13 万行</div></div>
+      <div class="kpi"><div class="k">修复缺陷</div><div class="v">67<small>个</small></div><div class="d">含 1 个高危数据安全缺陷</div></div>
+      <div class="kpi"><div class="k">代码提交</div><div class="v">284<small>次</small></div><div class="d">源码 + 测试 + 脚本约 4.82 万行</div></div>
       <div class="kpi"><div class="k">规则审计</div><div class="v">0<small>错误</small></div><div class="d">结构 / 死目标 / 重复 / 策略拦截</div></div>
     </div>
 
@@ -404,7 +407,7 @@
         <thead><tr><th style="width:9%">编号</th><th style="width:13%">级别</th><th style="width:46%">问题</th><th>修复结果</th></tr></thead>
         <tbody>
           <tr><td><b>D-01</b></td><td><span class="tag tag-risky">高危</span></td><td>辖区内 NTFS 联接点导致删除穿透到辖区外</td><td>链接祖先检查 + 回归测试</td></tr>
-          <tr><td><b>D-10</b></td><td><span class="tag tag-caution">性能</span></td><td>单次路径校验 166 µs，扫描吞吐仅 4.5k 文件/秒</td><td>前缀树 + 热状态对象 → 10.4 µs、35.9k 文件/秒</td></tr>
+          <tr><td><b>D-10</b></td><td><span class="tag tag-caution">性能</span></td><td>单次路径校验 166 µs，扫描吞吐仅 4.5k 文件/秒</td><td>前缀树 + 热状态对象 → 10.4 µs、27.6k 文件/秒</td></tr>
           <tr><td><b>D-04</b></td><td><span class="tag tag-caution">中</span></td><td>静态资源目录穿越校验存在前缀误判（<code>C:\ui</code> 与 <code>C:\ui-evil</code>）</td><td>按路径段比较，补测试</td></tr>
           <tr><td><b>D-02</b></td><td><span class="tag tag-caution">中</span></td><td>异步插件启动失败变成未处理 Promise 拒绝，Node 24 下可能终止进程</td><td>统一捕获并标记插件 FAILED，其余插件继续</td></tr>
           <tr><td><b>D-11</b></td><td><span class="tag tag-caution">中</span></td><td>尾点与 8.3 短名可绕过字符串比较</td><td>路径规范化 + 短名解析，补攻击用例</td></tr>
@@ -412,19 +415,19 @@
       </table>
     </div>
 
-    <div class="subhead">性能基准（Windows 11 · Ryzen 5 5600 · Node 24.19）</div>
+    <div class="subhead">性能基准（Windows 11 · Ryzen 5 5600 · Node 24.22.1 · 2026-11-23 实跑）</div>
     <div class="table-wrap">
       <table>
         <thead><tr><th style="width:34%">指标</th><th style="width:24%">数值</th><th>说明</th></tr></thead>
         <tbody>
-          <tr><td>内核启动（仅服务）</td><td class="num">5.4 ms</td><td>中位数 / 5 次</td></tr>
-          <tr><td>完整启动（加载插件）</td><td class="num">162.6 ms</td><td>中位数 / 3 次</td></tr>
-          <tr><td>扫描 4,000 个文件</td><td class="num">0.15 s</td><td>26,770 文件/秒</td></tr>
-          <tr><td>删除 4,000 个文件</td><td class="num">1.84 s</td><td>2,178 文件/秒</td></tr>
-          <tr><td>隔离区单项开销</td><td class="num">1.29 ms</td><td>移入 200 个文件共 258 ms</td></tr>
-          <tr><td>全量 SHA-256</td><td class="num">366 MB/秒</td><td>重复文件检测的三级策略</td></tr>
+          <tr><td>内核启动（仅服务）</td><td class="num">6.5 ms</td><td>中位数 / 5 次</td></tr>
+          <tr><td>完整启动（加载插件）</td><td class="num">167.6 ms</td><td>中位数 / 3 次</td></tr>
+          <tr><td>扫描 4,000 个文件</td><td class="num">0.16 s</td><td>25,786 文件/秒</td></tr>
+          <tr><td>删除 4,000 个文件</td><td class="num">1.97 s</td><td>2,031 文件/秒</td></tr>
+          <tr><td>隔离区单项开销</td><td class="num">1.95 ms</td><td>移入 200 个文件共 391 ms</td></tr>
+          <tr><td>全量 SHA-256</td><td class="num">342 MB/秒</td><td>重复文件检测的三级策略</td></tr>
           <tr><td>路径策略单次校验</td><td class="num">10.4 µs</td><td>优化前 166 µs</td></tr>
-          <tr><td>常驻内存 RSS</td><td class="num">132.2 MB</td><td>堆内存 12 MB</td></tr>
+          <tr><td>常驻内存 RSS</td><td class="num">132.6 MB</td><td>堆内存 12.4 MB</td></tr>
         </tbody>
       </table>
     </div>
@@ -443,8 +446,8 @@
       </div>
       <div class="card">
         <div class="card-kicker">工作量</div>
-        <h3>3.13 万行，2591 次提交</h3>
-        <p>源码 1.93 万行、测试 0.63 万行、脚本 0.57 万行；13 份文档与 67 条缺陷记录。</p>
+        <h3>4.82 万行，284 次提交</h3>
+        <p>源码 3.12 万行、测试 1.09 万行、脚本 0.61 万行；41 份文档与 67 条缺陷记录。</p>
       </div>
     </div>
   </div>

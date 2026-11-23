@@ -102,7 +102,7 @@
         <div class="arch-arrow">▼ 统一 RPC</div>
         <button class="layer" data-layer="transport" type="button">
           <span class="idx">4</span>
-          <span><span class="name">传输层 · Host</span><span class="sub">packages/host · 55 个方法</span></span>
+          <span><span class="name">传输层 · Host</span><span class="sub">packages/host · 72 个方法</span></span>
         </button>
         <div class="arch-arrow">▼ 直接调用</div>
         <button class="layer" data-layer="kernel" type="button">
@@ -112,7 +112,7 @@
         <div class="arch-arrow">▼ 能力契约</div>
         <button class="layer" data-layer="plugins" type="button">
           <span class="idx">2</span>
-          <span><span class="name">插件层 · Plugins</span><span class="sub">packages/plugins/* · 11 个</span></span>
+          <span><span class="name">插件层 · Plugins</span><span class="sub">packages/plugins/* · 12 个</span></span>
         </button>
         <div class="arch-arrow">▼ 只依赖</div>
         <button class="layer" data-layer="contract" type="button">
@@ -242,13 +242,13 @@ record.taskIds = [...after].filter(id =&gt; !before.has(id))</code></pre>
       </div>
     </div>
 
-    <div class="subhead">11 个内置插件（可筛选，点击卡片看细节）</div>
+    <div class="subhead">12 个内置插件（可筛选，点击卡片看细节）</div>
     <div class="plugins-filter" id="pluginFilters">
-      <button class="filter-btn active" data-filter="all" type="button">全部 11</button>
+      <button class="filter-btn active" data-filter="all" type="button">全部 12</button>
       <button class="filter-btn" data-filter="enabled" type="button">默认启用 8</button>
-      <button class="filter-btn" data-filter="disabled" type="button">默认关闭 3</button>
-      <button class="filter-btn" data-filter="risky" type="button">含高风险 3</button>
-      <span class="plugins-count" id="pluginsCount">显示 11 / 11</span>
+      <button class="filter-btn" data-filter="disabled" type="button">默认关闭 4</button>
+      <button class="filter-btn" data-filter="risky" type="button">含高风险 4</button>
+      <span class="plugins-count" id="pluginsCount">显示 12 / 12</span>
     </div>
 
     <div class="plugin-grid" id="pluginGrid">
@@ -257,7 +257,7 @@ record.taskIds = [...after].filter(id =&gt; !before.has(id))</code></pre>
           <div><div class="plugin-name">规则库</div><div class="plugin-id">rule-pack · v2.0.0</div></div>
           <span class="plugin-state">运行中</span>
         </div>
-        <p class="plugin-desc">把 JSON 规则自动转换为清理能力：28 个分类、271 条规则；新增清理域只加数据。</p>
+        <p class="plugin-desc">把 JSON 规则自动转换为清理能力：37 个分类、401 条规则；新增清理域只加数据。</p>
         <div class="tags"><span class="tag tag-safe">安全 ~ 谨慎</span><span class="tag tag-brand">数据驱动</span></div>
         <div class="plugin-foot"><span class="plugin-tasks">31 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
         <div class="plugin-detail"><b>支持 6 种目标类型</b>：clear_dir / delete_dir / glob_files / glob_dirs / files_by_rule / find_dirs。高风险分类与 deep_only 规则默认不装载；审计脚本持续报告结构错误、死目标、重复目标与被策略拦截的目标。</div>
@@ -293,7 +293,7 @@ record.taskIds = [...after].filter(id =&gt; !before.has(id))</code></pre>
         <p class="plugin-desc">按「体积 → 4 KB 短哈希 → 全量 SHA-256」三级策略找重复文件，避免无谓的全量哈希。</p>
         <div class="tags"><span class="tag tag-caution">谨慎</span></div>
         <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
-        <div class="plugin-detail">全量哈希吞吐实测约 383 MB/s；候选过多时按预算截断并如实告知，不静默丢弃。</div>
+        <div class="plugin-detail">全量哈希吞吐实测约 342 MB/s；候选过多时按预算截断并如实告知，不静默丢弃。</div>
       </article>
 
       <article class="plugin" data-enabled="true" data-risk="safe" tabindex="0">
@@ -360,6 +360,18 @@ record.taskIds = [...after].filter(id =&gt; !before.has(id))</code></pre>
         <div class="tags"><span class="tag tag-risky">高风险</span><span class="tag tag-plain">默认关闭</span></div>
         <div class="plugin-foot"><span class="plugin-tasks">1 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
         <div class="plugin-detail">不依赖 COM，直接解析 Shell Link 二进制结构；链接本身可删，但目标文件绝不被触碰。</div>
+      </article>
+
+
+      <article class="plugin off" data-enabled="false" data-risk="risky" tabindex="0">
+        <div class="plugin-head">
+          <div><div class="plugin-name">AI 插件工坊</div><div class="plugin-id">ai-workshop · v1.0.0</div></div>
+          <span class="plugin-state">已停止</span>
+        </div>
+        <p class="plugin-desc">按自然语言需求生成 v2 插件包草稿；安装前经四道静态闸门与用户逐文件审阅，不直接执行删除。</p>
+        <div class="tags"><span class="tag tag-risky">生成代码</span><span class="tag tag-plain">默认关闭</span></div>
+        <div class="plugin-foot"><span class="plugin-tasks">0 个任务</span><span class="plugin-more">查看细节 ▾</span></div>
+        <div class="plugin-detail">四道闸门：导出与契约、inject、manifest/权限、语法与危险 API；安装走 staging → 校验 → 原子落盘/回滚。模型不持有删除接口。</div>
       </article>
 
       <article class="plugin off" data-enabled="false" data-risk="safe" tabindex="0">

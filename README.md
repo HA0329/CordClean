@@ -1,6 +1,9 @@
-# CordClean · 基于 Cordis 插件框架的模块化电脑清理工具
+# CordClean · 基于 Cordis 插件架构的 Windows 安全清理工具
 
-> 本科毕业设计项目《基于 Cordis 插件框架的模块化电脑清理工具设计与实现》配套系统。
+> 本科毕业设计项目《基于 Cordis 插件架构的 Windows 安全清理工具的设计与实现》配套系统。
+>
+> 本文中的“安全”指删除行为**可约束、可恢复、可审计**，不是杀毒/防护类安全软件。
+> 项目数量与性能口径以 [项目事实表](docs/project-facts.md) 和 [性能基准](docs/benchmark.md) 为准；历史发布说明保留发布时的数字。
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
@@ -32,7 +35,7 @@ pnpm start:desktop    # Electron 桌面应用
 | 运行时插件管理 | 「插件」页面可启用/停用/热重载插件，配置写入 `config.json`，无需重启应用 |
 | 通用插件框架 P1 | 外部插件可按原生 Cordis 插件加载，拥有完整 `ctx`；可贡献概览卡片、状态栏、命令、iframe 沙箱页面；主动事件/通知可实时刷新 UI；Electron 壳提供悬浮窗口/托盘；旧 worker cleaner 插件继续兼容 |
 | 插件包 v2 | 外部插件升级为「目录 + `plugin.json` 清单」：`apiVersion`/`engines` 兼容检查、权限清单、staging → 校验 → 原子落盘/回滚安装事务、包内 `client/` 页面经 `cordclean-plugin://` 协议加载；旧单文件插件继续兼容 |
-| 安全策略 | 路径策略（保护系统/用户重要目录）+ 隔离区（可恢复）+ 注册表 `.reg` 备份；本地服务随机 token + Host/Origin 校验（见 [威胁模型](docs/threat-model.md)） |
+| 安全策略 | 六层删除安全链：路径策略 + 链接祖先 + 补偿链（`CleanTicket`）+ 执行器复核 + 隔离区/回收站 + 审计；注册表类插件额外 `reg export` 备份；本地服务随机 token + Host/Origin 校验（见 [威胁模型](docs/threat-model.md)） |
 | 扫描/清理分离 | 先扫描出「可清理项」，用户勾选后再执行；支持 `dryRun` 预演；扫描与清理都有独立实时进度页，切换侧边栏不会中断 |
 | 定时任务 | 多计划定时扫描；每个任务可自定义名称、按间隔或每天固定时间运行；自动清理需授权，规则变化后授权失效 |
 | 扫描结果选择 v2 | 千条级结果按「分类 → 任务」聚合；安全项智能推荐，谨慎/高风险项显式确认；支持风险/大小/任务筛选、三态整组勾选、逐项明细 + 详情说明 + 打开位置、受保护只读视图、清理确认摘要 |
@@ -47,9 +50,9 @@ pnpm start:desktop    # Electron 桌面应用
 - **内核**：Node.js 22+ / TypeScript / [Cordis](https://github.com/cordiverse/cordis) 4（`cordis@4.0.0-rc.12`）插件框架
 - **配置校验**：Schemastery（Cordis 生态的 schema 库）+ zod（RPC 参数校验）
 - **界面**：Vue 3 + Vite + Element Plus
-- **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 69 个方法）
+- **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 72 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（489 个用例 / 69 个文件）
+- **测试**：Vitest（489 个用例 / 69 个文件；口径见 [项目事实表](docs/project-facts.md)）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -74,7 +77,7 @@ pnpm start:desktop    # Electron 桌面应用
 └───────────────────────────┬──────────────────────────────────────────┘
                             │ ctx.cleaner.define(...)
 ┌───────────────────────────▼──────────────────────────────────────────┐
-│                  插件层 packages/plugins/*（11 个）                   │
+│                  插件层 packages/plugins/*（12 个）                   │
 │  rule-pack scheduler shortcuts recycle large-files duplicates        │
 │  empty-dirs leftovers startup registry ai                            │
 └───────────────────────────┬──────────────────────────────────────────┘
@@ -99,8 +102,8 @@ pnpm start:desktop    # Electron 桌面应用
 │   ├── core/                 # 内核：服务实现 + 插件管理器 + 内置插件清单
 │   ├── host/                 # 传输层：RPC 方法 + WebSocket/HTTP 宿主
 │   ├── ui/                   # 界面：Vue 3 单页应用
-│   └── plugins/              # 11 个清理插件（每个是一个独立包）
-├── tests/                    # Vitest 测试（53 个文件 / 377 用例）
+│   └── plugins/              # 12 个清理插件（每个是一个独立包）
+├── tests/                    # Vitest 测试（69 个文件 / 489 用例）
 ├── bench/                    # 性能基准脚本
 ├── scripts/                  # 构建、冒烟测试、插件自测、Mock LLM、E2E
 └── docs/                     # 架构、威胁模型、插件规范、论文素材
@@ -123,7 +126,7 @@ pnpm start:desktop
 pnpm test             # 单元/集成测试（会先构建 UI）
 pnpm typecheck        # 类型检查（tsc，覆盖 packages/apps/bench/tests 的 TS 源码）
 pnpm typecheck:ui     # Vue 模板类型检查（vue-tsc）
-pnpm bench            # 性能基准（输出 docs/benchmark.md）
+pnpm bench            # 性能基准（输出 docs/benchmark.md + docs/benchmark.json）
 pnpm smoke            # 内核冒烟测试
 pnpm mock:llm         # 本地 Mock 大模型接口（7899 端口）
 ```
@@ -152,7 +155,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 
 | 插件 | 任务 | 风险 | 说明 |
 | --- | --- | --- | --- |
-| `rule-pack` | 规则库（默认 31 类 / 312 条规则任务） | 安全~高风险 | 数据驱动：catalog + extra 两套 JSON，新增清理域只需加数据（见 §6.2） |
+| `rule-pack` | 规则库（默认 31 类 / 312 条规则任务；总库 37 类/401 条） | 安全~高风险 | 数据驱动：catalog + extra 两套 JSON，新增清理域只需加数据（见 §6.2） |
 | `scheduler` | —（定时扫描，不产生清理任务） | — | 多计划扫描并通知；每个任务可自定义名称；默认禁用，`clean` 模式需显式授权，授权与任务范围/模式绑定 |
 | `shortcuts` | 失效快捷方式 | 高风险 | 纯二进制解析 `.lnk`，只清理目标不存在的死链；默认禁用 |
 | `recycle` | 回收站 | 安全 | 解析 `$I/$R` 结构，按原始路径展示 |
@@ -268,7 +271,7 @@ PC-Cleaner v0.9.11 的即时通讯数据保护（`WeChat Files` / `Tencent Files
 
 ```bash
 pnpm test          # 489 个用例 / 69 个文件
-pnpm bench         # 性能基准 → docs/benchmark.md
+pnpm bench         # 性能基准 → docs/benchmark.md + docs/benchmark.json
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）
 pnpm exec tsx scripts/audit-rules.ts     # 规则库审计（校验/死目标/拦截/重复）→ docs/rules-report.md
@@ -295,17 +298,17 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 | `plugin-v2-e2e` / `ai-plugin-package` | v2 安装事务生命周期、client 资源、AI 草稿包安装、失败回滚 |
 | `rule-pack-evaluator` / `plugin-rules` | 规则评估与引擎 protected 语义对齐、回收站 `$I` 解析、注册表垃圾键判定 |
 
-实测（2026-10-20 重跑，Windows 11 / Node 24.19，详见 [性能基准](docs/benchmark.md)）：
+实测（2026-11-23 重跑，Windows 11 26100 · Ryzen 5 5600 · Node 24.22.1，详见 [性能基准](docs/benchmark.md)）：
 
 | 指标 | 数值 |
 | --- | --- |
-| 内核启动（仅服务） | 5.4 ms |
-| 完整启动（11 插件 / 38 任务） | 162.6 ms |
-| 扫描吞吐（4000 文件 / 40 目录，0.15 s） | **26 770 文件/秒** |
-| 删除吞吐（4000 文件，1.84 s） | **2 178 文件/秒** |
-| 隔离区写入 | 1.29 ms/文件 |
-| SHA-256 吞吐 | 366 MB/秒 |
-| 常驻内存 RSS / 堆内存 | 132.2 MB / 12 MB |
+| 内核启动（仅服务） | 6.5 ms |
+| 完整启动（12 插件 / 38 任务） | 167.6 ms |
+| 扫描吞吐（4000 文件 / 40 目录，0.16 s） | **25 786 文件/秒** |
+| 删除吞吐（4000 文件，1.97 s） | **2 031 文件/秒** |
+| 隔离区写入 | 1.95 ms/文件 |
+| SHA-256 吞吐 | 342 MB/秒 |
+| 常驻内存 RSS / 堆内存 | 132.6 MB / 12.4 MB |
 
 ## 9. 界面
 
@@ -348,6 +351,8 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 
 ## 11. 文档索引
 
+- [项目事实表](docs/project-facts.md) —— 插件/任务/RPC/测试/规则的唯一计数来源，`pnpm facts` 自动生成
+- [开题报告对齐表](docs/proposal-alignment.md) —— 开题声明与代码/测试证据的逐条映射、术语统一与待补差异
 - [架构设计](docs/architecture.md) —— 分层结构、Cordis 用法、清理引擎与安全模型，论文第 3、4 章可直接引用
 - [威胁模型与信任边界](docs/threat-model.md) —— 本地服务鉴权、插件信任模型、已知残余风险
 - [插件开发规范](docs/plugin-authoring.md)

@@ -1,5 +1,8 @@
 # 独立验收报告：清理选择体验 v2（scan selection UX v2）
 
+> **历史快照**：本报告记录当时的版本、数量与运行环境；当前项目口径见 [project-facts.md](../project-facts.md)。历史数据不回改，也不与最新 benchmark 混用。
+
+
 - 验收人：verifier（独立验收，未参与实现；只读业务代码，未修改任何业务源码）
 - 验收时间：2026-10-20 14:00–14:17（Asia/Shanghai）
 - 仓库/工作区：`D:\桌面\deepseek-harness\deepseek-harness-wokplace`（Windows，pnpm workspace）

@@ -1,0 +1,94 @@
+{
+  "generatedAt": "2026/11/23 16:58:41",
+  "version": "0.6.10",
+  "commit": "08507de",
+  "platform": "win32",
+  "osRelease": "10.0.26100",
+  "arch": "x64",
+  "cpuModel": "AMD Ryzen 5 5600 6-Core Processor              ",
+  "cores": 12,
+  "node": "24.22.1",
+  "dataset": "4000 × 1KB files (40 dirs) + 120 × 256KB files (duplicates)",
+  "rows": [
+    {
+      "category": "冷启动",
+      "metric": "内核启动（仅服务，中位数/5 次）",
+      "value": "6.5 ms"
+    },
+    {
+      "category": "冷启动",
+      "metric": "波动范围",
+      "value": "5.5 ~ 93.9 ms"
+    },
+    {
+      "category": "冷启动",
+      "metric": "完整启动（加载 12 个插件与 38 个任务，中位数/3 次）",
+      "value": "167.6 ms"
+    },
+    {
+      "category": "冷启动",
+      "metric": "加载插件数 / 清理任务数",
+      "value": "12 / 38"
+    },
+    {
+      "category": "扫描性能",
+      "metric": "遍历 4000 个文件（40 个目录）耗时",
+      "value": "0.16 s"
+    },
+    {
+      "category": "扫描性能",
+      "metric": "吞吐",
+      "value": "25786 文件/秒"
+    },
+    {
+      "category": "清理性能",
+      "metric": "预演 4000 项耗时",
+      "value": "1025 ms"
+    },
+    {
+      "category": "清理性能",
+      "metric": "删除 4000 个文件耗时",
+      "value": "1.97 s"
+    },
+    {
+      "category": "清理性能",
+      "metric": "删除吞吐",
+      "value": "2031 文件/秒"
+    },
+    {
+      "category": "隔离区",
+      "metric": "移入 200 个文件耗时",
+      "value": "391 ms"
+    },
+    {
+      "category": "隔离区",
+      "metric": "单项平均开销",
+      "value": "1.95 ms"
+    },
+    {
+      "category": "重复检测",
+      "metric": "短哈希（4KB）120 个文件",
+      "value": "29 ms"
+    },
+    {
+      "category": "重复检测",
+      "metric": "全量 SHA-256 120 个文件（30 MB）",
+      "value": "88 ms"
+    },
+    {
+      "category": "重复检测",
+      "metric": "全量哈希吞吐",
+      "value": "342 MB/秒"
+    },
+    {
+      "category": "资源占用",
+      "metric": "常驻内存 RSS",
+      "value": "132.6 MB"
+    },
+    {
+      "category": "资源占用",
+      "metric": "堆内存 heapUsed",
+      "value": "12.4 MB"
+    }
+  ]
+}

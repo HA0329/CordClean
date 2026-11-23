@@ -1,6 +1,8 @@
 # 测试设计（全量测试分层）
 
-当前规模：**69 个测试文件 / 489 个用例**（2026-11-14，含 E7/E8 设计属性验证）
+当前规模：**69 个测试文件 / 489 个用例**（`pnpm exec vitest list --json`，2026-11-23；含 E7/E8 设计属性验证）。
+
+> 数量口径以 [项目事实表](project-facts.md) 为准；本文件随测试增删同步更新，不要在各处手写用例数。
 
 日志系统：`tests/logging.test.ts`（轮转/保留/脱敏/RPC 降噪/内核日志统一）。
 
@@ -20,11 +22,14 @@
 | 选择交互 | selection | 推荐/分组/筛选/排序/汇总纯函数与千条级性能 |
 | 界面 | `scripts/e2e-ui.mjs`、`scripts/verify-clean-ui.mjs` | 6 页面渲染、扫描链路、v2 选择交互、无头 Edge 千条级验收 |
 | 审计/基准 | `scripts/audit-plugins.ts`、`scripts/audit-rules.ts`、`bench/scan.bench.ts` | 插件契约审计（只读）、规则库审计、性能基准 |
+| 文档口径 | `scripts/check-docs.mjs`（`pnpm docs:check`） | README、architecture、thesis-outline、test-plan、benchmark、mentor-brief、package.json 与 `docs/project-facts.json` 的数量/术语/性能快照一致 |
 
 ## 命令
 
 ```bash
 pnpm test              # 全量（先构建 UI，再 vitest）
+pnpm facts             # 重新生成 docs/project-facts.json / .md
+pnpm docs:check        # 文档口径检查（CI 也会跑）
 pnpm exec vitest run tests/e7-unload.test.ts --reporter=verbose   # E7 卸载残留对照实验（输出 E7_RESULT）
 pnpm exec vitest run tests/e8-dependency.test.ts --reporter=verbose # E8 依赖响应实验（输出 E8_RESULT）
 pnpm test:security     # 安全/路径层
@@ -45,7 +50,8 @@ pnpm bench && pnpm exec tsx scripts/audit-plugins.ts
 3. **隐私断言**：AI 请求体不得包含真实路径、文件名、Key；
 4. **隔离可验证**：worker 崩溃/超时必须有独立用例；
 5. **失败可诊断**：断言失败信息包含路径、方法名或 sessionId；
-6. **边界写测试**：批次1 起新增的信任边界（`clean/start` 只认 itemIds、settings 段校验、外部插件 fsRoots/clearRoot）必须有对应用例，见 `tests/batch1-hardening.test.ts`、`tests/external-install.test.ts`。
+6. **口径写进 CI**：数量/性能数字只允许从 `docs/project-facts.md` 与 `docs/benchmark.md` 引用；改数字必须同时跑 `pnpm facts` 和 `pnpm docs:check`；
+7. **边界写测试**：批次1 起新增的信任边界（`clean/start` 只认 itemIds、settings 段校验、外部插件 fsRoots/clearRoot）必须有对应用例，见 `tests/batch1-hardening.test.ts`、`tests/external-install.test.ts`。
 
 ## 已知缺口
 

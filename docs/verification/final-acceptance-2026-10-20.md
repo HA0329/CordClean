@@ -1,5 +1,8 @@
 # 批次3-B 最终独立验收报告（批次 1 + 2 + 3）
 
+> **历史快照**：本报告记录当时的版本、数量与运行环境；当前项目口径见 [project-facts.md](../project-facts.md)。历史数据不回改，也不与最新 benchmark 混用。
+
+
 - 验收人：verifier（独立验收，只读业务代码，未改后端/UI，未提交）
 - 验收时间：2026-10-20 15:12–15:22（Asia/Shanghai）
 - 仓库：`D:\桌面\deepseek-harness\deepseek-harness-wokplace`（Windows 10.0.26100，Node v24.19.0，pnpm 12.14.0，6 核 / 12 逻辑核）

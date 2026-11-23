@@ -11,7 +11,8 @@
  * 5. 隔离区写入开销；
  * 6. 内存占用。
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -53,19 +54,22 @@ async function benchBoot() {
   log('冷启动', '内核启动（仅服务，中位数/5 次）', `${median.toFixed(1)} ms`)
   log('冷启动', '波动范围', `${samples[0].toFixed(1)} ~ ${samples[samples.length - 1].toFixed(1)} ms`)
 
-  // 完整启动：加载全部内置插件（含 13 个插件、15 个清理任务）
+  // 完整启动：加载全部内置插件（数量从运行时读取，不在注释里写死）
   const fullSamples: number[] = []
   let taskCount = 0
+  let pluginCount = 0
   for (let i = 0; i < 3; i++) {
     const dataDir = path.join(root, `full-${i}`)
     const start = performance.now()
     const app = await createApp({ dataDir, logger: false, loadPlugins: true })
     fullSamples.push(performance.now() - start)
     taskCount = app.ctx.cleaner.list().length
+    pluginCount = app.ctx.plugins.list().length
     await app.dispose()
   }
   fullSamples.sort((a, b) => a - b)
-  log('冷启动', `完整启动（加载全部插件与 ${taskCount} 个任务，中位数/3 次）`, `${fullSamples[1].toFixed(1)} ms`)
+  log('冷启动', `完整启动（加载 ${pluginCount} 个插件与 ${taskCount} 个任务，中位数/3 次）`, `${fullSamples[1].toFixed(1)} ms`)
+  log('冷启动', '加载插件数 / 清理任务数', `${pluginCount} / ${taskCount}`)
 }
 
 /* ------------------------------------------------------------------ */
@@ -172,11 +176,43 @@ await benchTraversal(4000)
 await benchHash()
 benchMemory()
 
+function shortCommit(): string {
+  try {
+    return execFileSync(process.platform === 'win32' ? 'git.exe' : 'git', ['rev-parse', '--short', 'HEAD'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    }).trim()
+  } catch {
+    return 'unknown'
+  }
+}
+
+const version = (JSON.parse(readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string }).version ?? 'unknown'
+const generatedAt = new Date().toLocaleString('zh-CN')
+const environment = `${os.platform()} ${os.release()} · ${os.cpus().length} 核 · Node ${process.versions.node}`
+const benchmarkMeta = {
+  generatedAt,
+  version,
+  commit: shortCommit(),
+  platform: os.platform(),
+  osRelease: os.release(),
+  arch: os.arch(),
+  cpuModel: os.cpus()[0]?.model ?? 'unknown',
+  cores: os.cpus().length,
+  node: process.versions.node,
+  dataset: '4000 × 1KB files (40 dirs) + 120 × 256KB files (duplicates)',
+}
+
 const markdown = [
   '# CordClean 性能基准测试结果',
   '',
-  `生成时间：${new Date().toLocaleString('zh-CN')}`,
-  `运行环境：${os.platform()} ${os.release()} · ${os.cpus().length} 核 · Node ${process.versions.node}`,
+  '> 本文件由 `pnpm bench` 自动生成，请勿手改。论文引用时请注明生成时间、代码版本、commit 与运行环境。',
+  `> 当前代码版本：\`${version}\`；Git commit：\`${benchmarkMeta.commit}\`。`,
+  '',
+  `生成时间：${generatedAt}`,
+  `代码版本：${version}`,
+  `Git commit：${benchmarkMeta.commit}`,
+  `运行环境：${environment}`,
   '',
   '| 分类 | 指标 | 数值 |',
   '| --- | --- | --- |',
@@ -184,6 +220,22 @@ const markdown = [
   '',
   '> 说明：扫描/清理数据均在临时目录中生成（4000 个 1KB 文件，40 个目录），避免受本机磁盘状态影响；',
   '> 重复检测使用 120 个 256KB 文件（每 3 个内容相同）。',
+  '',
+  '## 复现方法',
+  '',
+  '```bash',
+  'pnpm install --frozen-lockfile',
+  'pnpm bench',
+  '```',
+  '',
+  '论文中引用性能数据时，至少同时记录：机器型号/CPU/内存/磁盘、Windows 版本、Node 版本、',
+  '`git rev-parse --short HEAD`、测试数据规模以及快照日期。`docs/benchmark.json` 保存同一组元数据。',
+  '',
+  '## 口径说明',
+  '',
+  '- **唯一来源**：README、`docs/thesis-outline.md`、导师简报里的性能数字都引用本文件，不另维护一套。',
+  '- **历史快照**：`docs/defect-log.md`、`docs/verification/*` 中的旧吞吐数字保留当时实验条件，不能与当前快照混用。',
+  '- **不要跨机器比较绝对值**：扫描/删除吞吐受磁盘 IO、杀毒软件、文件系统缓存影响；论文应同时给出测试环境与重复次数。',
   '',
   '## 日志系统（v0.6.3）',
   '',
@@ -195,6 +247,11 @@ const markdown = [
 const outFile = path.join(process.cwd(), 'docs', 'benchmark.md')
 mkdirSync(path.dirname(outFile), { recursive: true })
 writeFileSync(outFile, markdown, 'utf8')
-console.log(`\n已写入 ${outFile}`)
+writeFileSync(
+  path.join(process.cwd(), 'docs', 'benchmark.json'),
+  JSON.stringify({ ...benchmarkMeta, rows: rows.map(([category, metric, value]) => ({ category, metric, value })) }, null, 2) + '\n',
+  'utf8',
+)
+console.log(`\n已写入 ${outFile} 与 docs/benchmark.json`)
 
 rmSync(root, { recursive: true, force: true })

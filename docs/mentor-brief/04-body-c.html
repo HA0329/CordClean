@@ -12,11 +12,11 @@
     </div>
 
     <div class="gallery" id="galleryGrid">
-      <figure class="shot" data-caption="概览：磁盘与内存占用、39 个清理任务、启动耗时与最近清理记录，一屏可见。">
+      <figure class="shot" data-caption="概览：磁盘与内存占用、38 个清理任务、启动耗时与最近清理记录，一屏可见。">
         <img src="__SHOT_OVERVIEW__" alt="CordClean 概览页">
         <figcaption><span class="zoom">点击放大 ↗</span><b>① 概览</b>磁盘 / 内存 / 任务 / 最近清理，启动即见</figcaption>
       </figure>
-      <figure class="shot" data-caption="扫描与清理：39 个清理能力按风险分组，默认只勾选安全项；支持仅预演、单独扫描与取消。">
+      <figure class="shot" data-caption="扫描与清理：38 个清理能力按风险分组，默认只勾选安全项；支持仅预演、单独扫描与取消。">
         <img src="__SHOT_CLEAN__" alt="CordClean 扫描与清理页">
         <figcaption><span class="zoom">点击放大 ↗</span><b>② 扫描与清理</b>只扫描不删除，按风险勾选后再清理</figcaption>
       </figure>
@@ -59,7 +59,7 @@
         <tbody>
           <tr><td><b>第 1 章 绪论</b></td><td>选题背景、研究问题、创新点</td><td>本页 01；<code>docs/thesis-outline.md</code> 的「创新点表述」</td></tr>
           <tr><td><b>第 2 章 相关技术</b></td><td>Cordis、Vue 3、Electron、JSON-RPC</td><td><code>docs/architecture.md</code> §2–3、§6；插件机制对照表</td></tr>
-          <tr><td><b>第 3 章 需求分析</b></td><td>功能需求、非功能需求、用例</td><td>12 个插件 / 39 个任务清单；安全性与性能指标</td></tr>
+          <tr><td><b>第 3 章 需求分析</b></td><td>功能需求、非功能需求、用例</td><td>12 个插件 / 38 个任务清单；安全性与性能指标</td></tr>
           <tr><td><b>第 4 章 系统设计</b></td><td>分层架构、插件机制、引擎、安全模型</td><td>本页 02–05；<code>architecture.md</code> §5、§12（补偿链七步）</td></tr>
           <tr><td><b>第 5 章 系统实现</b></td><td>内核、引擎、插件、界面、外壳</td><td>源码 <code>packages/core</code>、<code>packages/plugins/*</code>、<code>packages/ui</code>；插件开发规范</td></tr>
           <tr><td><b>第 6 章 系统测试</b></td><td>功能 / 安全 / 设计属性 / 缺陷改进</td><td>489 个测试、E7 卸载残留与 E8 依赖响应实验、<code>docs/defect-log.md</code>（67 个缺陷）、<code>docs/benchmark.md</code></td></tr>
@@ -85,7 +85,7 @@
       <div class="card">
         <div class="card-kicker">创新点 3</div>
         <h3>规则即数据</h3>
-        <p>规则库与代码分离：28 个分类、271 条规则由数据驱动；新增清理域可以只加 JSON，不需要改内核或插件。</p>
+        <p>规则库与代码分离：37 个分类、401 条规则由数据驱动；新增清理域可以只加 JSON，不需要改内核或插件。</p>
         <div class="tags"><span class="tag tag-caution">审计 0 错误</span><span class="tag tag-caution">17 个目标被策略拦截</span></div>
       </div>
       <div class="card">
@@ -141,12 +141,12 @@
           <div class="tl-item">
             <div class="tl-time">0:00 – 0:30</div>
             <div class="tl-title">概览：先给结论</div>
-            <div class="tl-desc">12 个插件、39 个清理任务、启动耗时；强调「插件化清理」而不是功能数量。</div>
+            <div class="tl-desc">12 个插件、38 个清理任务、启动耗时；强调「插件化清理」而不是功能数量。</div>
           </div>
           <div class="tl-item">
             <div class="tl-time">0:30 – 1:30</div>
             <div class="tl-title">扫描：只扫描，不删除</div>
-            <div class="tl-desc">展示 39 个清理能力按风险分组、默认只勾安全项、仅预演开关、取消扫描。</div>
+            <div class="tl-desc">展示 38 个清理能力按风险分组、默认只勾安全项、仅预演开关、取消扫描。</div>
           </div>
           <div class="tl-item">
             <div class="tl-time">1:30 – 2:30</div>
@@ -182,13 +182,13 @@
           <details>
             <summary><span class="q">Q1</span>和 CCleaner 这类工具的核心区别是什么？<span class="plus">+</span></summary>
             <div class="qa-body">
-              <p>定位不同：本项目不是功能堆叠，而是验证「清理能力 = 插件」这一架构命题。三个结构性差异：清理域是独立插件（独立生命周期、配置、故障隔离）；删除统一走安全链（白名单辖区 + 防伪票据 + 执行器复核）；规则数据化（271 条规则，加规则不改代码）。AI 只做建议，不直接执行。</p>
+              <p>定位不同：本项目不是功能堆叠，而是验证「清理能力 = 插件」这一架构命题。三个结构性差异：清理域是独立插件（独立生命周期、配置、故障隔离）；删除统一走安全链（白名单辖区 + 防伪票据 + 执行器复核）；规则数据化（401 条规则，加规则不改代码）。AI 只做建议，不直接执行。</p>
             </div>
           </details>
           <details>
             <summary><span class="q">Q2</span>插件化是不是过度设计？<span class="plus">+</span></summary>
             <div class="qa-body">
-              <p>清理软件恰恰需要：规则增长快、删除高危、不同用户想裁剪不同功能。成本主要是插件管理器与生命周期（1 个服务 + 11 个包），实测顺序加载 12 个插件约 18 ms；收益是扩展零内核改动、故障隔离、热重载。规则规模小时也可以只用规则库——项目里两层都有：插件负责「域」，规则库负责「条目」。</p>
+              <p>清理软件恰恰需要：规则增长快、删除高危、不同用户想裁剪不同功能。成本主要是插件管理器与生命周期（1 个服务 + 12 个包），完整启动 167.6 ms（含 12 个插件与 38 个任务）；收益是扩展零内核改动、故障隔离、热重载。规则规模小时也可以只用规则库——项目里两层都有：插件负责「域」，规则库负责「条目」。</p>
             </div>
           </details>
           <details>
@@ -206,7 +206,7 @@
           <details>
             <summary><span class="q">Q5</span>这个题的工作量够吗？<span class="plus">+</span></summary>
             <div class="qa-body">
-              <p>可量化：源码约 1.93 万行、测试 0.63 万行、脚本 0.57 万行；2591 次提交；12 个插件、39 个任务、271 条规则；13 份文档、67 条缺陷记录；489 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
+              <p>可量化：源码约 3.12 万行、测试 1.09 万行、脚本 0.61 万行；284 次提交；12 个插件、38 个任务、401 条规则；41 份文档、67 条缺陷记录；489 个自动化测试 + 端到端 + 性能基准。核心贡献集中在「插件化 + 安全链 + 规则库 + AI 边界」，不是 CRUD 堆量。</p>
             </div>
           </details>
           <details>
@@ -218,7 +218,7 @@
           <details>
             <summary><span class="q">Q7</span>性能怎么样？扫描会不会很慢？<span class="plus">+</span></summary>
             <div class="qa-body">
-              <p>基准数据：内核启动 5.4 ms、完整启动 162.6 ms；扫描 4,000 个文件 0.15 s（35.9k 文件/秒）；删除 2,178 文件/秒；路径校验 10.4 µs。扫描默认并发 3、进度 120 ms 节流，界面不卡；长任务可取消并返回半成品报告。</p>
+              <p>基准数据：内核启动 6.5 ms、完整启动 167.6 ms；扫描 4,000 个文件 0.16 s（25.8k 文件/秒）；删除 2,031 文件/秒；路径校验 10.4 µs。扫描默认并发 3、进度 120 ms 节流，界面不卡；长任务可取消并返回半成品报告。</p>
             </div>
           </details>
           <details>
@@ -234,7 +234,7 @@
 
     <div class="end-quote">
       <p>“CordClean 想证明的不是「我能清理多少垃圾」，而是：<br>当清理能力可以被装、被卸、被审计，删除这件事才真正可控。”</p>
-      <span>—— 项目一句话总结 · 本科毕业设计 · 2026.10</span>
+      <span>—— 项目一句话总结 · 本科毕业设计 · 2026.11</span>
     </div>
   </div>
 </section>
@@ -242,9 +242,9 @@
 <footer class="footer">
   <div class="wrap footer-inner">
     <div>
-      <h4>CordClean · 模块化电脑清理工具</h4>
+      <h4>CordClean · Windows 安全清理工具</h4>
       <p>本科毕业设计项目说明（导师版） · 基于 Cordis 插件框架 · MIT License</p>
-      <p class="footer-tag">版本 <b>v0.6.10</b> · 页面生成于 2026-10 · 单文件离线 HTML</p>
+      <p class="footer-tag">版本 <b>v0.6.10</b> · 页面生成于 2026-11 · 单文件离线 HTML</p>
     </div>
     <div style="text-align:right">
       <p class="footer-tag">数据来源：<b>docs/benchmark.md</b> · <b>docs/rules-report.md</b> · 自动化测试实测</p>

@@ -3,8 +3,9 @@
 > 本文档对应论文第 3 章（系统设计）与第 4 章（系统实现），包含分层结构、Cordis 的具体用法、
 > 关键流程、安全模型与工程折中。所有结论均可在源码中找到对应实现。
 >
-> 事实基准：12 个内置插件（8 个默认启用）、默认 38 个清理任务、55 个 RPC 方法、
-> 69 个测试文件 / 489 个用例、规则库 catalog 28 类/271 条 + extra 9 类/130 条。
+> 事实基准：12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法、
+> 69 个测试文件 / 489 个用例、规则库 37 类/401 条（catalog 28 类/271 条 + extra 9 类/130 条）。数字由
+> [`pnpm facts`](../scripts/collect-facts.ts) 生成，口径见 [项目事实表](project-facts.md)。
 > 安全边界与残余风险另见 [威胁模型与信任边界](threat-model.md)。
 
 ## 1. 设计目标与约束
@@ -14,7 +15,7 @@
 | G1 可扩展：新增清理能力不应改动内核 | 清理能力 = 独立 npm 包，通过 `ctx.cleaner.define()` 注册 |
 | G2 可裁剪：用户能启停任意能力 | 插件管理器持久化 `enabled`，运行时 `ctx.plugin()` / `fiber.dispose()` |
 | G3 可维护：每个能力独立配置、独立失败 | 每插件一个 Schemastery `Config`；加载异常被隔离为该插件 `error` 状态 |
-| G4 可审计：所有删除都受同一套规则约束 | 引擎统一执行删除，路径策略 + 隔离区是唯一出口 |
+| G4 可审计：用户数据删除都受同一套规则约束 | 用户数据统一经执行器删除；插件安装 staging、回收站 `$I` 元数据、移动/临时文件属于内部维护路径，边界见 [威胁模型](threat-model.md) |
 | G5 端无关：桌面与浏览器共用一套实现 | 内核与界面通过 JSON-RPC 解耦，传输层可替换 |
 | G6 安全优先：宁可少清理，不可误删 | 默认保守（高风险项默认不勾选、Program Files 只报告） |
 
@@ -75,8 +76,8 @@ record.taskIds = [...after].filter(id => !before.has(id))
 ```
 
 代价是**插件必须顺序加载**（并发加载会互相污染差分结果），换取插件零感知。
-`packages/core/src/domains/kernel/plugins.ts` 中的 `loadAll()` 因此是串行的；11 个插件顺序加载的开销
-相对完整启动（162.6 ms，含服务初始化）很小，可接受。
+`packages/core/src/domains/kernel/plugins.ts` 中的 `loadAll()` 因此是串行的；12 个插件顺序加载的开销
+相对完整启动（167.6 ms，含服务初始化）很小，可接受。
 
 ## 4. 清理引擎设计（CleanerService）
 
@@ -152,14 +153,23 @@ clean({ items | itemIds, dryRun, forceQuarantine })
 
 ## 5. 安全模型
 
-### 5.1 四层防护
+### 5.1 六层删除安全链
+
+删除不是一次 `fs.rm`，而是一条从“申请”到“审计”的链；任一层拒绝都会返回结构化原因，
+不会静默失败。
 
 | 层 | 实现 | 拦截的威胁 |
 | --- | --- | --- |
-| 路径策略 | `PathPolicyService.check()` | 误删系统目录、越权删除（插件 bug）、驱动器根目录、尾点/短名写法绕过 |
-| 链接祖先检查 | `findLinkAncestor()` + 清理引擎 | 辖区内 junction 把删除引到辖区外（越界删除） |
-| 隔离区 | `QuarantineService.beginSession()` | 用户误勾选高风险项、清理后想找回 |
-| 注册表备份 | 插件内 `regExport()` | 误删启动项、误删卸载项 |
+| 1. 路径策略 | `PathPolicyService.check()` | 误删系统目录、越权删除（插件 bug）、驱动器根目录、尾点/短名写法绕过 |
+| 2. 链接祖先检查 | `findLinkAncestor()` + 清理引擎 | 辖区内 junction 把删除引到辖区外（越界删除） |
+| 3. 补偿链 | `CompensateService.issue()` 七步复核 + `CleanTicket` | 未过策略、条件不成立、预览变化、批量超预算的删除请求 |
+| 4. 执行器 | 用户数据唯一删除入口（内部维护路径除外）+ 逐项 `recheck()` | 伪造票据、类型不符的路径、扫描后已不存在的文件 |
+| 5. 隔离区/回收站 | `QuarantineService` / 回收站逐项回执 | 用户误勾选高风险项、清理后想找回；可恢复副本与 manifest |
+| 6. 审计 | 清理历史、报表、诊断日志 | “删了什么、为什么删、失败在哪一步”不可追溯 |
+
+> 注册表类插件另有 `reg export` 备份：导出失败则放弃删除，作为插件内的附加保护。
+> `CleanTicket` 的消费标记/TTL 与签发时 size/mtime 复核仍在补齐中，详见
+> [proposal-alignment.md](proposal-alignment.md) 的 D1。
 
 ### 5.2 路径策略判定顺序
 
@@ -306,8 +316,8 @@ ctx.effect(() => {
 | 任务级并发（默认 3） | `core/domains/engine/cleaner.ts` | 38 个任务并行调度，完整扫描耗时见性能基准 |
 | 进度事件 120 ms 节流 | `core/domains/engine/cleaner.ts` | 避免 IPC/WS 洪泛 |
 | 插件懒加载（`import()`） | `core/manifest.ts` | 启动只加载启用的插件 |
-| 重复文件三级筛选 | `plugins/duplicates` | 只对同尺寸+同前缀文件做全量哈希，实测 366 MB/s |
-| 删除并发池（上限 6） | `core/domains/engine/cleaner.ts` | 2 178 文件/秒（4000 个文件 1.84 s） |
+| 重复文件三级筛选 | `plugins/duplicates` | 只对同尺寸+同前缀文件做全量哈希，实测 342 MB/s |
+| 删除并发池（上限 6） | `core/domains/engine/cleaner.ts` | 2 031 文件/秒（4000 个文件 1.97 s） |
 | 系统信息缓存（5 s / 10 s / 60 s） | `core/domains/engine/system.ts` | 界面刷新不重复探测磁盘 |
 
 > 性能数字均在 `pnpm bench` 中可复现，原始表格见 [性能基准](benchmark.md)。
@@ -317,7 +327,7 @@ ctx.effect(() => {
 
 | 层次 | 方式 | 覆盖 |
 | --- | --- | --- |
-| 单元 / 集成 | Vitest（69 个文件、**489 个用例**） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
+| 单元 / 集成 | Vitest（69 个测试文件 / **489 个用例**，口径见 [项目事实表](project-facts.md)） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
 | 设计属性 | `tests/e7-unload.test.ts` / `tests/e8-dependency.test.ts` | E7 卸载无残留；E8 provider/consumer 依赖挂起与自动恢复（见 [E7](experiments/e7-unload-residue.md) / [E8](experiments/e8-dependency-response.md)） |
 | 插件审计 | `scripts/audit-plugins.ts` | 12 个内置插件真实扫描 + 清理项契约不变量（只读） |
 | 插件自测 | `scripts/check-*.ts` | 现有插件的定向验证（只扫描，清理只用 dryRun） |
@@ -469,7 +479,7 @@ catalog.json / 用户规则（数据）
 从 PC-Cleaner **v0.9.11** 的 `rules.json`（数据版本 0.9.9）转换并扩充：`catalog.json` 为 **28 个分类 / 271 条规则 / 284 个候选根目录**，
 `extra.json` 为 9 个分类 / 130 条规则，两套合计 37 类 / 401 条 / 414 个候选根（同一目标可能被多个分类引用）。
 7 种目标类型全部已实现，**不存在“未实现类型”**；`scripts/audit-rules.ts` 目前只审计 `catalog.json`
-（报告见 [规则库审计报告](rules-report.md)）。默认装载非高风险、非 `deepOnly` 的规则，约 31 个分类 / 312 条规则。
+（报告见 [规则库审计报告](rules-report.md)）。默认装载非高风险、非 `deepOnly` 的规则，约 31 个分类 / 312 条规则（总库 37 类/401 条）。
 
 ## 12. 补偿链与唯一删除入口
 

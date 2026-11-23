@@ -3,7 +3,7 @@
   "version": "0.6.10",
   "private": true,
   "type": "module",
-  "description": "CordClean - 基于 Cordis 插件框架的模块化电脑清理工具",
+  "description": "CordClean - 基于 Cordis 插件架构的 Windows 安全清理工具（本科毕业设计）",
   "engines": {
     "node": ">=22"
   },
@@ -29,7 +29,9 @@
     "smoke": "tsx scripts/smoke.ts",
     "mock:llm": "node scripts/mock-llm.mjs",
     "typecheck:ui": "vue-tsc -p tsconfig.ui.json --noEmit",
-    "bench:logging": "tsx bench/logging.bench.ts"
+    "bench:logging": "tsx bench/logging.bench.ts",
+    "facts": "tsx scripts/collect-facts.ts",
+    "docs:check": "node scripts/check-docs.mjs"
   },
   "devDependencies": {
     "@cordclean/core": "workspace:*",
