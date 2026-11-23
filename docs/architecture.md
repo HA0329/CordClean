@@ -4,7 +4,7 @@
 > 关键流程、安全模型与工程折中。所有结论均可在源码中找到对应实现。
 >
 > 事实基准：12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法、
-> 71 个测试文件 / 511 个用例、规则库 37 类/401 条（catalog 28 类/271 条 + extra 9 类/130 条）。数字由
+> 72 个测试文件 / 532 个用例、规则库 37 类/401 条（catalog 28 类/271 条 + extra 9 类/130 条）。数字由
 > [`pnpm facts`](../scripts/collect-facts.ts) 生成，口径见 [项目事实表](project-facts.md)。
 > 安全边界与残余风险另见 [威胁模型与信任边界](threat-model.md)。
 
@@ -327,7 +327,7 @@ ctx.effect(() => {
 
 | 层次 | 方式 | 覆盖 |
 | --- | --- | --- |
-| 单元 / 集成 | Vitest（71 个测试文件 / **511 个用例**，口径见 [项目事实表](project-facts.md)） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
+| 单元 / 集成 | Vitest（72 个测试文件 / **532 个用例**，口径见 [项目事实表](project-facts.md)） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
 | 设计属性 | `tests/e7-unload.test.ts` / `tests/e8-dependency.test.ts` | E7 卸载无残留；E8 provider/consumer 依赖挂起与自动恢复（见 [E7](experiments/e7-unload-residue.md) / [E8](experiments/e8-dependency-response.md)） |
 | 插件审计 | `scripts/audit-plugins.ts` | 12 个内置插件真实扫描 + 清理项契约不变量（只读） |
 | 插件自测 | `scripts/check-*.ts` | 现有插件的定向验证（只扫描，清理只用 dryRun） |

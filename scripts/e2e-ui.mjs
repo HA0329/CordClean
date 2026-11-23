@@ -162,21 +162,29 @@ try {
   // 清理上一次 UI 验收遗留的本地偏好（例如 clean 视图模式），保证分组表格一定渲染
   await evaluate(`(() => { try { localStorage.removeItem('cordclean.clean.view'); localStorage.removeItem('cordclean.clean.selected'); } catch {} return true })()`)
 
-  const navNames = await evaluate('[...document.querySelectorAll(".nav-item")].map(el => el.textContent.trim())')
+  const navNames = await evaluate('[...document.querySelectorAll(".nav-item")].map(el => (el.querySelector(".nav-label")?.textContent ?? el.textContent).trim())')
   console.log('侧边栏：', navNames.join(' / '))
 
   const expected = [
     { page: 'overview', title: '概览' },
     { page: 'clean', title: '扫描与清理' },
     { page: 'plugins', title: '插件' },
-    { page: 'history', title: '历史与隔离区' },
+    { page: 'workshop', title: 'AI 插件工坊', selector: '.workshop-page' },
     { page: 'ai', title: 'AI 清理顾问' },
+    { page: 'history', title: '历史与隔离区' },
     { page: 'settings', title: '设置' },
   ]
 
-  for (const [index, item] of expected.entries()) {
-    await evaluate(`document.querySelectorAll('.nav-item')[${index}].click()`)
+  for (const item of expected) {
+    // 按 data-area 定位而不是按钮序号：侧边栏分组/排序调整不应让 e2e 失效
+    const clicked = await evaluate(
+      `(() => { const el = document.querySelector('[data-area="${item.page}"]'); if (!el) return false; el.click(); return true })()`,
+    )
+    if (!clicked) throw new Error(`侧边栏缺少区域：${item.page}`)
     const title = await waitFor(`${item.title} 渲染`, async () => {
+      if (item.selector) {
+        return (await evaluate(`!!document.querySelector('${item.selector}')`)) ? item.title : undefined
+      }
       const text = await evaluate('document.querySelector(".cc-page-title h1")?.textContent?.trim() ?? ""')
       return text === item.title ? text : undefined
     }, 10_000)
@@ -186,7 +194,7 @@ try {
   }
 
   // 3. 真实扫描（只扫描，不清理）
-  await evaluate(`document.querySelectorAll('.nav-item')[1].click()`)
+  await evaluate(`document.querySelector('[data-area="clean"]').click()`)
   await new Promise((resolve) => setTimeout(resolve, 500))
   const clicked = await evaluate(
     `(() => { const btn = [...document.querySelectorAll('.el-button')].find(b => b.textContent.includes('开始扫描')); if (!btn) return false; btn.click(); return true })()`,
@@ -299,24 +307,57 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 300))
   const themeBack = await evaluate("document.documentElement.classList.contains('dark')")
   console.log(`✓ 主题切回：${themeBack ? 'dark' : 'light'}`)
-  // 侧边栏折叠：应为 64px 窄轨道且图标仍可点击
-  const collapsedNow = () => evaluate("document.documentElement.classList.contains('sidebar-collapsed')")
-  if (!(await collapsedNow())) {
+  // 侧边栏折叠：68px 窄轨道、图标仍在、文字标签隐藏，点击可达
+  const isCollapsed = () => evaluate("document.querySelector('.sidebar')?.classList.contains('collapsed') ?? false")
+  if (await isCollapsed()) {
     await evaluate("document.querySelector('.sidebar-toggle')?.click()")
-    await new Promise((resolve) => setTimeout(resolve, 400))
+    await new Promise((resolve) => setTimeout(resolve, 300))
   }
+  await evaluate("document.querySelector('.sidebar-toggle')?.click()")
+  await new Promise((resolve) => setTimeout(resolve, 400))
   const railWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
-  const icons = await evaluate("document.querySelectorAll('.sidebar .nav-item .nav-icon').length")
-  await evaluate("document.querySelectorAll('.sidebar .nav-item')[2]?.click()")
+  const icons = await evaluate("document.querySelectorAll('.sidebar .nav-item .area-icon').length")
+  const labels = await evaluate("document.querySelectorAll('.sidebar .nav-label').length")
+  await evaluate("document.querySelector('.sidebar [data-area=\"plugins\"]')?.click()")
   await new Promise((resolve) => setTimeout(resolve, 400))
   const railHash = await evaluate("location.hash")
-  console.log(`✓ 折叠轨道：宽度=${railWidth}px，图标数=${icons}，点击后 hash=${railHash}`)
+  console.log(`✓ 折叠轨道：宽度=${railWidth}px，图标数=${icons}，文字标签=${labels}（应为 0），点击后 hash=${railHash}`)
+  if (railWidth > 100) {
+    const debug = await evaluate(`(() => { const el = document.querySelector('.sidebar'); const cs = getComputedStyle(el); return { cls: el.className, attrs: [...el.attributes].map(a => a.name), w: cs.width, basis: cs.flexBasis, v: cs.getPropertyValue('--sidebar-width'), inline: el.getAttribute('style'), count: document.querySelectorAll('.sidebar').length } })()`)
+    console.log('折叠调试：', JSON.stringify(debug))
+    throw new Error(`折叠后侧边栏宽度异常：${railWidth}`)
+  }
+  if (icons < 7) throw new Error(`折叠后图标缺失：${icons}`)
+  if (labels !== 0) throw new Error(`折叠后仍有文字标签：${labels}`)
   await capture("rail")
   await evaluate("document.querySelector('.sidebar-toggle')?.click()")
   await new Promise((resolve) => setTimeout(resolve, 300))
   const expandedWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
-  console.log(`✓ 侧边栏展开：宽度=${expandedWidth}px`)
-  console.log('\n✅ 界面端到端检查通过：6 个页面渲染正常、扫描全链路成功、无 JS 异常')
+  const expandedLabels = await evaluate("document.querySelectorAll('.sidebar .nav-label').length")
+  console.log(`✓ 侧边栏展开：宽度=${expandedWidth}px，文字标签=${expandedLabels} 项`)
+  if (expandedWidth < 200 || expandedLabels < 7) throw new Error('侧边栏展开后宽度/标签异常')
+
+  // 搜索（Ctrl+K 聚焦 → 输入过滤 → Esc 清空）与 Alt+数字快捷键
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))")
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  const searchFocused = await evaluate("document.activeElement?.classList?.contains('nav-search-input') ?? false")
+  await evaluate(
+    `(() => { const input = document.querySelector('.nav-search-input'); if (!input) return false; input.value = '插件'; input.dispatchEvent(new Event('input', { bubbles: true })); return true })()`,
+  )
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const filteredCount = await evaluate("document.querySelectorAll('.sidebar .nav-item').length")
+  await evaluate(
+    `(() => { const input = document.querySelector('.nav-search-input'); input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true })()`,
+  )
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const clearedCount = await evaluate("document.querySelectorAll('.sidebar .nav-item').length")
+  await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { key: '2', altKey: true, bubbles: true }))")
+  await waitFor('Alt+2 切换到清理页', async () => (await evaluate('location.hash')) === '#clean', 5000)
+  console.log(`✓ 侧边栏搜索：Ctrl+K 聚焦=${searchFocused}，过滤后=${filteredCount} 项，清空后=${clearedCount} 项；Alt+2 → #clean`)
+  if (!searchFocused) throw new Error('Ctrl+K 未聚焦搜索框')
+  if (filteredCount <= 0 || filteredCount >= clearedCount) throw new Error(`搜索过滤异常：${filteredCount}/${clearedCount}`)
+
+  console.log('\n✅ 界面端到端检查通过：7 个页面渲染正常、侧边栏交互（折叠/搜索/快捷键）正常、扫描全链路成功、无 JS 异常')
     shutdown(0)
   }
 } catch (error) {

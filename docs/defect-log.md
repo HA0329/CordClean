@@ -1,7 +1,7 @@
 # 缺陷记录与修复（自测阶段）
 
 > **历史快照**：本文记录自测阶段（v0.2.x–v0.3.x）的 385 个用例 / 54 个文件 / 11 个插件，
-> 当前口径为 511 个用例 / 71 个文件 / 12 个插件，见 [project-facts.md](project-facts.md)；历史数据不回改。
+> 当前口径为 532 个用例 / 71 个文件 / 12 个插件，见 [project-facts.md](project-facts.md)；历史数据不回改。
 
 > 本文档记录「主动自测」阶段发现并修复的问题，可作为论文第 6 章「系统测试」中
 > 「测试发现的问题与改进」小节，也可用于答辩时说明工程严谨性。
@@ -939,7 +939,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **修复**：执行器在递归删除/清空目录前扫描子树目录名，命中受保护名即整项拒绝（`executor.ts` 的 `findProtectedDescendant`）；保护名判定从 `path-policy.ts` 导出复用，避免两处名单漂移。
 
-**验证**：`tests/safety-hardening.test.ts` 新增「父目录里有 .git → 整项拒绝」「clear 语义拒绝 .venv」两条用例；全量 71 文件 / 511 用例通过。
+**验证**：`tests/safety-hardening.test.ts` 新增「父目录里有 .git → 整项拒绝」「clear 语义拒绝 .venv」两条用例；全量 71 文件 / 532 用例通过。
 ### D-73 隔离区 purge 路径穿越（清单可篡改）
 
 **现象**：`purge()` 直接用 `path.join(dir, record.storedName)` 删除；`manifest.jsonl` 位于用户可写目录，被篡改后（`..\..\Windows\...` 或绝对路径）点「清空隔离区」即可删除隔离区外任意文件。`restore()` 只校验了 storedName，未校验恢复目标。
@@ -954,14 +954,14 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **修复**：执行器新增受控内部通道 `deleteInternal(path, reason)`，按 reason 校验前缀后删除并记日志（`recycle-bin` 仅 `.Bin` 下 `/`；`startup-entry` 仅启动文件夹直接子项且 `.lnk/.url`；`quarantine/logs/plugin-staging/generated-plugins` 仅对应数据目录）。`TaskCleanContext` 暴露 `deleteInternal`，startup/recycle 插件改用它；两个插件内已无 `fs.unlink`/`deletePath` 直删。
 
-**验证**：新增 `tests/internal-delete.test.ts`（5 条：拒绝普通文件、quarantine 通道、startup-entry 校验、recycle 走通道、startup 集成拒绝非启动目录）；全量 71 文件 / 511 用例通过。
+**验证**：新增 `tests/internal-delete.test.ts`（5 条：拒绝普通文件、quarantine 通道、startup-entry 校验、recycle 走通道、startup 集成拒绝非启动目录）；全量 71 文件 / 532 用例通过。
 ### D-75 隔离区恢复目标可被清单篡改指向系统目录
 
 **现象**：`restore()` 只校验原路径为绝对路径且不在隔离区内；修改 `manifest.jsonl` 把 `originalPath` 改成 `C:\Windows\System32\evil.dll` 后，用户点「恢复」时文件会被移动到系统目录（有写权限时）。
 
 **修复**：恢复目标必须通过**当前路径策略**（与删除同一套辖区/保护规则）；受保护系统目录或不在允许范围的目标一律拒绝，并提示「原路径当前不在允许清理范围」。
 
-**验证**：`tests/quarantine.test.ts` 新增受保护目录目标、相对路径、隔离区内目标三条用例；全量 71 文件 / 511 用例通过。
+**验证**：`tests/quarantine.test.ts` 新增受保护目录目标、相对路径、隔离区内目标三条用例；全量 71 文件 / 532 用例通过。
 
 ### D-76 插件安装/卸载、搬家、日志的维护性删除收敛到执行器
 
@@ -969,7 +969,7 @@ Promise 变成悬空对象，Cordis 无法把它归类为「插件启动失败�
 
 **修复**：执行器内部通道扩展 `plugin-staging`/`plugin-package`/`mover-source`/`log-file` 理由并支持目录递归；`plugin-installer` 增加 `cleanup` 回调（内核注入执行器），`plugins.ts` 的安装/卸载/启动清理全部改走 `deleteInternal`；`mover` 增加 `deleteSource` 回调，`files/move` 接口用 `mover-source` 通道删源。日志轮转仍由 logger 内部完成（基础设施代码，不依赖 ctx），属于已记录的例外。
 
-**验证**：`tests/internal-delete.test.ts` 新增 plugin-package/plugin-staging 递归删除与 mover-source 语义用例；全量 71 文件 / 511 用例通过。
+**验证**：`tests/internal-delete.test.ts` 新增 plugin-package/plugin-staging 递归删除与 mover-source 语义用例；全量 71 文件 / 532 用例通过。
 ## 未修复但已知的限制
 
 | 限制 | 说明 |

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { state, init, openDataDir, quitApp, refreshAppInfo } from './api/store.ts'
+import { state, init, quitApp, refreshAppInfo } from './api/store.ts'
 import { formatBytes } from '@cordclean/shared'
+import SidebarNav from './components/SidebarNav.vue'
 import OverviewView from './views/OverviewView.vue'
 import CleanView from './views/CleanView.vue'
 import PluginsView from './views/PluginsView.vue'
@@ -13,16 +14,15 @@ import SettingsView from './views/SettingsView.vue'
 import CleaningView from './views/CleaningView.vue'
 import ScanningView from './views/ScanningView.vue'
 import PluginStatusItems from './components/PluginStatusItems.vue'
-
-const nav = [
-  { id: 'overview', label: '概览', icon: '🏠' },
-  { id: 'clean', label: '清理', icon: '🧹' },
-  { id: 'plugins', label: '插件', icon: '🧩' },
-  { id: 'history', label: '历史与隔离区', icon: '🗂️' },
-  { id: 'ai', label: 'AI 建议', icon: '🤖' },
-  { id: 'workshop', label: 'AI 插件工坊', icon: '🧪' },
-  { id: 'settings', label: '设置', icon: '⚙️' },
-]
+import {
+  NAV_STORAGE_KEYS,
+  activeAreaId,
+  initialPage,
+  pageHash,
+  pageTitle,
+  resolvePage,
+  type PageId,
+} from './navigation.ts'
 
 const views: Record<string, any> = {
   overview: OverviewView,
@@ -36,12 +36,53 @@ const views: Record<string, any> = {
   scanning: ScanningView,
 }
 
-function navActive(id: string): boolean {
-  if (state.page === id) return true
-  return id === 'clean' && (state.page === 'cleaning' || state.page === 'scanning')
+const current = computed(() => views[state.page] ?? OverviewView)
+
+/* ------------------------------------------------------------------ */
+/* 路由：hash 深链接 + 浏览器前进/后退 + 上次停留页 + 标题               */
+/* ------------------------------------------------------------------ */
+
+function readLastPage(): string | null {
+  try {
+    return localStorage.getItem(NAV_STORAGE_KEYS.lastPage)
+  } catch {
+    return null
+  }
 }
 
-const current = computed(() => views[state.page] ?? OverviewView)
+state.page = initialPage(location.hash, {
+  scanning: state.scanning,
+  cleaning: state.cleaning,
+  lastPage: readLastPage(),
+})
+
+function navigate(target: PageId | string): void {
+  state.page = resolvePage(target, { scanning: state.scanning, cleaning: state.cleaning })
+}
+
+function onHashChange(): void {
+  const next = initialPage(location.hash, { scanning: state.scanning, cleaning: state.cleaning })
+  if (next !== state.page) state.page = next
+}
+
+watch(
+  () => state.page,
+  (page) => {
+    const hash = pageHash(page)
+    if (location.hash !== hash) location.hash = hash
+    document.title = `CordClean · ${pageTitle(page)}`
+    try {
+      // 只记稳定区：刷新后回到「清理页」而不是某个瞬态进度页也合理
+      localStorage.setItem(NAV_STORAGE_KEYS.lastPage, activeAreaId(page))
+    } catch {
+      /* 存储不可用不影响导航 */
+    }
+    // 换区域时回到内容顶部，避免长页面残留滚动位置（不规则使用下的常见困惑）
+    const content = document.querySelector<HTMLElement>('.content')
+    if (content) content.scrollTop = 0
+  },
+  { immediate: true },
+)
 
 // 顶栏运行时信息：来自 app/info，不在前端硬编码
 const platformText = computed(() => {
@@ -86,12 +127,6 @@ const shellTitle = computed(() => {
   return 'HTTP + WebSocket'
 })
 
-// 用 URL hash 同步当前页面：便于深链接、刷新保持与自动化截图
-const initialPage = (location.hash || '').replace('#', '')
-if (nav.some((item) => item.id === initialPage)) state.page = initialPage
-watch(() => state.page, (page) => {
-  if (location.hash !== '#' + page) location.hash = page
-})
 // 主题：默认亮色，手动切换并记忆（index.html 已做首屏防闪）
 type Theme = 'light' | 'dark'
 const theme = ref<Theme>('light')
@@ -109,24 +144,8 @@ onMounted(() => applyTheme(theme.value))
 function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
 }
+
 const bootError = ref<string>()
-// 侧边栏折叠（记忆）：折叠后为 64px 图标轨道，展开/收起按钮都在侧边栏内
-const collapsed = ref(false)
-function applySidebar(value: boolean) {
-  collapsed.value = value
-  document.documentElement.classList.toggle('sidebar-collapsed', value)
-  const aside = document.querySelector('.sidebar') as HTMLElement | null
-  if (aside) {
-    aside.style.width = value ? '64px' : ''
-    aside.style.flexBasis = value ? '64px' : ''
-  }
-}
-function toggleSidebar() {
-  applySidebar(!collapsed.value)
-  try {
-    localStorage.setItem('cordclean.sidebar', collapsed.value ? 'collapsed' : 'expanded')
-  } catch {}
-}
 const loading = ref(true)
 
 async function bootstrap() {
@@ -142,9 +161,7 @@ async function bootstrap() {
 }
 
 onMounted(() => {
-  try {
-    applySidebar(localStorage.getItem('cordclean.sidebar') === 'collapsed')
-  } catch {}
+  window.addEventListener('hashchange', onHashChange)
   bootstrap()
   // 切回窗口时重新检查一次真实运行时信息（Node/OS/权限/外壳）
   window.addEventListener('focus', () => void refreshAppInfo().catch(() => {}))
@@ -166,58 +183,15 @@ async function quitCordClean() {
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
 }
-
-async function revealDataDir() {
-  try {
-    await openDataDir()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : String(error))
-  }
-}
 </script>
 
 <template>
   <div class="shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">CC</div>
-        <div class="brand-text">
-          <strong>CordClean</strong>
-          <span>模块化清理工具</span>
-        </div>
-      </div>
+    <a class="skip-link" href="#cc-main">跳到主内容</a>
 
-      <nav class="nav">
-        <button
-          v-for="item in nav"
-          :key="item.id"
-          class="nav-item"
-          :class="{ active: navActive(item.id) }"
-          @click="state.page = item.id"
-        >
-          <span class="nav-icon">{{ item.icon }}</span>
-          <span class="nav-label">{{ item.label }}</span>
-        </button>
-      </nav>
+    <SidebarNav :page="state.page" @navigate="navigate" />
 
-      <div class="sidebar-footer">
-        <div class="engine">
-          <span class="dot" :class="{ on: state.ready }" />
-          <div>
-            <div class="engine-title">Cordis 内核</div>
-            <div class="engine-sub">
-              {{ state.ready ? `${state.tasks.length} 个清理任务` : '未连接' }}
-            </div>
-          </div>
-        </div>
-        <button class="link-btn" @click="revealDataDir">打开数据目录</button>
-        <button class="sidebar-toggle" @click="toggleSidebar" :title="collapsed ? '展开侧边栏' : '折叠侧边栏'">{{ collapsed ? '»' : '«' }}<span v-if="!collapsed">收起侧边栏</span></button>
-        <div class="version">v{{ state.app?.version ?? '0.1.0' }}</div>
-      </div>
-    </aside>
-
-
-    <main class="main">
+    <main id="cc-main" class="main" tabindex="-1">
       <header class="topbar">
         <div class="topbar-left">
           <span class="cc-pill runtime-pill" :title="platformTitle" @click="refreshAppInfo">{{ platformText }}</span>
@@ -226,10 +200,10 @@ async function revealDataDir() {
           </span>
           <span class="cc-pill runtime-pill" :title="nodeTitle" @click="refreshAppInfo">{{ nodeText }}</span>
           <span class="cc-pill runtime-pill" :title="shellTitle" @click="refreshAppInfo">{{ shellText }}</span>
-          <button v-if="state.cleaning" class="cleaning-back" title="查看实时清理进度" @click="state.page = 'cleaning'">
+          <button v-if="state.cleaning" class="cleaning-back" title="查看实时清理进度" @click="navigate('cleaning')">
             🧹 清理中 · 查看进度
           </button>
-          <button v-else-if="state.scanning" class="cleaning-back" title="查看实时扫描进度" @click="state.page = 'scanning'">
+          <button v-else-if="state.scanning" class="cleaning-back" title="查看实时扫描进度" @click="navigate('scanning')">
             🔍 扫描中 · 查看进度
           </button>
           <PluginStatusItems />
@@ -271,150 +245,29 @@ async function revealDataDir() {
   min-height: 100vh;
 }
 
-.sidebar {
-  width: 224px;
-  flex: 0 0 224px;
-  display: flex;
-  flex-direction: column;
-  padding: 20px 14px;
-  border-right: 1px solid var(--cc-border);
-  background: var(--cc-sidebar-bg);
-  gap: 18px;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 8px;
-}
-
-.brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  background: linear-gradient(135deg, #4f8cff, #29c196);
-  color: #06101c;
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-}
-
-.brand-text strong {
-  font-size: 15px;
-  letter-spacing: 0.6px;
-}
-
-.brand-text span {
-  font-size: 11.5px;
-  color: var(--cc-text-faint);
-}
-
-.nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--cc-text-dim);
-  font-size: 13.5px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.16s ease;
-}
-
-.nav-item:hover {
-  background: var(--cc-hover-bg);
-  color: var(--cc-text);
-}
-
-.nav-item.active {
-  background: var(--cc-primary-soft);
-  border-color: var(--cc-primary);
-  color: var(--cc-primary);
-}
-
-.nav-icon {
-  width: 18px;
-  text-align: center;
-  font-size: 15px;
-}
-
-.sidebar-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 8px 0;
-  border-top: 1px solid var(--cc-border);
-}
-
-.engine {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #55617a;
-}
-
-.dot.on {
-  background: var(--cc-success);
-  box-shadow: 0 0 10px rgba(41, 193, 150, 0.8);
-}
-
-.engine-title {
-  font-size: 12.5px;
-}
-
-.engine-sub {
-  font-size: 11.5px;
-  color: var(--cc-text-faint);
-}
-
-.link-btn {
-  background: transparent;
-  border: none;
-  color: var(--cc-primary);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-  text-align: left;
-}
-
-.link-btn:hover {
-  text-decoration: underline;
-}
-
-.version {
-  font-size: 11px;
-  color: var(--cc-text-faint);
-}
-
 .main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  outline: none;
+}
+
+.skip-link {
+  position: fixed;
+  top: -48px;
+  left: 16px;
+  z-index: 100;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--cc-primary);
+  color: #fff;
+  font-size: 13px;
+  text-decoration: none;
+  transition: top 0.16s ease;
+}
+.skip-link:focus {
+  top: 10px;
 }
 
 .topbar {
@@ -469,33 +322,4 @@ async function revealDataDir() {
   justify-content: center;
   gap: 14px;
 }
-</style>
-
-<style scoped>
-/* 折叠后彻底让出空间：宽度归零，仅保留浮动展开按钮 */
-.sidebar.collapsed {
-  width: 0;
-  flex-basis: 0;
-  padding: 0;
-  border-right: none;
-  overflow: hidden;
-}
-.sidebar-open {
-  position: fixed;
-  top: 14px;
-  left: 14px;
-  z-index: 30;
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  border: 1px solid var(--cc-border-strong);
-  background: var(--cc-panel-solid);
-  color: var(--cc-text);
-  cursor: pointer;
-  box-shadow: var(--cc-shadow);
-  font-size: 16px;
-}
-.sidebar-open:hover { border-color: var(--cc-primary); color: var(--cc-primary); }
 </style>

@@ -1,6 +1,6 @@
 # 测试设计（全量测试分层）
 
-当前规模：**71 个测试文件 / 511 个用例**（`pnpm exec vitest list --json`，2026-11-23；含 E7/E8 设计属性验证）。
+当前规模：**72 个测试文件 / 532 个用例**（`pnpm exec vitest list --json`，2026-11-23；含 E7/E8 设计属性验证）。
 
 > 数量口径以 [项目事实表](project-facts.md) 为准；本文件随测试增删同步更新，不要在各处手写用例数。
 
@@ -19,6 +19,7 @@
 | 引擎/规则 | engine / engine-robust / rules / rule-pack-evaluator / plugin-rules / quarantine / sessions / scheduler / undo / in-use / safety-hardening / internal-delete | 扫描清理、规则与 protected 语义、隔离恢复、会话中断、调度授权、目录预检/逐项降级、一次性令牌、内部删除通道 |
 | AI | ai / ai-shapes / ai-robust / ai-context / ai-selection / ai-tools / ai-vision / ai-stream-analyze / ai-model-metadata / ai-config-defaults / ai-budget / ai-plugin-workshop / ai-plugin-native-kinds | 三种接口形态、推理等级、重试、隐私脱敏、选择项校验、模型元数据、流式分析、原生插件提示词/契约 |
 | 设计属性 | e7-unload / e8-dependency | E7：正例 `ctx.effect` 资源卸载归零；反例未登记资源残留对照。E8：provider/consumer 依赖挂起与自动恢复（[E7](experiments/e7-unload-residue.md) / [E8](experiments/e8-dependency-response.md)） |
+| 界面导航 | `ui-navigation` | 区域解析、深链接/瞬态页回落、搜索过滤、快捷键、偏好存储容错、状态徽标 |
 | 选择交互 | selection | 推荐/分组/筛选/排序/汇总纯函数与千条级性能 |
 | 界面 | `scripts/e2e-ui.mjs`、`scripts/verify-clean-ui.mjs` | 6 页面渲染、扫描链路、v2 选择交互、无头 Edge 千条级验收 |
 | 审计/基准 | `scripts/audit-plugins.ts`、`scripts/audit-rules.ts`、`bench/scan.bench.ts` | 插件契约审计（只读）、规则库审计、性能基准 |
