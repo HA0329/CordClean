@@ -14,6 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { createApp } from '@cordclean/core'
 import aiPlugin from '@cordclean/plugin-ai'
 import {
+  AiError,
   isRetryableAiCode,
   normalizePluginFiles,
   normalizePluginManifest,
@@ -524,35 +525,16 @@ describe('服务层边界', () => {
   it('流式被 max_tokens 截断时报「输出被截断」而不是「JSON 不合法」（服务端不结束也不等待）', async () => {
     const app = await boot({ ...baseConfig('sse-truncated'), timeoutMs: 5_000 }, 'sse-truncated')
     await seedLastScan(app)
-    let cancelledStreams = 0
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: any, init: any) => {
-        const url = String(input)
-        if (url.includes('/models')) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
-        }
-        const encoder = new TextEncoder()
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"{\\"summary\\":\\"被截断"}}]}\n\n'))
-            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'))
-            // 故意不 close：验证识别 finish_reason 后主动停止，而不是等服务端结束/超时
-          },
-          cancel() {
-            cancelledStreams++
-          },
-        })
-        return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
-      }),
-    )
+    calls = 0
     try {
-      await expect(app.ctx.ai!.analyze()).rejects.toThrow(/输出被截断/)
-      await expect(app.ctx.ai!.analyze()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-      // 关键证据：识别 finish_reason 后主动 cancel 剩余流，而不是等 5s 超时/回退
-      expect(cancelledStreams).toBeGreaterThanOrEqual(1)
+      // 走本地真实 SSE 回环（beforeAll 的 /sse-truncated/ 路由），与其它通过的流式用例同一 fetch 路径。
+      const error = await app.ctx.ai!.analyze().catch((caught: unknown) => caught)
+      expect(error).toBeInstanceOf(AiError)
+      expect((error as AiError).message).toContain('输出被截断')
+      expect((error as AiError).code).toBe('INVALID_RESPONSE')
+      // 截断在流式阶段即被识别：只发一次流式请求，没有回退非流式再补一次。
+      expect(calls).toBe(1)
     } finally {
-      vi.unstubAllGlobals()
       await app.dispose()
     }
   }, 30_000)

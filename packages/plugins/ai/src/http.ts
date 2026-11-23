@@ -230,12 +230,6 @@ export async function requestSse(
   if (options.signal?.aborted) throw new AiError('请求已取消', 'CANCELLED')
   const controller = new AbortController()
   let timedOut = false
-  const onAbort = () => controller.abort()
-  options.signal?.addEventListener('abort', onAbort, { once: true })
-  const timer = setTimeout(() => {
-    timedOut = true
-    controller.abort()
-  }, options.timeoutMs ?? 120_000)
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   let readerReleased = false
   const releaseReader = async () => {
@@ -248,6 +242,12 @@ export async function requestSse(
       /* 锁已释放或 reader 已关闭 */
     }
   }
+  const onAbort = () => controller.abort()
+  options.signal?.addEventListener('abort', onAbort, { once: true })
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, options.timeoutMs ?? 120_000)
   try {
     const response = await fetch(url, {
       method: 'POST',
