@@ -23,13 +23,17 @@ import {
   state,
 } from '../api/store.ts'
 import {
+  SETTINGS_FIELDS,
   SETTINGS_GROUPS,
   assessSettingRisks,
   buildFieldStatuses,
   describeEmptyFilter,
+  describeRiskConfirm,
   describeSaveFailure,
   diffFormValues,
   filterSettingsGroups,
+  previewResetDefaults,
+  riskEscalations,
   saveGate,
   saveSuccessMessage,
   settingsFormSnapshot,
@@ -86,6 +90,20 @@ const changes = computed(() => (state.settings ? diffFormValues(form, savedSnaps
 const risks = computed(() => assessSettingRisks(form))
 const fieldStatusesForSummary = computed(() => buildFieldStatuses(form, savedSnapshot.value))
 const statusSummary = computed(() => summarizeSettingsStatus(fieldStatusesForSummary.value, risks.value))
+
+/** 非默认字段的来源角标（默认 / 已自定义 / 未保存），来自模型层 buildFieldStatuses */
+const fieldLabelOf = new Map(SETTINGS_FIELDS.map((field) => [field.key, field.label]))
+const nonDefaultFieldChips = computed(() =>
+  Object.values(fieldStatusesForSummary.value)
+    .filter((status) => status.origin !== 'default')
+    .map((status) => ({
+      key: status.key,
+      label: fieldLabelOf.get(status.key) ?? status.key,
+      text: status.text,
+      title: status.title,
+      origin: status.origin,
+    })),
+)
 const dirtyGroupIds = computed(() =>
   SETTINGS_GROUPS.filter((group) => changes.value.some((change) => change.group === group.id)).map((group) => group.id),
 )
@@ -580,6 +598,20 @@ async function save() {
     if (saveState.value.reason && changes.value.length === 0) ElMessage.info(saveState.value.reason)
     return
   }
+  // 危险变更（放宽安全限制）保存前二次确认：只提示本次新增的风险，不阻断用户
+  const escalations = riskEscalations(buildPatch(), state.settings)
+  const riskConfirm = describeRiskConfirm(escalations)
+  if (riskConfirm) {
+    try {
+      await ElMessageBox.confirm(riskConfirm, '确认放宽安全限制', {
+        type: 'warning',
+        confirmButtonText: '仍要保存',
+        cancelButtonText: '取消',
+      })
+    } catch {
+      return
+    }
+  }
   const pendingCount = changes.value.length
   saving.value = true
   saveFailure.value = undefined
@@ -596,8 +628,22 @@ async function save() {
 }
 
 async function resetDefaults() {
+  // 恢复默认前先预览：明确会改哪些项、哪些项不会被重置
+  const preview = previewResetDefaults(buildPatch())
+  if (!preview.changes.length) {
+    ElMessage.info(`当前设置已经是默认值（${preview.alreadyDefault} 项），无需重置`)
+    return
+  }
+  const sample = preview.changes.slice(0, 8).map((change) => `${change.label} ${change.from} → ${change.to}`)
+  const more = preview.changes.length > sample.length ? ` 等 ${preview.changes.length} 项` : ''
   try {
-    await ElMessageBox.confirm('恢复默认设置不会删除历史、隔离区或规则文件，只重置本页参数。', '恢复默认设置', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `将重置 ${preview.changes.length} 项：${sample.join('；')}${more}。` +
+        `已是默认值的 ${preview.alreadyDefault} 项不变；扫描范围、排除项、编辑器命令等不会被重置。` +
+        '历史、隔离区、规则文件不受影响。',
+      '恢复默认设置',
+      { type: 'warning', confirmButtonText: '恢复默认' },
+    )
   } catch {
     return
   }
@@ -841,6 +887,26 @@ async function doClearEgress() {
       <div class="cc-actions">
         <el-button size="small" @click="discardChanges">放弃修改</el-button>
         <el-button size="small" type="primary" :loading="saving" @click="save">保存修改</el-button>
+      </div>
+    </div>
+
+    <!-- 字段来源角标：默认 / 已自定义 / 未保存（模型层 buildFieldStatuses），避免用户忘了改过什么 -->
+    <div v-if="nonDefaultFieldChips.length" class="cc-card settings-origins" role="status" aria-live="polite">
+      <div class="settings-origins-head">
+        <strong>字段来源</strong>
+        <span class="cc-faint">
+          默认 {{ statusSummary.defaultCount }} 项 · 已自定义 {{ statusSummary.customCount }} 项 · 未保存 {{ statusSummary.unsavedCount }} 项
+        </span>
+        <span class="cc-faint">指到角标可看完整说明；未保存的项不会影响扫描/清理，直到保存。</span>
+      </div>
+      <div class="settings-origin-list">
+        <span
+          v-for="chip in nonDefaultFieldChips"
+          :key="chip.key"
+          class="settings-origin-chip"
+          :class="'origin-' + chip.origin"
+          :title="chip.title"
+        >{{ chip.label }} · {{ chip.text }}</span>
       </div>
     </div>
 
@@ -1448,6 +1514,43 @@ async function doClearEgress() {
   background: var(--cc-primary-soft);
   border-radius: 6px;
   padding: 2px 8px;
+}
+
+.settings-origins {
+  border-color: var(--cc-border);
+}
+
+.settings-origins-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin-bottom: 8px;
+}
+
+.settings-origin-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-origin-chip {
+  font-size: 11.5px;
+  border-radius: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--cc-border);
+  background: var(--cc-panel-2, rgba(0, 0, 0, 0.02));
+}
+
+.settings-origin-chip.origin-custom {
+  color: var(--cc-primary);
+  border-color: color-mix(in srgb, var(--cc-primary) 40%, transparent);
+}
+
+.settings-origin-chip.origin-unsaved {
+  color: var(--cc-warning);
+  border-color: color-mix(in srgb, var(--cc-warning) 40%, transparent);
+  background: color-mix(in srgb, var(--cc-warning) 10%, transparent);
 }
 .settings-risk {
   border-color: rgba(240, 80, 110, 0.35);
