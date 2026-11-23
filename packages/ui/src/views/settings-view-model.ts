@@ -1,3 +1,5 @@
+import type { SectionIconName } from '../components/section-icons.ts'
+
 /**
  * 设置页展示模型（纯函数，可单测）。
  *
@@ -171,7 +173,7 @@ const FIELD_KEY_SET = new Set<string>(SETTINGS_FIELDS.map((field) => field.key))
 interface SettingsGroupSeed {
   id: SettingsGroupId
   title: string
-  emoji: string
+  icon: SectionIconName
   /** 组内非表单字段的可搜索标签（按钮、说明等） */
   extras: readonly string[]
   /** 仅参与匹配、不在命中列表里展示的同义词 */
@@ -182,84 +184,84 @@ const GROUP_SEEDS: readonly SettingsGroupSeed[] = [
   {
     id: 'schedule',
     title: '定时任务',
-    emoji: '⏰',
+    icon: 'alarm',
     extras: ['新建任务', '删除任务', '任务名称', '执行方式', '间隔', '每天固定时间', '任务范围', '模式', '授权状态', '立即运行', '授权自动清理', '清除授权'],
     keywords: ['scheduler', 'schedule', 'cron', 'plan', 'auto'],
   },
   {
     id: 'clean',
     title: '清理行为',
-    emoji: '🧹',
+    icon: 'broom',
     extras: ['删除方式', '回收站', '隔离区', '永久删除', '预演', '清理预算', '安全边界'],
     keywords: ['clean', 'delete', 'recycle', 'quarantine', 'dry run', 'retry', 'budget'],
   },
   {
     id: 'scan',
     title: '扫描与性能',
-    emoji: '⚡',
+    icon: 'bolt',
     extras: ['性能', '遍历条目', '递归深度', '大文件', '重复文件', '系统目录', '内存'],
     keywords: ['scan', 'performance', 'concurrency', 'depth', 'duplicate', 'large file', 'entries'],
   },
   {
     id: 'rules',
     title: '规则库',
-    emoji: '📚',
+    icon: 'book',
     extras: ['高风险分类', '深度规则', '自定义规则', '热重载'],
     keywords: ['rules', 'deep', 'custom', 'risk'],
   },
   {
     id: 'quarantine',
     title: '隔离区',
-    emoji: '🗃️',
+    icon: 'archive',
     extras: ['恢复', '容量', '文件数', '保留天数', '永久保留'],
     keywords: ['quarantine', 'restore', 'retention', 'capacity'],
   },
   {
     id: 'privacy',
     title: '隐私与在线 AI',
-    emoji: '🔒',
+    icon: 'lock',
     extras: ['出网', '在线 AI', '离线', '编辑器', '外发记录', '剪贴板'],
     keywords: ['privacy', 'online ai', 'offline', 'egress', 'editor'],
   },
   {
     id: 'scope',
     title: '扫描范围',
-    emoji: '🗂️',
+    icon: 'folders',
     extras: ['额外扫描根', '始终排除', '排除目录', '绝对路径'],
     keywords: ['scope', 'root', 'exclude', 'path'],
   },
   {
     id: 'plugins',
     title: '插件系统与扩展目录',
-    emoji: '🧩',
+    icon: 'puzzle',
     extras: ['插件目录', '插件状态', '插件包', '外部插件', 'AI 插件工坊'],
     keywords: ['plugin', 'external', 'workshop'],
   },
   {
     id: 'data',
     title: '数据维护',
-    emoji: '🧰',
+    icon: 'toolbox',
     extras: ['数据目录', '历史记录', '清空历史', '清空隔离区'],
     keywords: ['data', 'history', 'purge'],
   },
   {
     id: 'diagnostics',
     title: '诊断与日志',
-    emoji: '🩺',
+    icon: 'health',
     extras: ['运行日志', '结构化诊断', '日志目录', '诊断报告', 'JSON'],
     keywords: ['diagnostics', 'log', 'json', 'export'],
   },
   {
     id: 'logging',
     title: '日志设置',
-    emoji: '🧾',
+    icon: 'receipt',
     extras: ['日志级别', '轮转', '保留天数', '重复日志', '插件级别', 'debug', 'info', 'warn', 'error'],
     keywords: ['logging', 'level', 'rotate', 'dedupe'],
   },
   {
     id: 'env',
     title: '版本与运行环境',
-    emoji: 'ℹ️',
+    icon: 'info',
     extras: ['版本', '协议版本', '运行外壳', '运行时', '系统', '管理员权限', '启动耗时', '复制环境信息'],
     keywords: ['version', 'runtime', 'environment', 'electron', 'node'],
   },
@@ -268,7 +270,7 @@ const GROUP_SEEDS: readonly SettingsGroupSeed[] = [
 export interface SettingsGroupMeta {
   id: SettingsGroupId
   title: string
-  emoji: string
+  icon: SectionIconName
   /** 搜索命中时展示的标签（表单字段 label + 组内动作） */
   entries: readonly string[]
   keywords: readonly string[]
@@ -278,7 +280,7 @@ export interface SettingsGroupMeta {
 export const SETTINGS_GROUPS: readonly SettingsGroupMeta[] = GROUP_SEEDS.map((seed) => ({
   id: seed.id,
   title: seed.title,
-  emoji: seed.emoji,
+  icon: seed.icon,
   keywords: seed.keywords,
   entries: [
     ...SETTINGS_FIELDS.filter((field) => field.group === seed.id).map((field) => field.label),

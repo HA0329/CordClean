@@ -22,6 +22,7 @@ import {
   purgeQuarantine,
   state,
 } from '../api/store.ts'
+import SectionIcon from '../components/SectionIcon.vue'
 import {
   SETTINGS_FIELDS,
   SETTINGS_GROUPS,
@@ -869,7 +870,7 @@ async function doClearEgress() {
       <div v-if="filterResult.active && visibleGroupMeta.length" class="settings-search-hits">
         <span class="cc-faint">跳到：</span>
         <button v-for="group in visibleGroupMeta" :key="group.id" type="button" class="settings-hit" @click="jumpToGroup(group.id)">
-          {{ group.emoji }} {{ group.title
+          <SectionIcon :name="group.icon" :size="14" /> {{ group.title
           }}<span v-if="filterResult.matches[group.id]?.length" class="settings-hit-count">{{ filterResult.matches[group.id]?.length }}</span>
         </button>
       </div>
@@ -913,7 +914,7 @@ async function doClearEgress() {
     <!-- 危险设置说明：按当前表单值评估，保存后生效 -->
     <div v-if="risks.length" class="cc-card settings-risk" role="status" aria-live="polite">
       <div class="settings-risk-head">
-        <h3>⚠️ 当前配置有 {{ risks.length }} 项风险提示</h3>
+        <h3><SectionIcon name="alert" /> 当前配置有 {{ risks.length }} 项风险提示</h3>
         <span class="cc-faint">按本页当前值评估，点「保存设置」后生效</span>
       </div>
       <ul class="settings-risk-list">
@@ -954,7 +955,7 @@ async function doClearEgress() {
     <div class="settings-grid">
       <div v-if="visibleGroups.has('schedule')" id="settings-group-schedule" tabindex="-1" class="cc-card schedule-card">
         <div class="cc-card-title">
-          <h3>⏰ 定时任务</h3>
+          <h3><SectionIcon name="alarm" /> 定时任务</h3>
           <span class="cc-faint">按间隔或每天固定时间扫描；自动清理需授权，规则一变授权失效</span>
         </div>
         <p v-if="!schedulerPlugin" class="cc-hint">没有找到「定时扫描」插件：请到插件页启用它。</p>
@@ -1012,7 +1013,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('clean')" id="settings-group-clean" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>🧹 清理行为</h3><span class="cc-faint">删除方式与安全边界</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="broom" /> 清理行为</h3><span class="cc-faint">删除方式与安全边界</span></div>
         <el-form label-position="left" label-width="170px" size="small">
           <el-form-item label="默认删除方式">
             <el-select v-model="form.cleanMode" style="width: 220px">
@@ -1032,7 +1033,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('scan')" id="settings-group-scan" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>⚡ 扫描与性能</h3><span class="cc-faint">并发与上限影响速度与内存</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="bolt" /> 扫描与性能</h3><span class="cc-faint">并发与上限影响速度与内存</span></div>
         <el-form label-position="left" label-width="170px" size="small">
           <el-form-item label="任务并发度"><el-input-number v-model="form.concurrency" :min="1" :max="8" /></el-form-item>
           <el-form-item label="单任务最多清理项"><el-input-number v-model="form.maxItemsPerTask" :min="100" :step="1000" /></el-form-item>
@@ -1045,7 +1046,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('rules')" id="settings-group-rules" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>📚 规则库</h3><span class="cc-faint">修改后需在插件页热重载规则库</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="book" /> 规则库</h3><span class="cc-faint">修改后需在插件页热重载规则库</span></div>
         <el-form label-position="left" label-width="170px" size="small">
           <el-form-item label="启用高风险分类">
             <el-switch v-model="form.includeRisky" />
@@ -1063,7 +1064,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('quarantine')" id="settings-group-quarantine" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>🗃️ 隔离区</h3><span class="cc-faint">高风险项的回收站</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="archive" /> 隔离区</h3><span class="cc-faint">高风险项的回收站</span></div>
         <el-form label-position="left" label-width="150px" size="small">
           <el-form-item label="启用隔离区"><el-switch v-model="form.quarantineEnabled" /></el-form-item>
           <el-form-item label="容量上限（MB）"><el-input-number v-model="form.quarantineMaxMb" :min="0" :step="256" /></el-form-item>
@@ -1073,7 +1074,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('privacy')" id="settings-group-privacy" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>🔒 隐私与在线 AI</h3><span class="cc-faint">出网开关</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="lock" /> 隐私与在线 AI</h3><span class="cc-faint">出网开关</span></div>
         <el-form label-position="left" label-width="150px" size="small">
           <el-form-item label="允许在线 AI">
             <el-switch v-model="form.onlineAi" />
@@ -1089,7 +1090,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('scope')" id="settings-group-scope" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>🗂️ 扫描范围</h3><span class="cc-faint">额外纳入或排除的目录</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="folders" /> 扫描范围</h3><span class="cc-faint">额外纳入或排除的目录</span></div>
         <div class="roots">
           <div class="roots-title">额外扫描根</div>
           <div class="chips">
@@ -1121,7 +1122,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('plugins')" id="settings-group-plugins" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>🧩 插件系统与扩展目录</h3><span class="cc-faint">v2 插件包 / 外部插件</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="puzzle" /> 插件系统与扩展目录</h3><span class="cc-faint">v2 插件包 / 外部插件</span></div>
         <div class="data-actions">
           <div class="data-row">
             <div>
@@ -1155,7 +1156,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('data')" id="settings-group-data" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>🧰 数据维护</h3><span class="cc-faint">不会删除你的文件</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="toolbox" /> 数据维护</h3><span class="cc-faint">不会删除你的文件</span></div>
         <div class="data-actions">
           <div class="data-row">
             <div>
@@ -1176,7 +1177,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('diagnostics')" id="settings-group-diagnostics" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>🩺 诊断与日志</h3><span class="cc-faint">出问题时先看这里</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="health" /> 诊断与日志</h3><span class="cc-faint">出问题时先看这里</span></div>
         <div class="data-actions">
           <div class="data-row">
             <div><div class="data-title">运行日志</div><div class="cc-faint">记录启动、扫描、清理、插件与 AI 请求</div></div>
@@ -1198,7 +1199,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('logging')" id="settings-group-logging" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>🧾 日志设置</h3><span class="cc-faint">运行时生效，无需重启</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="receipt" /> 日志设置</h3><span class="cc-faint">运行时生效，无需重启</span></div>
         <div class="log-settings">
           <label>
             <span>日志级别</span>
@@ -1243,7 +1244,7 @@ async function doClearEgress() {
       </div>
 
       <div v-if="visibleGroups.has('env')" id="settings-group-env" tabindex="-1" class="cc-card">
-        <div class="cc-card-title"><h3>ℹ️ 版本与运行环境</h3><span class="cc-faint">反馈问题时可直接复制</span></div>
+        <div class="cc-card-title"><h3><SectionIcon name="info" /> 版本与运行环境</h3><span class="cc-faint">反馈问题时可直接复制</span></div>
         <div class="data-actions">
           <div class="data-row">
             <div><div class="data-title">版本</div><div class="cc-faint">CordClean v{{ state.app?.version ?? '0.1.0' }} · 协议版本 {{ state.app?.protocolVersion ?? '—' }}</div></div>

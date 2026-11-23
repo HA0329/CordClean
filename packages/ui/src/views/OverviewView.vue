@@ -15,6 +15,7 @@ import { ElMessage } from 'element-plus'
 import { formatBytes, formatDuration, formatTime } from '@cordclean/shared'
 import PluginOverviewCards from '../components/PluginOverviewCards.vue'
 import { openDataDir, refreshAppInfo, refreshSystem, refreshSystemLive, startScan, state } from '../api/store.ts'
+import SectionIcon from '../components/SectionIcon.vue'
 import {
   buildSystemSummary,
   diskUsagePercent,
@@ -327,7 +328,7 @@ onUnmounted(() => {
       <div class="cc-grid cc-grid-2">
         <div class="cc-card">
           <div class="cc-card-title">
-            <h3>💾 磁盘使用情况</h3>
+            <h3><SectionIcon name="disk" /> 磁盘使用情况</h3>
             <span class="cc-faint">每 60 秒自动采样 · 更新于 {{ formatTime(system?.collectedAt ?? 0) }}</span>
           </div>
           <div v-if="disks.length" class="disk-list">
@@ -359,7 +360,7 @@ onUnmounted(() => {
 
         <div class="cc-card">
           <div class="cc-card-title">
-            <h3>🖥️ 系统信息</h3>
+            <h3><SectionIcon name="monitor" /> 系统信息</h3>
             <div class="cc-actions">
               <span
                 v-if="system"
@@ -394,7 +395,7 @@ onUnmounted(() => {
 
       <div class="cc-card">
         <div class="cc-card-title">
-          <h3>🕘 最近清理</h3>
+          <h3><SectionIcon name="clock" /> 最近清理</h3>
           <div class="cc-actions">
             <span v-if="historySummary.hasHistory" class="cc-faint">
               上次 {{ formatTime(historySummary.lastAt ?? 0) }} · 释放 {{ formatBytes(historySummary.lastFreedBytes) }} · {{ historySummary.lastCleaned }} 项

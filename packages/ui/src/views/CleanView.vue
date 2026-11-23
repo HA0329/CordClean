@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import WorkflowSteps from '../components/WorkflowSteps.vue'
+import SectionIcon from '../components/SectionIcon.vue'
 import {
   MAX_PERSISTED_SELECTION,
   emptyResultKind,
@@ -799,7 +800,7 @@ async function handleBulkCommand(command: string) {
     <!-- 任务列表 -->
     <div class="cc-card">
       <div class="cc-card-title">
-        <h3>🧩 清理能力（{{ tasks.length }}）</h3>
+        <h3><SectionIcon name="puzzle" /> 清理能力（{{ tasks.length }}）</h3>
         <div class="cc-actions">
           <span class="cc-faint">已选 {{ selectedTaskIds.length }} 个任务</span>
           <el-button size="small" text @click="selectSafeTasks">全选安全任务</el-button>
@@ -1193,7 +1194,7 @@ async function handleBulkCommand(command: string) {
       <!-- 清理结果 -->
       <div v-if="state.lastClean" class="cc-card">
         <div class="cc-card-title">
-          <h3>✅ 上次清理结果</h3>
+          <h3><SectionIcon name="check" /> 上次清理结果</h3>
           <span class="cc-faint">{{ formatTime(state.lastClean.startedAt) }}</span>
         </div>
         <div class="cc-grid cc-grid-4">

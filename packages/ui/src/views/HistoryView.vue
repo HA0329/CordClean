@@ -69,6 +69,7 @@ import {
   type QuarantineRow,
   type UndoStateLike,
 } from './history-view-model.ts'
+import SectionIcon from '../components/SectionIcon.vue'
 
 type TabName = 'history' | 'quarantine'
 type BusyAction = 'refresh' | 'undo' | 'restore' | 'purge' | 'clear' | null
@@ -784,7 +785,7 @@ onMounted(() => {
               清理历史<span class="tab-count">{{ historyRows.length }}</span>
             </template>
             <div class="cc-card-title">
-              <h3>🕘 清理记录</h3>
+              <h3><SectionIcon name="clock" /> 清理记录</h3>
               <div class="cc-actions">
                 <span class="cc-faint">列表最多显示最近 50 条，累计统计来自全部记录</span>
                 <el-tooltip :disabled="clearHistoryAvailability.ok" :content="clearHistoryAvailability.reason ?? ''" placement="bottom">
@@ -905,7 +906,7 @@ onMounted(() => {
               隔离区<span class="tab-count">{{ quarantineRows.length }}</span>
             </template>
             <div class="cc-card-title">
-              <h3>🛡️ 隔离区（可恢复）</h3>
+              <h3><SectionIcon name="shield" /> 隔离区（可恢复）</h3>
               <div class="cc-actions">
                 <span v-if="selectedQuarantineRows.length" class="cc-faint selected-hint">
                   已选 {{ selectedQuarantineRows.length }} 项（{{ formatBytes(selectedQuarantineSummary.bytes) }}）
