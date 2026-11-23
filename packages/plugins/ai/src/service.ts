@@ -166,7 +166,8 @@ export class AiService extends Service implements AiLike {
   private rootCache?: { at: number; items: Array<{ id: string; path: string; size: number }> }
 
   /** 用户目录下的一级目录（用于建议新增扫描根；只取名字与体积） */
-  private async collectRootCandidates(): Promise<Array<{ id: string; path: string; size: number }>> {
+  private async collectRootCandidates(signal?: AbortSignal): Promise<Array<{ id: string; path: string; size: number }>> {
+    this.throwIfAborted(signal)
     const now = Date.now()
     if (this.rootCache && now - this.rootCache.at < 10 * 60_000) return this.rootCache.items
     const home = os.homedir()
@@ -176,8 +177,10 @@ export class AiService extends Service implements AiLike {
     } catch {
       return []
     }
+    this.throwIfAborted(signal)
     const items: Array<{ id: string; path: string; size: number }> = []
     for (const name of names.slice(0, 20)) {
+      this.throwIfAborted(signal)
       const dir = path.join(home, name)
       try {
         const stat = await folderSize(dir, { maxEntries: 3000 })
@@ -198,6 +201,11 @@ export class AiService extends Service implements AiLike {
   /** 取消当前分析（界面「取消生成」） */
   cancelAnalyze(): void {
     this.analyzeController?.abort()
+  }
+
+  /** 外部已取消时立即抛出 CANCELLED，避免在慢磁盘采集阶段挂住不可中断的 Promise */
+  private throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) throw new AiError('请求已取消', 'CANCELLED')
   }
 
   constructor(ctx: Context, private readonly rawConfig: AiConfig) {
@@ -455,8 +463,11 @@ export class AiService extends Service implements AiLike {
 
   /** 采集脱敏画像 */
   private async buildProfile(userNote?: string, signal?: AbortSignal): Promise<SystemProfile> {
+    this.throwIfAborted(signal)
     const info = await this.ctx.system.info()
+    this.throwIfAborted(signal)
     const hotspots = await this.ctx.system.hotspots()
+    this.throwIfAborted(signal)
     let scan = this.ctx.cleaner.lastScan()
     if (!scan) {
       // 没有扫描结果时只跑「安全级」任务，避免动辄数分钟的深度扫描。
@@ -677,6 +688,7 @@ export class AiService extends Service implements AiLike {
       return analysis
     }
     const profile = await this.buildProfile(options.extraContext, signal)
+    this.throwIfAborted(signal)
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan
       ? [...scan.items]
@@ -685,7 +697,8 @@ export class AiService extends Service implements AiLike {
           .slice(0, 40)
           .map((item) => ({ id: item.id, mb: Math.round(item.size / 1024 / 1024), risk: item.risk, task: item.taskId }))
       : []
-    const rootCandidates = await this.collectRootCandidates()
+    const rootCandidates = await this.collectRootCandidates(signal)
+    this.throwIfAborted(signal)
     const rootHint = rootCandidates.length
       ? '\n\n可选的新增扫描根（来自用户目录下的一级目录，只能选这些 rootId）：\n' + JSON.stringify(rootCandidates.map((item) => ({ rootId: item.id, mb: Math.round(item.size / 1024 / 1024) })))
       : ''
@@ -693,6 +706,7 @@ export class AiService extends Service implements AiLike {
       ? '\n\n以下是本次扫描得到的候选清理项（只能从这些 id 中选择，不得虚构）：\n' + JSON.stringify(candidates)
       : '\n\n当前没有可用的扫描结果，selection 必须为空数组。'
     const contextSections = await this.ctx.aiContext.collect(options.contextProviders ?? config.contextProviders)
+    this.throwIfAborted(signal)
     this.lastContextUsed = contextSections.map((section) => section.id)
     const contextText = contextSections.length
       ? '\n\n补充上下文（脱敏摘要）：\n' +

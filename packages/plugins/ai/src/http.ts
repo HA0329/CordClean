@@ -236,6 +236,18 @@ export async function requestSse(
     timedOut = true
     controller.abort()
   }, options.timeoutMs ?? 120_000)
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  let readerReleased = false
+  const releaseReader = async () => {
+    if (readerReleased || !reader) return
+    readerReleased = true
+    await reader.cancel().catch(() => undefined)
+    try {
+      reader.releaseLock()
+    } catch {
+      /* 锁已释放或 reader 已关闭 */
+    }
+  }
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -250,7 +262,7 @@ export async function requestSse(
       const { code } = classify(response.status)
       throw new AiError(`SSE 请求失败：HTTP ${response.status} ${text.slice(0, 200)}`, code, response.status)
     }
-    const reader = response.body.getReader()
+    reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     while (true) {
@@ -271,7 +283,7 @@ export async function requestSse(
       // 已识别到截断等终止信号时主动取消剩余流：不依赖服务端是否及时结束响应，
       // 避免「服务端保持连接」把测试/真实请求拖到超时。
       if (options.stopWhen?.()) {
-        await reader.cancel().catch(() => undefined)
+        await releaseReader()
         break
       }
     }
@@ -284,5 +296,6 @@ export async function requestSse(
   } finally {
     clearTimeout(timer)
     options.signal?.removeEventListener('abort', onAbort)
+    await releaseReader().catch(() => undefined)
   }
 }
