@@ -4,6 +4,18 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.14 — 2026-11-24
+
+### 修复 v0.6.13 CI 红
+
+- **文档计数过期**：新增 SSE 回归用例后测试口径 931→932，但 5 个文档未同步，CI `Docs consistency` 先失败、
+  后续 typecheck/单测被跳过；已按 `docs/project-facts.md` 全量同步（106 文件/932 用例）。
+- **AI 流式边界加固**：超时/断网/限流/AUTH 不再回退非流式（避免一次请求拖成两次超时）；
+  识别 `finish_reason=length` 后主动停止读取；取消在 fetch 前后均立即 CANCELLED；
+  SSE 边界测试改为可注入 fetch + 可控流，消除回环连接/时序导致的 CI 不确定性。
+- 验证：Node 22+CI=true 全量 106 文件/932 用例通过；typecheck/build/docs:check/e2e 通过。
+
+详细说明：[docs/release-notes-v0.6.14.md](docs/release-notes-v0.6.14.md)
 ## v0.6.13 — 2026-11-23
 
 ### 真实用户模拟 + 真实模型验证补做

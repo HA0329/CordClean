@@ -7,7 +7,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.13`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、73 个 RPC 方法；106 个测试文件 / 932 个用例。
+当前版本 `0.6.14`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、73 个 RPC 方法；106 个测试文件 / 932 个用例。
 
 更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md) · 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md) · 安全政策：[SECURITY.md](SECURITY.md)
 
