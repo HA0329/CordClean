@@ -35,6 +35,16 @@ import {
   startScan,
   state,
 } from '../api/store.ts'
+import {
+  capabilityWarnings,
+  emptyFilterHint,
+  filterPlugins,
+  planBatch,
+  pluginDiagnostics,
+  pluginStatusLabel,
+  summarizePlugins,
+  type PluginFilterStatus,
+} from './plugins-view-model.ts'
 
 const editing = ref<PluginRuntime | null>(null)
 const editorValue = ref('')
@@ -287,6 +297,75 @@ const plugins = computed(() => state.plugins)
 const enabledCount = computed(() => plugins.value.filter((plugin) => plugin.enabled).length)
 const taskCount = computed(() => plugins.value.reduce((sum, plugin) => sum + plugin.taskCount, 0))
 
+/* ------------------------------------------------------------------ */
+/* 查找、异常诊断与批量操作                                              */
+/* ------------------------------------------------------------------ */
+
+const pluginQuery = ref('')
+const pluginStatusFilter = ref<PluginFilterStatus>('all')
+const batchBusy = ref(false)
+const pluginStatsSummary = computed(() => summarizePlugins(plugins.value))
+const filteredPlugins = computed(() => filterPlugins(plugins.value, pluginQuery.value, pluginStatusFilter.value))
+const pluginFilterHint = computed(() => emptyFilterHint(pluginQuery.value, pluginStatusFilter.value))
+
+function resetPluginFilters(): void {
+  pluginQuery.value = ''
+  pluginStatusFilter.value = 'all'
+}
+
+/** 批量启用/停用/重载：逐项执行并汇总失败，避免一个失败中断整批 */
+async function runBatch(action: 'enable' | 'disable' | 'reload'): Promise<void> {
+  if (batchBusy.value) return
+  const plan = planBatch(plugins.value, action)
+  if (!plan.ids.length) {
+    ElMessage.info(plan.summary.replace('将', '没有可'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`${plan.summary}${plan.warning ? '\n\n' + plan.warning : ''}`, '批量操作', {
+      type: action === 'disable' ? 'warning' : 'info',
+      confirmButtonText: '继续',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  batchBusy.value = true
+  const failed: Array<{ id: string; message: string }> = []
+  for (const id of plan.ids) {
+    try {
+      if (action === 'reload') await reloadPlugin(id)
+      else await setPluginEnabled(id, action === 'enable')
+    } catch (error) {
+      failed.push({ id, message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  batchBusy.value = false
+  if (failed.length) {
+    ElMessage.warning(`${plan.ids.length - failed.length} 个成功，${failed.length} 个失败：${failed.map((item) => item.id).join('、')}`)
+  } else {
+    ElMessage.success(plan.summary.replace('将', '已'))
+  }
+}
+
+/** 异常插件一键恢复：先热重载，仍失败则尝试停用→启用一次 */
+async function retryPlugin(plugin: PluginRuntime): Promise<void> {
+  try {
+    await reloadPlugin(plugin.id)
+    ElMessage.success(`${plugin.name} 已热重载`)
+    return
+  } catch {
+    /* 继续尝试停用→启用 */
+  }
+  try {
+    await setPluginEnabled(plugin.id, false)
+    await setPluginEnabled(plugin.id, true)
+    ElMessage.success(`${plugin.name} 已重新启用`)
+  } catch (error) {
+    ElMessage.error(`${plugin.name} 仍失败：${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 async function toggle(plugin: PluginRuntime, enabled: boolean) {
   try {
     await setPluginEnabled(plugin.id, enabled)
@@ -499,6 +578,25 @@ function categoryName(id: string) {
       <div class="cc-actions">
         <span class="cc-pill status-active">{{ enabledCount }} 个已启用</span>
         <span class="cc-pill">{{ taskCount }} 个清理任务</span>
+        <span
+          v-if="pluginStatsSummary.errors"
+          class="cc-pill status-error cc-clickable"
+          role="button"
+          tabindex="0"
+          title="点击只看异常插件"
+          @click="pluginStatusFilter = 'error'"
+          @keydown.enter="pluginStatusFilter = 'error'"
+        >{{ pluginStatsSummary.errors }} 个异常</span>
+        <el-dropdown trigger="click" :disabled="batchBusy" @command="(command: any) => runBatch(command)">
+          <el-button :loading="batchBusy">批量操作 ▾</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="enable">启用全部未启用插件</el-dropdown-item>
+              <el-dropdown-item command="disable">停用全部已启用插件</el-dropdown-item>
+              <el-dropdown-item command="reload" divided>热重载全部已启用插件</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button @click="installOpen = true">添加插件</el-button>
         <el-button @click="packageOpen = true">安装插件包</el-button>
         <el-button @click="refreshPlugins">刷新</el-button>
@@ -518,8 +616,33 @@ function categoryName(id: string) {
       </p>
     </el-alert>
 
+    <!-- 查找与状态筛选：插件多了以后，先定位有问题的/外部插件 -->
+    <div class="plugin-toolbar">
+      <el-input
+        v-model="pluginQuery"
+        size="small"
+        placeholder="搜索插件 / 任务 / id"
+        clearable
+        style="width: 240px"
+        aria-label="搜索插件"
+      />
+      <el-select v-model="pluginStatusFilter" size="small" style="width: 150px" aria-label="按状态筛选插件">
+        <el-option label="全部状态" value="all" />
+        <el-option label="运行中" value="active" />
+        <el-option label="已停止" value="stopped" />
+        <el-option label="异常" value="error" />
+        <el-option label="外部 / 工坊" value="external" />
+      </el-select>
+      <span class="cc-faint">显示 {{ filteredPlugins.length }} / {{ plugins.length }} 个插件</span>
+      <span v-if="pluginStatsSummary.running" class="cc-pill status-active">{{ pluginStatsSummary.running }} 个运行中</span>
+      <span v-if="pluginStatsSummary.external" class="cc-pill">{{ pluginStatsSummary.external }} 个外部 / 工坊</span>
+      <button v-if="pluginQuery || pluginStatusFilter !== 'all'" class="link-button" type="button" @click="resetPluginFilters">
+        重置筛选
+      </button>
+    </div>
+
     <div class="plugin-grid">
-      <div v-for="plugin in plugins" :key="plugin.id" class="plugin-card" :class="{ disabled: !plugin.enabled }">
+      <div v-for="plugin in filteredPlugins" :key="plugin.id" class="plugin-card" :class="{ disabled: !plugin.enabled }">
         <div class="plugin-head">
           <div class="plugin-title">
             <strong>{{ plugin.name }}</strong>
@@ -553,7 +676,7 @@ function categoryName(id: string) {
         <div class="plugin-meta">
           <span class="cc-pill">{{ categoryName(plugin.category) }}</span>
           <span v-if="plugin.source === 'external'" class="cc-pill">工坊 / 外部</span>
-          <span class="cc-pill" :class="`status-${plugin.status}`">{{ plugin.status === 'active' ? '运行中' : plugin.status === 'suspended' ? '等待依赖' : plugin.status === 'error' ? '异常' : plugin.status === 'loading' ? '加载中' : '已停止' }}</span>
+          <span class="cc-pill" :class="`status-${plugin.status}`">{{ pluginStatusLabel(plugin.status) }}</span>
           <span class="cc-pill">{{ plugin.taskCount }} 个任务</span>
           <el-button v-if="plugin.id === 'rule-pack'" size="small" @click="ruleOpen = true">规则命中</el-button>
           <span v-if="pluginStats(plugin).items" class="cc-pill">上次扫描 {{ pluginStats(plugin).items }} 项 · {{ (pluginStats(plugin).bytes / 1024 / 1024).toFixed(1) }} MB</span>
@@ -566,8 +689,29 @@ function categoryName(id: string) {
           </span>
         </div>
 
-        <div v-if="plugin.error" class="plugin-error">
-          <b>加载失败：</b>{{ plugin.error }}
+        <!-- 能力/权限风险提示：让用户知道「安装即执行代码」，不是沙箱 -->
+        <div v-if="capabilityWarnings(plugin).length" class="plugin-capability-warn">
+          <span
+            v-for="warning in capabilityWarnings(plugin)"
+            :key="warning"
+            class="cap-warn-pill"
+            title="外部插件在宿主进程内以当前用户权限运行，能力声明只是静态检查，不是运行时沙箱"
+          >⚠ {{ warning }}</span>
+        </div>
+
+        <!-- 异常诊断：消息 + 堆栈 + 可执行的下一步 -->
+        <div v-if="pluginDiagnostics(plugin)" class="plugin-error">
+          <div class="plugin-error-head">
+            <b>加载失败：</b>
+            <span>{{ pluginDiagnostics(plugin)?.message }}</span>
+            <el-button size="small" :loading="batchBusy" @click="retryPlugin(plugin)">重试</el-button>
+          </div>
+          <p class="plugin-error-hint">{{ pluginDiagnostics(plugin)?.hint }}</p>
+          <el-collapse v-if="pluginDiagnostics(plugin)?.stack" class="error-stack">
+            <el-collapse-item title="展开错误堆栈">
+              <pre class="cc-mono">{{ pluginDiagnostics(plugin)?.stack }}</pre>
+            </el-collapse-item>
+          </el-collapse>
         </div>
 
         <div class="plugin-spacer"></div>
@@ -603,6 +747,19 @@ function categoryName(id: string) {
             <span class="cc-faint">{{ plugin.configurable ? '支持配置' : '无配置项' }}</span>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 筛选后为空：说明原因 + 一键重置，不让用户以为是加载失败 -->
+    <div v-if="!filteredPlugins.length" class="cc-card plugin-empty">
+      <div class="plugin-empty-icon" aria-hidden="true">🔍</div>
+      <div>
+        <h4>{{ pluginFilterHint }}</h4>
+        <p class="cc-muted">可以重置筛选，或点右上角「刷新」重新加载插件状态。</p>
+      </div>
+      <div class="cc-actions">
+        <el-button size="small" type="primary" @click="resetPluginFilters">重置筛选</el-button>
+        <el-button size="small" @click="refreshPlugins">刷新</el-button>
       </div>
     </div>
 
@@ -841,6 +998,109 @@ function categoryName(id: string) {
   border-radius: 8px;
   padding: 8px 10px;
   word-break: break-all;
+}
+
+.plugin-error-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.plugin-error-hint {
+  margin: 6px 0 0;
+  color: var(--cc-danger);
+  opacity: 0.85;
+  font-size: 11.5px;
+  word-break: normal;
+}
+
+.error-stack {
+  margin-top: 8px;
+}
+
+.error-stack pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 11px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.plugin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--cc-primary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.cc-clickable {
+  cursor: pointer;
+}
+
+.status-error {
+  color: var(--cc-danger);
+  border-color: color-mix(in srgb, var(--cc-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--cc-danger) 12%, transparent);
+}
+
+.plugin-capability-warn {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cap-warn-pill {
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: var(--cc-warning);
+  background: color-mix(in srgb, var(--cc-warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cc-warning) 35%, transparent);
+}
+
+.plugin-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.plugin-empty h4 {
+  margin: 0 0 4px;
+}
+
+.plugin-empty p {
+  margin: 0;
+}
+
+.plugin-empty .cc-actions {
+  margin-left: auto;
+}
+
+.plugin-empty-icon {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  background: var(--cc-primary-soft);
 }
 
 .plugin-actions {
