@@ -4,7 +4,7 @@
 > 关键流程、安全模型与工程折中。所有结论均可在源码中找到对应实现。
 >
 > 事实基准：12 个内置插件（8 个默认启用）、默认 38 个清理任务、73 个 RPC 方法、
-> 95 个测试文件 / 716 个用例、规则库 37 类/401 条（catalog 28 类/271 条 + extra 9 类/130 条）。数字由
+> 104 个测试文件 / 887 个用例、规则库 37 类/385 条（catalog 28 类/255 条 + extra 9 类/130 条）。数字由
 > [`pnpm facts`](../scripts/collect-facts.ts) 生成，口径见 [项目事实表](project-facts.md)。
 > 安全边界与残余风险另见 [威胁模型与信任边界](threat-model.md)。
 
@@ -327,7 +327,7 @@ ctx.effect(() => {
 
 | 层次 | 方式 | 覆盖 |
 | --- | --- | --- |
-| 单元 / 集成 | Vitest（95 个测试文件 / **716 个用例**，口径见 [项目事实表](project-facts.md)） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
+| 单元 / 集成 | Vitest（104 个测试文件 / **887 个用例**，口径见 [项目事实表](project-facts.md)） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
 | 设计属性 | `tests/e7-unload.test.ts` / `tests/e8-dependency.test.ts` | E7 卸载无残留；E8 provider/consumer 依赖挂起与自动恢复（见 [E7](experiments/e7-unload-residue.md) / [E8](experiments/e8-dependency-response.md)） |
 | 插件审计 | `scripts/audit-plugins.ts` | 12 个内置插件真实扫描 + 清理项契约不变量（只读） |
 | 插件自测 | `scripts/check-*.ts` | 现有插件的定向验证（只扫描，清理只用 dryRun） |
@@ -477,9 +477,9 @@ catalog.json / 用户规则（数据）
 ### 11.4 已导入规模
 
 从 PC-Cleaner **v0.9.11** 的 `rules.json`（数据版本 0.9.9）转换并扩充：`catalog.json` 为 **28 个分类 / 271 条规则 / 284 个候选根目录**，
-`extra.json` 为 9 个分类 / 130 条规则，两套合计 37 类 / 401 条 / 414 个候选根（同一目标可能被多个分类引用）。
+`extra.json` 为 9 个分类 / 130 条规则，两套合计 37 类 / 385 条（默认装载 31 类 / 296 条）（同一目标可能被多个分类引用）。
 7 种目标类型全部已实现，**不存在“未实现类型”**；`scripts/audit-rules.ts` 目前只审计 `catalog.json`
-（报告见 [规则库审计报告](rules-report.md)）。默认装载非高风险、非 `deepOnly` 的规则，约 31 个分类 / 312 条规则（总库 37 类/401 条）。
+（报告见 [规则库审计报告](rules-report.md)）。默认装载非高风险、非 `deepOnly` 的规则，约 31 个分类 / 296 条规则（总库 37 类/385 条）。
 
 ## 12. 补偿链与唯一删除入口
 

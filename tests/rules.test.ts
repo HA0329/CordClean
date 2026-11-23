@@ -223,7 +223,9 @@ describe('规则目录（catalog.json）', () => {
   it('导入规模与分类覆盖达到预期', () => {
     expect(catalog.categories.length).toBeGreaterThanOrEqual(25)
     const total = catalog.categories.reduce((sum, category) => sum + category.rules.length, 0)
-    expect(total).toBeGreaterThanOrEqual(260)
+    // 2026-11 插件整改删除了 16 条「驱动器根/受保护目录且不可安全执行」的规则（401→385 总量，
+    // catalog 271→255），这里只守住规模下限，避免规则被误删到失真。
+    expect(total).toBeGreaterThanOrEqual(250)
     // 每个分类都必须有界面归类
     for (const category of catalog.categories) {
       expect(category.categoryId).toBeTruthy()
