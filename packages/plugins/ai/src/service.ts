@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { folderSize } from '@cordclean/utils'
 import { RULE_TARGET_TYPES, SUPPORTED_RULE_TYPES } from '@cordclean/shared'
-import { checkPluginSource } from '@cordclean/shared'
+import { checkPluginSource, isSafeRelativePath, validatePluginDependencies } from '@cordclean/shared'
 import type { AiRuleSuggestion } from '@cordclean/shared'
 /**
  * AI 服务实现：把「本机画像」变成「清理建议」。
@@ -33,7 +33,7 @@ import type {
   RiskLevel,
   TaskDescriptor,
 } from '@cordclean/shared'
-import { buildRequest, parseResponse, parseSseDelta } from './adapters.ts'
+import { buildRequest, isTruncatedFinish, parseResponse, parseSseDelta, sseFinishReason } from './adapters.ts'
 import { normalizeConfig, wantsJson, type AiConfig } from './config.ts'
 import { requestSse } from './http.ts'
 import { AiError, requestJson } from './http.ts'
@@ -111,6 +111,22 @@ export function normalizeSuggestions(raw: unknown): AiSuggestion[] {
     confidence: clampNumber(item?.confidence, 0, 1, 0.5),
     risk: normalizeRisk(item?.risk),
   }))
+}
+
+/**
+ * 只保留真实存在的任务 id。
+ *
+ * 模型偶尔会虚构 taskId（例如把任务名当 id）：界面会显示「关联任务：xxx」，
+ * 用户按这个 id 去找任务会找不到。这里把虚构值降级为「未关联」，建议本身保留。
+ */
+export function sanitizeSuggestionTasks(
+  suggestions: readonly AiSuggestion[],
+  knownTaskIds: Iterable<string>,
+): AiSuggestion[] {
+  const known = new Set(knownTaskIds)
+  return suggestions.map((item) =>
+    item.taskId && !known.has(item.taskId) ? { ...item, taskId: undefined } : item,
+  )
 }
 
 export interface RuleEvalInput {
@@ -311,40 +327,27 @@ export class AiService extends Service implements AiLike {
         continue
       }
       const toolArgs = parsed.toolCalls?.find((call) => call.name === 'emit_plugin')?.arguments ?? extractToolArgsFromText(parsed.text)
-      // 多文件插件包：模型可额外输出 manifest（v2 清单）与 files（入口/页面/资源）
-      const packageFiles = normalizePluginFiles(toolArgs?.files)
-      const packageManifest = normalizePluginManifest(toolArgs?.manifest)
-      const entryName = packageManifest?.entry || 'index.mjs'
-      const fileCode = packageFiles.find((file) => file.path === entryName)?.content
-      const code =
-        toolArgs && typeof toolArgs.code === 'string' && toolArgs.code.trim()
-          ? toolArgs.code.trim()
-          : fileCode || extractPluginCode(parsed.text)
-      const dependencies = normalizeDependencies(
-        toolArgs?.dependencies ?? extractDependenciesFromText(parsed.text),
-      )
-      const kind = pickPluginKind(toolArgs?.kind ?? extractKindFromText(parsed.text) ?? extractKindFromCode(code))
-      if (!code) {
-        lastError = '模型没有返回有效的插件代码'
-        feedback = '\n\n上一次没有返回有效代码。请输出单文件 ESM 源码，或提供 files 数组并包含入口文件。'
-        continue
-      }
-      // 与安装端共用同一套契约检查：错误的 import / defineCleanerPlugin / 危险 API
-      // 在这里就拦下来，不把“能生成但装不上”的草稿交给用户。
-      const check = checkPluginSource(code, {
-        dependencies,
-        mode: 'native',
-        allowRelativeImports: packageFiles.length > 0,
+      // 安装前置检查：files/manifest 修复 + 路径/依赖/占位符/import/静态契约校验。
+      // 与安装端（validateAiPluginPackage）口径一致但不替代它——这里只是把「装不上」的错误
+      // 提前一轮反馈给模型重试，不放松任何安全闸门（checkPluginSource 仍然照旧执行）。
+      const prep = preparePluginDraft({
+        code: toolArgs?.code,
+        fallbackCode: extractPluginCode(parsed.text),
+        files: toolArgs?.files,
+        manifest: toolArgs?.manifest,
+        dependencies: toolArgs?.dependencies ?? extractDependenciesFromText(parsed.text),
       })
-      if (!check.ok) {
-        lastError = check.errors.slice(0, 2).join('；')
+      if (!prep.ok) {
+        lastError = prep.errors[0]
         feedback =
-          '\n\n上一次生成的插件代码未通过静态契约检查：\n- ' +
-          check.errors.join('\n- ') +
-          '\n请修正后重新输出完整代码：原生 Cordis 插件用 export function apply(ctx)；不要 import 框架包；第三方包必须在 dependencies 中声明。'
-        this.ctx.logger.info('插件草稿未通过契约检查，自动重试：%s', check.errors[0])
+          '\n\n上一次输出无法安装为 v2 插件包：\n- ' +
+          prep.errors.join('\n- ') +
+          '\n请修正后重新输出完整插件包：files 至少包含入口文件 index.mjs；所有路径必须是包内相对路径（用 / 分隔，不能含 ..、盘符或 plugin.json）；manifest.entry 必须存在于 files 中；代码必须完整，不要省略或占位符。'
+        this.ctx.logger.info('插件草稿未通过安装前置检查，自动重试：%s', prep.errors[0])
         continue
       }
+      const { code, files: packageFiles, manifest: packageManifest, dependencies } = prep
+      const kind = pickPluginKind(toolArgs?.kind ?? extractKindFromText(parsed.text) ?? extractKindFromCode(code))
       const syntaxError = await checkPluginSyntax(code)
       if (syntaxError) {
         lastError = '语法错误：' + syntaxError
@@ -355,16 +358,19 @@ export class AiService extends Service implements AiLike {
       const matched = code.match(/(?:export\s+const\s+name\s*=|name\s*:)\s*['"]([a-zA-Z0-9_-]+)['"]/)
       // 原生草稿统一走 v2 插件包安装事务；第三方依赖在 staging 里安装 node_modules（用户确认后）
       const format = 'package' as const
+      const notes =
+        parsed.text.slice(0, 200) +
+        (prep.warnings.length ? `（已自动修正：${prep.warnings.join('；')}）` : '')
       return {
         name: matched?.[1] ?? packageManifest?.id ?? 'ai-plugin',
         code,
-        notes: parsed.text.slice(0, 200),
+        notes: notes.slice(0, 600),
         dependencies,
         mode: 'native',
         kind,
         format,
         ...(packageManifest ? { manifest: packageManifest } : {}),
-        ...(packageFiles.length ? { files: packageFiles } : {}),
+        files: packageFiles,
       }
     }
     throw new AiError(lastError, 'INVALID_RESPONSE')
@@ -681,7 +687,7 @@ export class AiService extends Service implements AiLike {
         contextSections.map((section) => `【${section.title}】\n` + section.lines.join('\n')).join('\n\n')
       : ''
     const imageHint = options.image
-      ? '\\n\\n【附件截图】用户随消息附带了一张截图（已在图片内容块中）。请先说明你从截图中实际看到的关键内容（界面、文字或报错），再结合截图给出清理建议；不要忽略图片。'
+      ? '\n\n【附件截图】用户随消息附带了一张截图（已在图片内容块中）。请先说明你从截图中实际看到的关键内容（界面、文字或报错），再结合截图给出清理建议；不要忽略图片。'
       : ''
     const request = buildRequest(
       config,
@@ -693,13 +699,14 @@ export class AiService extends Service implements AiLike {
     )
     this.gate('analyze', request.url, request.body)
 
-
     let result: any
     let parsed: any
     if (config.stream !== false) {
+      const streamStartedAt = Date.now()
       try {
         let text = ''
         let reasoning = ''
+        let finish: string | undefined
         await requestSse(request.url, {
           headers: request.headers,
           body: JSON.stringify({ ...request.body, stream: true }),
@@ -715,13 +722,29 @@ export class AiService extends Service implements AiLike {
             reasoning += delta.reasoning
             ;(this.ctx.emit as any)('ai/stream', { kind: 'delta', reasoning: delta.reasoning })
           }
+          // 结束原因只在最后一个增量里，必须单独记录：否则被 max_tokens 截断的流式输出
+          // 会被误判成「JSON 不合法」，用户不知道其实是 token 不够。
+          finish = sseFinishReason(config.apiShape, payload) ?? finish
         })
         if (text.trim()) {
           ;(this.ctx.emit as any)('ai/stream', { kind: 'done', text })
-          result = { status: 200, latencyMs: 0, payload: {} }
-          parsed = { text, reasoning: reasoning || undefined, finish: 'stop', truncated: false, usage: undefined, raw: {} }
+          result = { status: 200, latencyMs: Date.now() - streamStartedAt, payload: {} }
+          parsed = {
+            text,
+            reasoning: reasoning || undefined,
+            finish: finish ?? 'stop',
+            truncated: isTruncatedFinish(finish),
+            usage: undefined,
+            raw: {},
+          }
         }
       } catch (error) {
+        // 用户取消：不要吞掉后回退非流式（那会多打一次请求，且界面会显示成超时/网络错误）
+        if (signal.aborted || (error instanceof AiError && error.code === 'CANCELLED')) {
+          throw new AiError('请求已取消', 'CANCELLED')
+        }
+        // 鉴权类错误重试也不会成功，直接把稳定错误码抛给界面（避免无意义地再请求一次）
+        if (error instanceof AiError && error.code === 'AUTH') throw error
         this.ctx.logger.info('流式请求失败，回退非流式：%s', errorMessage(error))
       }
     }
@@ -775,12 +798,16 @@ export class AiService extends Service implements AiLike {
       const item = scan?.items.find((candidate) => candidate.id === entry.itemId)
       return sum + (item?.size ?? 0)
     }, 0)
-    const suggestions = normalizeSuggestions(data?.suggestions)
+    const knownTaskIds = this.ctx.cleaner.list().map((task: TaskDescriptor) => task.id)
+    const suggestions = sanitizeSuggestionTasks(normalizeSuggestions(data?.suggestions), knownTaskIds)
     const ruleSuggestions = normalizeRuleSuggestions(data?.rules)
+    // 模型漏写 summary 时给一个中性说明，避免结果区出现空白摘要（不冒充模型生成的内容）
+    const summaryText = String(data?.summary ?? '').trim().slice(0, 800)
+    const summary = summaryText || (suggestions.length ? `模型未返回摘要，本次共生成 ${suggestions.length} 条清理建议。` : '模型未返回摘要。')
     const analysis: AiAnalysis = {
       model: config.model,
       createdAt: Date.now(),
-      summary: String(data?.summary ?? '').slice(0, 800),
+      summary,
       observations: config.includeObservations && Array.isArray(data?.observations)
         ? data.observations.slice(0, 5).map((item: unknown) => String(item).slice(0, 200))
         : [],
@@ -853,25 +880,255 @@ export function normalizeDependencies(input: unknown): Record<string, string> {
   return deps
 }
 
-/** 把模型输出的多文件插件包内容整理成 [{path, content}]（最多 30 个，丢弃空路径/非字符串） */
+/** 把路径统一成包内 `/` 分隔形式（模型常输出 `client\\index.html` 或 `./index.mjs`） */
+export function toPackagePath(value: unknown): string {
+  let text = String(value ?? '').trim().replace(/\\/g, '/')
+  while (text.startsWith('./')) text = text.slice(2)
+  return text
+}
+
+/** 把模型输出的多文件插件包内容整理成 [{path, content}]（最多 30 个，丢弃非法路径/空内容/重复项） */
 export function normalizePluginFiles(input: unknown): AiPluginFile[] {
   if (!Array.isArray(input)) return []
   const files: AiPluginFile[] = []
+  const seen = new Set<string>()
   for (const item of input.slice(0, 30)) {
     if (!item || typeof item !== 'object') continue
     const record = item as Record<string, unknown>
-    const filePath = typeof record.path === 'string' ? record.path.trim() : ''
+    const filePath = toPackagePath(record.path)
     const content = typeof record.content === 'string' ? record.content : ''
     if (!filePath || !content) continue
+    // 与安装端同一套路径规则：包内相对路径、不能越界、不能自带清单
+    if (!isSafeRelativePath(filePath) || filePath === 'plugin.json') continue
+    if (seen.has(filePath)) continue
+    seen.add(filePath)
     files.push({ path: filePath, content })
   }
   return files
 }
 
-/** 把模型输出的 manifest 原样收下（深度校验交给宿主 validatePluginManifest） */
+/** 把模型输出的 manifest 收下；明显的 entry 不合法时先清掉，交给 preparePluginDraft 按实际文件修复 */
 export function normalizePluginManifest(input: unknown): PluginManifest | undefined {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
-  return input as PluginManifest
+  const manifest = { ...(input as Record<string, any>) } as Record<string, any>
+  if ('entry' in manifest && !isSafeRelativePath(manifest.entry)) delete manifest.entry
+  return manifest as PluginManifest
+}
+
+/* ------------------------------------------------------------------ */
+/* 安装前置检查：让「生成结果」尽量一次就是可安装的 v2 插件包          */
+/* ------------------------------------------------------------------ */
+
+/** 与安装端 (ai-plugin-package.ts) 对齐的数量/体积上限 */
+const MAX_DRAFT_FILES = 40
+const MAX_DRAFT_FILE_BYTES = 256 * 1024
+const MAX_DRAFT_TOTAL_BYTES = 4 * 1024 * 1024
+/** 生成插件允许 import 的 Node 内置模块（与 checkPluginSource 的契约一致） */
+const ALLOWED_NODE_MODULES = new Set([
+  'node:fs',
+  'node:fs/promises',
+  'node:path',
+  'node:os',
+  'node:url',
+  'node:util',
+  'node:crypto',
+])
+/** 模型常见的「省略/占位」写法：这类代码装得上也跑不了，直接要求重试 */
+const PLACEHOLDER_RE = /(?:\/\/|\/\*|#)\s*(?:\.\.\.|省略|TODO|FIXME|待补充|placeholder)|(?:此处|以下|后面)省略|占位符/i
+/** 生成插件的脚本文件（入口/相对模块），HTML/CSS/JSON 不做脚本契约检查 */
+function isScriptFile(filePath: string): boolean {
+  return /\.(?:mjs|js|ts)$/i.test(filePath)
+}
+
+/** 提取一段代码里的 import/require/动态 import 说明符（与 checkPluginSource 同规则） */
+function scriptImportSpecifiers(code: string): string[] {
+  const found: string[] = []
+  const patterns = [
+    /^\s*import\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/gm,
+    /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+  ]
+  for (const pattern of patterns) {
+    for (const match of String(code ?? '').matchAll(pattern)) {
+      if (match[1]) found.push(match[1])
+    }
+  }
+  return [...new Set(found)]
+}
+
+/** 把包内相对 import 解析成 files 里的路径（支持省略扩展名与 /index 约定） */
+function resolveRelativeModule(fromPath: string, specifier: string, paths: readonly string[]): string | undefined {
+  const baseSegments = fromPath.split('/').slice(0, -1)
+  const segments = [...baseSegments]
+  for (const part of specifier.split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') {
+      if (!segments.length) return undefined
+      segments.pop()
+      continue
+    }
+    segments.push(part)
+  }
+  const base = segments.join('/')
+  if (!base) return undefined
+  const candidates = [base, `${base}.mjs`, `${base}.js`, `${base}/index.mjs`, `${base}/index.js`]
+  return candidates.find((candidate) => paths.includes(candidate))
+}
+
+export interface PluginDraftPrepInput {
+  /** 模型 emit_plugin 里的 code 字段 */
+  code?: unknown
+  /** 从纯文本输出里兜底提取的单文件代码 */
+  fallbackCode?: string
+  /** 模型 emit_plugin 里的 files 字段（原样） */
+  files?: unknown
+  /** 模型 emit_plugin 里的 manifest 字段（原样） */
+  manifest?: unknown
+  /** 模型 emit_plugin 里的 dependencies 字段（原样） */
+  dependencies?: unknown
+}
+
+export interface PluginDraftPrepResult {
+  ok: boolean
+  /** 阻断性问题：应带着这些信息让模型重试，而不是把草稿交给用户 */
+  errors: string[]
+  /** 已自动修正的项（如实写进 notes，让用户知道清单被改过） */
+  warnings: string[]
+  code: string
+  files: AiPluginFile[]
+  entry: string
+  dependencies: Record<string, string>
+  manifest?: PluginManifest
+}
+
+/**
+ * 把模型输出归一成「可安装草稿」：修 manifest.entry/client、补单文件 files、
+ * 检查路径/体积/占位符/依赖/相对 import，并复用宿主的 checkPluginSource 静态契约。
+ * 纯函数、不发起网络/不落盘，便于单测；不替代安装端的最终校验。
+ */
+export function preparePluginDraft(input: PluginDraftPrepInput): PluginDraftPrepResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const dependencies = normalizeDependencies(input.dependencies)
+  errors.push(...validatePluginDependencies(dependencies))
+
+  const codeCandidate =
+    typeof input.code === 'string' && input.code.trim() ? input.code.trim() : String(input.fallbackCode ?? '').trim()
+
+  let files = normalizePluginFiles(input.files)
+  const rawFileCount = Array.isArray(input.files) ? input.files.length : 0
+  if (rawFileCount > 0 && files.length < rawFileCount) {
+    errors.push(
+      'files 中存在非法条目：path 必须是包内相对路径（用 / 分隔，不能含 ..、盘符、反斜杠或 plugin.json），content 不能为空',
+    )
+  }
+  if (!files.length && codeCandidate && /export\s+(?:async\s+)?function\s+apply|export\s+default|export\s+const\s+name\s*=/.test(codeCandidate)) {
+    // 历史行为：模型只给单文件 code。包装成 v2 包的入口文件，安装/落盘路径保持不变。
+    files = [{ path: 'index.mjs', content: codeCandidate }]
+    warnings.push('模型只给单文件代码，已包装为入口文件 index.mjs')
+  }
+  if (!files.length) {
+    errors.push('模型没有返回有效的插件文件：请输出 files 数组（至少包含入口文件 index.mjs）或单文件 code')
+    return { ok: false, errors: [...new Set(errors)], warnings, code: '', files: [], entry: 'index.mjs', dependencies }
+  }
+
+  const availablePaths = files.map((file) => file.path)
+  let manifest: PluginManifest | undefined
+  if (input.manifest && typeof input.manifest === 'object' && !Array.isArray(input.manifest)) {
+    const repaired: Record<string, any> = { ...(input.manifest as Record<string, any>) }
+    const scriptFiles = files.filter((file) => isScriptFile(file.path) && !file.path.startsWith('client/')).map((file) => file.path)
+    const fallbackEntry =
+      (scriptFiles.includes('index.mjs') ? 'index.mjs' : scriptFiles[0]) ?? availablePaths.find((item) => isScriptFile(item))
+    const declaredEntry = typeof repaired.entry === 'string' ? toPackagePath(repaired.entry) : ''
+    if (!declaredEntry || !isSafeRelativePath(declaredEntry) || !availablePaths.includes(declaredEntry)) {
+      if (fallbackEntry) repaired.entry = fallbackEntry
+      else delete repaired.entry
+      if (declaredEntry) warnings.push(`manifest.entry「${declaredEntry}」不在 files 中，已修正为 ${fallbackEntry ?? '（无）'}`)
+    }
+    const client = repaired.client
+    if (client && typeof client === 'object' && client.mode === 'page') {
+      const clientEntry = typeof client.entry === 'string' ? toPackagePath(client.entry) : ''
+      if (!clientEntry || !availablePaths.includes(clientEntry)) {
+        repaired.client = availablePaths.includes('client/index.html')
+          ? { mode: 'page', entry: 'client/index.html' }
+          : { mode: 'declarative' }
+        warnings.push('manifest.client 指向的页面不存在，已按实际文件修正')
+      }
+    }
+    // 依赖以 emit_plugin.dependencies 为准：两边不一致会导致安装端按清单装错依赖
+    if (Object.keys(dependencies).length > 0 || repaired.dependencies !== undefined) repaired.dependencies = dependencies
+    manifest = repaired as unknown as PluginManifest
+  }
+
+  const entry =
+    manifest && isSafeRelativePath(manifest.entry) && availablePaths.includes(manifest.entry)
+      ? manifest.entry
+      : availablePaths.find((item) => item === 'index.mjs') ??
+        availablePaths.find((item) => isScriptFile(item)) ??
+        ''
+  const entryFile = files.find((file) => file.path === entry)
+  if (!entryFile) {
+    errors.push('找不到可用的入口文件：files 里必须有 .mjs/.js 入口（例如 index.mjs）')
+    return { ok: false, errors: [...new Set(errors)], warnings, code: '', files, entry: entry || 'index.mjs', dependencies, ...(manifest ? { manifest } : {}) }
+  }
+
+  // 文件数量/体积上限与安装端一致（安装端超限会直接拒绝，这里提前反馈）
+  if (files.length > MAX_DRAFT_FILES) errors.push(`插件包文件数超过上限（${MAX_DRAFT_FILES}）`)
+  let totalBytes = 0
+  for (const file of files) {
+    const bytes = Buffer.byteLength(file.content, 'utf8')
+    totalBytes += bytes
+    if (bytes > MAX_DRAFT_FILE_BYTES) errors.push(`文件过大（>${MAX_DRAFT_FILE_BYTES} 字节）：${file.path}`)
+  }
+  if (totalBytes > MAX_DRAFT_TOTAL_BYTES) errors.push(`插件包总体积超过上限（${MAX_DRAFT_TOTAL_BYTES} 字节）`)
+  for (const file of files) {
+    if (isScriptFile(file.path) && PLACEHOLDER_RE.test(file.content)) {
+      errors.push(`文件 ${file.path} 含省略/占位内容，必须输出完整可运行代码`)
+    }
+  }
+
+  const code = entryFile.content
+  if (!errors.length) {
+    const check = checkPluginSource(code, {
+      dependencies,
+      mode: 'native',
+      allowRelativeImports: files.length > 1,
+    })
+    errors.push(...check.errors)
+    warnings.push(...check.warnings)
+  }
+  // 非入口模块也做 import/相对路径检查：安装端只检查入口，否则运行时才会炸
+  for (const file of files) {
+    if (file.path === entry || !isScriptFile(file.path)) continue
+    for (const specifier of scriptImportSpecifiers(file.content)) {
+      if (ALLOWED_NODE_MODULES.has(specifier)) continue
+      if (specifier.startsWith('.')) {
+        if (!resolveRelativeModule(file.path, specifier, availablePaths)) {
+          errors.push(`文件 ${file.path} 引用了不存在的相对模块「${specifier}」`)
+        }
+        continue
+      }
+      if (specifier.startsWith('@cordisjs/') || specifier.startsWith('@cordclean/')) {
+        errors.push(`文件 ${file.path} 不能 import 框架内部包「${specifier}」`)
+        continue
+      }
+      const packageName = specifier.startsWith('@') ? specifier.split('/').slice(0, 2).join('/') : specifier.split('/')[0]
+      if (!Object.prototype.hasOwnProperty.call(dependencies, packageName)) {
+        errors.push(`文件 ${file.path} import 了未声明的包「${specifier}」，请在 dependencies 中声明`)
+      }
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors: [...new Set(errors)],
+    warnings: [...new Set(warnings)],
+    code,
+    files,
+    entry,
+    dependencies,
+    ...(manifest ? { manifest } : {}),
+  }
 }
 
 function extractDependenciesFromText(text: string): Record<string, string> {
@@ -1003,6 +1260,9 @@ export const PLUGIN_TOOL = {
 
 export const PLUGIN_SYSTEM_PROMPT = [
   '你是 Cordis 通用插件工程师。必须调用 emit_plugin 工具，输出 JSON 对象：{ "name": "kebab-case", "description": "一句话说明插件功能", "kind": "cleaner|widget|active|desktop", "manifest": {...v2 清单...}, "files": [{"path":"index.mjs","content":"完整 ESM 源码"}, ...], "dependencies": {"包名":"版本"}, "notes": "简要说明" }。',
+  '【JSON 必须能被严格解析】输出必须是单个合法 JSON 对象：代码/HTML 字符串里的双引号写成 \\"，换行写成 \\n，不要输出裸换行、注释或 Markdown 围栏。JSON 解析失败会导致整次生成作废。',
+  '【代码必须完整】files 里每个 content 都是可直接运行/安装的完整文件，禁止 TODO、省略号（...）、「此处省略」「同上」等占位内容；入口文件必须包含完整的 apply(ctx)，括号必须闭合。',
+  '【示例骨架，只需结构正确，内容按需求填写】{"name":"demo-plugin","description":"清理演示缓存","kind":"cleaner","manifest":{"apiVersion":2,"engines":{"cordclean":"^0.6.0"},"kind":"cleaner","entry":"index.mjs","permissions":{"services":["cleaner","system"],"fsRoots":[],"network":false,"subprocess":false}},"files":[{"path":"index.mjs","content":"export const name = \'demo-plugin\'\\nexport const description = \'清理演示缓存\'\\nexport const kind = \'cleaner\'\\nexport const inject = [\'cleaner\', \'system\']\\nexport function apply(ctx) { ctx.cleaner.define({ id: \'demo-cache\', name: \'演示缓存\', category: \'apps\', risk: \'safe\', defaultSelected: false, targets: [], scan(scan) { /* 只 emit 候选，不要删除文件 */ } }) }"}],"dependencies":{},"notes":"演示"}',
   'code 是原生 Cordis 插件，必须是完整单文件 ESM：export const name = "kebab-case"; export const description = "一句话"; export const kind = "cleaner|widget|active|desktop"; 按需 export const inject = ["ui"] / ["cleaner"] / ["window"]; export function apply(ctx) { ... }。不要使用 export default 普通对象，也不要使用 setup()。',
   'widget/active/desktop 必须提供至少一个 commands 项（例如“刷新数据”“运行自检”），并在 apply 中用 ctx.ui.command(name, rpcID, handler) 注册；插件页没有手动命令时用户无法触发插件功能。cleaner 可不提供命令。',
   '插件按需声明 inject：用 ctx.ui 必须 inject 包含 "ui"；注册清理任务必须 inject 包含 "cleaner"；桌面窗口/托盘必须 inject 包含 "window"；使用 ctx.settings/system/pathPolicy 也必须分别 inject。Cordis 在未声明 inject 时读取 ctx 属性会直接抛错，禁止用 if (ctx.cleaner) / if (ctx.system) 这种方式探测能力；只使用 inject 中声明的服务。',

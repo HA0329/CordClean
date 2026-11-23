@@ -318,3 +318,35 @@ export function parseSseDelta(shape: string, payload: any): { text?: string; rea
     reasoning: typeof delta.reasoning_content === 'string' ? delta.reasoning_content : undefined,
   }
 }
+
+/**
+ * 从一条 SSE 增量里提取「结束原因」。
+ *
+ * 流式路径原来只在最后拼出文本，丢掉了 finish_reason/stop_reason，
+ * 导致模型因 max_tokens 截断时被误报成「JSON 不合法」。这里单独提取，
+ * 三种形态都覆盖，供上层把截断错误分类成可重试的明确提示。
+ */
+export function sseFinishReason(shape: string, payload: any): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  if (shape === 'messages') {
+    if (payload.type === 'message_delta') {
+      return typeof payload.delta?.stop_reason === 'string' ? payload.delta.stop_reason : undefined
+    }
+    if (payload.type === 'message_stop') return 'stop'
+    return undefined
+  }
+  if (shape === 'responses') {
+    if (payload.type === 'response.incomplete') return 'incomplete'
+    if (payload.type === 'response.completed') {
+      return typeof payload.response?.status === 'string' ? payload.response.status : 'completed'
+    }
+    return undefined
+  }
+  const reason = payload.choices?.[0]?.finish_reason
+  return typeof reason === 'string' ? reason : undefined
+}
+
+/** 结束原因是否代表「输出没写完」（补全被 token 上限截断） */
+export function isTruncatedFinish(finish: string | undefined): boolean {
+  return finish === 'length' || finish === 'max_tokens' || finish === 'incomplete'
+}

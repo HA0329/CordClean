@@ -985,7 +985,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
     <div class="cc-page-title">
       <div>
         <h1>AI 清理顾问</h1>
-        <p>支持 chat / messages / responses 三种接口形态，模型、推理等级与请求参数都可以现场修改。</p>
+        <p>支持 chat / messages / responses 三种接口形态，模型、推理等级与请求参数都可以现场修改。未配置 API Key 或关闭在线 AI 时无法分析，也不会生成任何清理建议。</p>
       </div>
       <div class="cc-actions">
         <el-button :loading="loadingModels" :disabled="!available" @click="loadModels">获取模型</el-button>

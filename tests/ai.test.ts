@@ -92,10 +92,12 @@ describe('AI 清理顾问', () => {
       expect(analysis.suggestions).toHaveLength(2)
       expect(analysis.suggestions[0]).toMatchObject({
         title: '清理临时文件',
-        taskId: 'temp',
         risk: 'safe',
         estimatedBytes: 57_000_000,
       })
+      // 测试环境只加载了 ai 插件，并不存在 id 为 temp 的清理任务：
+      // 模型虚构的 taskId 会被降级为「未关联」，避免界面展示不存在的任务。
+      expect(analysis.suggestions[0]!.taskId).toBeUndefined()
       expect(app.ctx.ai!.last()?.suggestions).toHaveLength(2)
     } finally {
       await app.dispose()

@@ -15,10 +15,10 @@ import { Config, normalizeConfig, type AiConfig } from './config.ts'
 import { AiService } from './service.ts'
 
 export { Config, normalizeConfig, resolveModelAlias, LEGACY_MODEL_ALIASES, applyEffort, resolveChatUrl, resolveModelsUrl, DEFAULT_PATHS, DEFAULT_BASE_URLS, API_SHAPES, EFFORT_LEVELS } from './config.ts'
-export { buildRequest, parseResponse, parseSseDelta, authHeaders, mergeHeaders } from './adapters.ts'
+export { buildRequest, parseResponse, parseSseDelta, sseFinishReason, isTruncatedFinish, authHeaders, mergeHeaders } from './adapters.ts'
 export { FALLBACK_MODELS, fetchModelList } from './models.ts'
-export { AiService, createAiService, extractJsonObject, extractPluginCode, extractToolArgsFromText, normalizeSuggestions, normalizePluginFiles, normalizePluginManifest, PLUGIN_TOOL, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX, PLUGIN_KINDS, pickPluginKind, normalizeDependencies, checkPluginSyntax } from './service.ts'
-export { AiError, requestJson, requestSse } from './http.ts'
+export { AiService, createAiService, extractJsonObject, extractPluginCode, extractToolArgsFromText, normalizeSuggestions, sanitizeSuggestionTasks, normalizePluginFiles, normalizePluginManifest, normalizeDependencies, preparePluginDraft, toPackagePath, PLUGIN_TOOL, PLUGIN_SYSTEM_PROMPT, PLUGIN_USER_PREFIX, PLUGIN_KINDS, pickPluginKind, checkPluginSyntax } from './service.ts'
+export { AiError, requestJson, requestSse, isRetryableAiCode, retryAfterMs, retryDelayMs, extractErrorMessage } from './http.ts'
 export type { AiConfig } from './config.ts'
 
 export default defineCleanerPlugin<Partial<AiConfig>>({
@@ -35,9 +35,11 @@ export default defineCleanerPlugin<Partial<AiConfig>>({
     }
     const service = new AiService(ctx, normalized)
 
-    const credential = service.configured() ? '使用已配置/环境变量中的 API Key' : '未配置 API Key（可在界面填写或设置 DEEPSEEK_API_KEY）'
+    const credential = service.configured()
+      ? '使用已配置/环境变量中的 API Key'
+      : '尚未配置 API Key：分析将不可用，请先在界面填写或设置 DEEPSEEK_API_KEY'
     ctx.logger.info(
-      'AI 顾问已就绪：形态 %s，模型 %s，推理等级 %s，%s',
+      'AI 顾问已加载：形态 %s，模型 %s，推理等级 %s，%s',
       normalized.apiShape,
       normalized.model,
       normalized.reasoningEffort,
