@@ -43,3 +43,30 @@ pnpm exec vitest run tests/plugin-<plugin-id>-contract.test.ts
 - 审计是「只读扫描」，不执行清理/删除；清理链路的正确性由删除安全链测试覆盖（见 `docs/test-plan.md`）。
 - 部分插件在无对应系统对象时项数为 0（如当前机器没有失效快捷方式），这是正常结果，不是跳过验证。
 - scheduler/ai/ai-workshop 不注册清理任务；它们的验证点是「启用路径 + 状态 + 任务清单一致性」。
+
+## 沙箱内真实清理验证（--clean，2026-11-23）
+
+只读审计无法证明「清理链路」真的能删除；`--clean` 会给审计脚本加一步**破坏性验证**：
+
+- 扫描结果里只有**落在审计沙箱目录内**的文件/目录会被提交清理（沙箱在系统临时目录下、用完即删）；
+- 清理强制走隔离区（`forceQuarantine: true`），文件落在临时 dataDir，**不污染用户回收站**；
+- 清理后逐项 `existsSync` 复核必须消失，否则退出码 1。
+
+```bash
+pnpm exec tsx scripts/audit-plugin.ts <plugin-id> --clean
+```
+
+| 插件 | 提交清理项 | 内核报告 | 清理后复核 |
+| --- | --- | --- | --- |
+| `large-files` | 3 | cleaned=3 quarantined=3 failed=0 | 0 项（全部消失） |
+| `duplicates` | 1 | cleaned=1 quarantined=1 failed=0 | 0 项 |
+| `empty-dirs` | 1 | cleaned=1 quarantined=1 failed=0 | 0 项 |
+
+其余插件如实跳过并给出原因（不是失败）：
+
+- `rule-pack` / `shortcuts` / `recycle` / `leftovers` / `startup` / `registry`：扫描项不在审计沙箱内（真实系统路径），按安全原则不提交清理；
+- `scheduler` / `ai` / `ai-workshop`：不注册清理任务；
+- `large-files`/`duplicates`/`empty-dirs` 之外的插件没有沙箱命中项。
+
+> 说明：不注册任务的插件与不落在沙箱内的系统插件，其清理安全由「删除安全链」测试与
+> `docs/test-plan.md` 中的删除/隔离/恢复用例覆盖；`--clean` 是补充而非替代。
