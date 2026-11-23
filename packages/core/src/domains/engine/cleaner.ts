@@ -116,8 +116,12 @@ export class CleanerService extends Service implements CleanerLike {
 
   async scan(options: ScanOptions = {}): Promise<ScanReport> {
     const settings = this.ctx.settings.get()
-    const selected = (options.taskIds ?? []).filter((id) => this.tasks.has(id))
-    const targets: RegisteredTask[] = (selected.length ? selected : [...this.tasks.keys()])
+    // 显式传入 taskIds 时必须每个都真实存在：未知 id 过去会静默回退成「扫描全部任务」，
+    // 让调用方误以为只扫了子集（测试/外部脚本踩过）。空数组仍表示「全部任务」。
+    const requested = [...new Set(options.taskIds ?? [])]
+    const unknown = requested.filter((id) => !this.tasks.has(id))
+    if (unknown.length) throw new Error(`未知清理任务：${unknown.join(', ')}`)
+    const targets: RegisteredTask[] = (requested.length ? requested : [...this.tasks.keys()])
       .map((id) => this.tasks.get(id))
       .filter((task): task is RegisteredTask => !!task)
 
