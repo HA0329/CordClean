@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { formatBytes } from '@cordclean/shared'
 import type { LogEntry } from '@cordclean/shared'
 import {
   authorizeScheduler,
@@ -397,7 +398,7 @@ const filteredEntries = computed(() => {
 const logBytesText = computed(() => {
   const bytes = logInfo.value?.bytes ?? 0
   if (!bytes) return '—'
-  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${(bytes / 1024).toFixed(1)} KB`
+  return formatBytes(bytes)
 })
 
 function levelClass(level: LogEntry['level']): string {
@@ -1096,7 +1097,7 @@ async function doClearEgress() {
           <div class="chips">
             <span v-for="(root, index) in form.roots" :key="root" class="cc-pill">
               {{ root }}
-              <button class="chip-x" @click="form.roots.splice(index, 1)">×</button>
+              <button type="button" class="chip-x" @click="form.roots.splice(index, 1)">×</button>
             </span>
             <span v-if="!form.roots.length" class="cc-faint">未添加</span>
           </div>
@@ -1110,7 +1111,7 @@ async function doClearEgress() {
           <div class="chips">
             <span v-for="(item, index) in form.excludes" :key="item" class="cc-pill">
               {{ item }}
-              <button class="chip-x" @click="form.excludes.splice(index, 1)">×</button>
+              <button type="button" class="chip-x" @click="form.excludes.splice(index, 1)">×</button>
             </span>
             <span v-if="!form.excludes.length" class="cc-faint">未添加</span>
           </div>

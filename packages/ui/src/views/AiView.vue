@@ -3,6 +3,7 @@ defineOptions({ name: 'AiView' })
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { RISK_META, formatBytes, formatTime } from '@cordclean/shared'
+import SectionIcon from '../components/SectionIcon.vue'
 import {
   analyzeAi,
   cancelAi,
@@ -508,7 +509,7 @@ const visionInput = ref<HTMLInputElement>()
 const visionSizeText = computed(() => {
   if (!visionImage.value) return ''
   const bytes = Math.round((visionImage.value.data.length * 3) / 4)
-  return bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return bytes > 0 ? formatBytes(bytes) : ''
 })
 
 function pickVisionFile(): void {
@@ -1039,7 +1040,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <!-- 分析失败：结构化原因 + 可执行动作 + 已接收的流式输出兜底 -->
       <div v-if="analyzeError" class="cc-card analyze-error" role="alert" aria-live="assertive">
         <div class="cc-card-title">
-          <h3>⚠️ {{ analyzeError.title }}</h3>
+          <h3><SectionIcon name="alert" /> {{ analyzeError.title }}</h3>
           <el-button size="small" text @click="dismissAnalyzeError">关闭</el-button>
         </div>
         <p class="cc-hint">{{ analyzeError.hint }}</p>
@@ -1068,7 +1069,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <!-- 接口设置 -->
     <div class="cc-card">
         <div class="cc-card-title">
-          <h3>⚙️ 接口设置</h3>
+          <h3><SectionIcon name="gear" /> 接口设置</h3>
           <div class="cc-actions">
             <el-button size="small" text @click="showAdvanced = !showAdvanced">
               {{ showAdvanced ? '收起高级参数' : '高级参数（extraBody / extraHeaders）' }}
@@ -1211,7 +1212,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
 
       <div class="cc-card">
         <div class="cc-card-title">
-          <h3>🔍 分析范围（上下文采集器）</h3>
+          <h3><SectionIcon name="search" /> 分析范围（上下文采集器）</h3>
           <span class="cc-faint">勾选即生效（分析时按当前勾选发送）；采集器只输出脱敏摘要</span>
         </div>
         <el-checkbox-group v-model="form.contextProviders">
@@ -1230,7 +1231,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
 
       <div class="cc-card">
         <div class="cc-card-title">
-          <h3>🖼️ 截图诊断（可选）</h3>
+          <h3><SectionIcon name="image" /> 截图诊断（可选）</h3>
           <span class="cc-faint">DeepSeek 官方仅 deepseek-flash 支持视觉；截图只发给模型，请勿包含隐私</span>
         </div>
         <div
@@ -1261,7 +1262,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
 
     <div class="cc-card">
         <div class="cc-card-title">
-          <h3>🧠 补充说明（可选）</h3>
+          <h3><SectionIcon name="brain" /> 补充说明（可选）</h3>
           <span class="cc-faint">例如：这台机器主要用于视频剪辑，希望保留素材缓存</span>
         </div>
         <el-input v-model="extra" type="textarea" :rows="2" placeholder="告诉 AI 你的使用习惯，建议会更准确…" />
@@ -1269,7 +1270,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
 
       <div v-if="running" class="cc-card analyzing-card" aria-live="polite" aria-busy="true">
         <div class="cc-card-title">
-          <h3>⏳ 正在分析…</h3>
+          <h3><SectionIcon name="hourglass" /> 正在分析…</h3>
           <div class="cc-actions">
             <span class="cc-faint">{{ streamActivity }}</span>
             <el-button size="small" type="danger" plain @click="cancelGeneration">取消生成</el-button>
@@ -1287,7 +1288,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <template v-if="analysis">
     <div class="cc-card">
           <div class="cc-card-title">
-            <h3>📌 分析摘要</h3>
+            <h3><SectionIcon name="pin" /> 分析摘要</h3>
             <div class="meta-chips">
               <span class="cc-pill">{{ analysis.model }}</span>
               <span v-if="analysis.shape" class="cc-pill">{{ analysis.shape }}</span>
@@ -1310,7 +1311,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         </div>
 
         <div v-if="analysis.ruleSuggestions?.length" class="cc-card">
-          <div class="cc-card-title"><h3>🧩 AI 建议的新规则</h3><span class="cc-faint">采纳后会经过校验并热加载，立即可用</span></div>
+          <div class="cc-card-title"><h3><SectionIcon name="puzzle" /> AI 建议的新规则</h3><span class="cc-faint">采纳后会经过校验并热加载，立即可用</span></div>
           <div v-for="(rule, index) in analysis.ruleSuggestions" :key="index" class="rule-suggestion">
             <div>
               <strong>{{ rule.name }}</strong>
@@ -1328,7 +1329,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
 
         <div v-if="rootSuggestions.length" class="cc-card">
         <div class="cc-card-title">
-          <h3>📁 AI 建议新增的扫描根</h3>
+          <h3><SectionIcon name="folder" /> AI 建议新增的扫描根</h3>
           <span class="cc-faint">只来自用户目录一级目录，确认后才写入设置</span>
         </div>
         <p class="cc-faint">AI 建议的扫描根可逐项选择；整个 AppData 等宽目录会标注范围较大，添加前会再次确认。</p>
@@ -1350,7 +1351,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
 
       <div v-if="analysis.selection?.length" class="cc-card">
         <div class="cc-card-title">
-          <h3>✅ AI 推荐的清理项</h3>
+          <h3><SectionIcon name="check" /> AI 推荐的清理项</h3>
           <span class="cc-faint">
             共 {{ analysis.selectionSummary?.count ?? analysis.selection.length }} 项 ·
             {{ formatBytes(analysis.selectionSummary?.bytes ?? 0) }} · 只能来自本次扫描结果
@@ -1458,7 +1459,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       </p>
       <div v-for="(record, index) in egress?.records ?? []" :key="index" class="egress-item">
         <div class="cc-faint">
-          {{ new Date(record.at).toLocaleString() }} · {{ record.purpose }} · {{ record.url }}
+          {{ formatTime(record.at) }} · {{ record.purpose }} · {{ record.url }}
           <span v-if="record.blocked" class="risk-risky">已拦截：{{ record.blocked }}</span>
         </div>
         <pre class="reasoning-text">{{ record.preview || '(无请求体)' }}</pre>
@@ -1471,7 +1472,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
     </template>
     <div class="cc-card">
       <div class="cc-card-title">
-        <h3>🔒 隐私说明</h3>
+        <h3><SectionIcon name="lock" /> 隐私说明</h3>
       </div>
       <p class="cc-hint">
         发送给模型的内容仅包含：磁盘容量与占用、系统版本、CPU/内存、清理任务统计与关键目录体积，

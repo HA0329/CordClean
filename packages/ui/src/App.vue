@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { state, init, quitApp, refreshAppInfo } from './api/store.ts'
+import SectionIcon from './components/SectionIcon.vue'
 import { formatBytes } from '@cordclean/shared'
 import SidebarNav from './components/SidebarNav.vue'
 import OverviewView from './views/OverviewView.vue'
@@ -200,20 +201,20 @@ async function quitCordClean() {
           </span>
           <span class="cc-pill runtime-pill" :title="nodeTitle" @click="refreshAppInfo">{{ nodeText }}</span>
           <span class="cc-pill runtime-pill" :title="shellTitle" @click="refreshAppInfo">{{ shellText }}</span>
-          <button v-if="state.cleaning" class="cleaning-back" title="查看实时清理进度" @click="navigate('cleaning')">
-            🧹 清理中 · 查看进度
+          <button type="button" v-if="state.cleaning" class="cleaning-back" aria-label="查看实时清理进度" title="查看实时清理进度" @click="navigate('cleaning')">
+            <SectionIcon name="broom" :size="14" /> 清理中 · 查看进度
           </button>
-          <button v-else-if="state.scanning" class="cleaning-back" title="查看实时扫描进度" @click="navigate('scanning')">
-            🔍 扫描中 · 查看进度
+          <button v-else-if="state.scanning" class="cleaning-back" type="button" aria-label="查看实时扫描进度" title="查看实时扫描进度" @click="navigate('scanning')">
+            <SectionIcon name="scan" :size="14" /> 扫描中 · 查看进度
           </button>
           <PluginStatusItems />
         </div>
         <div class="topbar-right">
           <span class="cc-faint" v-if="state.app">启动耗时 {{ state.app.bootMs }} ms</span>
           <span class="cc-faint">累计释放 {{ formatBytes(state.totals.freedBytes) }}</span>
-          <button class="quit-btn" title="退出 CordClean" @click="quitCordClean">⏻</button>
-          <button class="theme-toggle" :title="theme === 'dark' ? '切换到亮色' : '切换到暗色'" @click="toggleTheme">
-            {{ theme === 'dark' ? '☀️' : '🌙' }}
+          <button type="button" class="quit-btn" title="退出 CordClean" aria-label="退出 CordClean" @click="quitCordClean"><SectionIcon name="power" :size="16" /></button>
+          <button class="theme-toggle" type="button" :title="theme === 'dark' ? '切换到亮色' : '切换到暗色'" :aria-label="theme === 'dark' ? '切换到亮色' : '切换到暗色'" :aria-pressed="theme === 'dark'" @click="toggleTheme">
+            <SectionIcon :name="theme === 'dark' ? 'sun' : 'moon'" :size="16" />
           </button>
         </div>
       </header>

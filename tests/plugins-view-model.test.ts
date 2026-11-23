@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   capabilityWarnings,
+  descriptionNeedsToggle,
   emptyFilterHint,
   filterPlugins,
   planBatch,
@@ -141,5 +142,23 @@ describe('空过滤提示', () => {
     expect(emptyFilterHint('xyz', 'all')).toContain('xyz')
     expect(emptyFilterHint('xyz', 'error')).toContain('同时匹配')
     expect(emptyFilterHint('', 'all')).toBe('没有插件')
+  })
+})
+
+describe('描述展开按钮', () => {
+  it('短描述不显示展开按钮（含纯空白）', () => {
+    expect(descriptionNeedsToggle('统计并清空各磁盘回收站')).toBe(false)
+    expect(descriptionNeedsToggle('   ')).toBe(false)
+    expect(descriptionNeedsToggle(undefined)).toBe(false)
+    expect(descriptionNeedsToggle(42)).toBe(false)
+  })
+
+  it('超过 60 字的描述才需要展开', () => {
+    expect(descriptionNeedsToggle('a'.repeat(60))).toBe(false)
+    expect(descriptionNeedsToggle('a'.repeat(61))).toBe(true)
+  })
+
+  it('首尾空白不触发展开判定', () => {
+    expect(descriptionNeedsToggle('  ' + 'a'.repeat(60) + '  ')).toBe(false)
   })
 })

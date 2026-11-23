@@ -209,7 +209,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           @keydown="onSearchKeydown"
         />
         <kbd v-if="!query" class="nav-kbd">Ctrl K</kbd>
-        <button v-else class="nav-search-clear" type="button" aria-label="清除搜索" @click="query = ''">×</button>
+        <button type="button" v-else class="nav-search-clear" aria-label="清除搜索" @click="query = ''">×</button>
       </div>
 
       <nav class="nav" aria-label="功能区域" @keydown="onNavKeydown">
@@ -284,7 +284,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
             <div class="engine-sub">{{ state.ready ? `${state.tasks.length} 个清理任务` : '未连接' }}</div>
           </div>
         </div>
-        <button v-if="!collapsed" class="link-btn" type="button" @click="revealDataDir">打开数据目录</button>
+        <button type="button" v-if="!collapsed" class="link-btn" @click="revealDataDir">打开数据目录</button>
         <div class="sidebar-bottom">
           <button
             class="sidebar-toggle"

@@ -851,7 +851,7 @@ async function handleBulkCommand(command: string) {
                 <span v-if="itemsByTask.get(task.id)" class="task-result">
                   {{ itemsByTask.get(task.id)!.count }} 项 · {{ formatBytes(itemsByTask.get(task.id)!.bytes) }}
                 </span>
-                <button class="mini-btn" :disabled="scanning || cleaning" @click.stop="runScanSingle(task.id)">单独扫描</button>
+                <button type="button" class="mini-btn" :disabled="scanning || cleaning" @click.stop="runScanSingle(task.id)">单独扫描</button>
               </div>
             </div>
           </div>
@@ -963,9 +963,9 @@ async function handleBulkCommand(command: string) {
       <div class="cc-card result-card">
         <div class="result-head">
           <div class="view-tabs">
-            <button class="view-tab" :class="{ active: view === 'groups' }" data-view="groups" @click="view = 'groups'">分组总览</button>
-            <button class="view-tab" :class="{ active: view === 'items' }" data-view="items" @click="view = 'items'">逐项明细</button>
-            <button class="view-tab" :class="{ active: view === 'protected' }" data-view="protected" @click="view = 'protected'">受保护（{{ protectedItems.length }}）</button>
+            <button type="button" class="view-tab" :class="{ active: view === 'groups' }" data-view="groups" @click="view = 'groups'">分组总览</button>
+            <button type="button" class="view-tab" :class="{ active: view === 'items' }" data-view="items" @click="view = 'items'">逐项明细</button>
+            <button type="button" class="view-tab" :class="{ active: view === 'protected' }" data-view="protected" @click="view = 'protected'">受保护（{{ protectedItems.length }}）</button>
           </div>
           <div class="result-actions">
             <el-input v-model="search" size="small" placeholder="搜索名称 / 路径 / 说明…" clearable class="search-input" style="width: 220px" />
@@ -984,10 +984,10 @@ async function handleBulkCommand(command: string) {
         </div>
 
         <div v-if="view !== 'protected'" class="risk-filters">
-          <button class="risk-filter" :class="{ active: riskFilter === 'all' }" data-risk="all" @click="riskFilter = 'all'">全部 {{ cleanableItems.length }}</button>
-          <button class="risk-filter" :class="{ active: riskFilter === 'safe' }" data-risk="safe" @click="riskFilter = 'safe'">安全 {{ riskCounts.safe }}</button>
-          <button class="risk-filter" :class="{ active: riskFilter === 'caution' }" data-risk="caution" @click="riskFilter = 'caution'">谨慎 {{ riskCounts.caution }}</button>
-          <button class="risk-filter" :class="{ active: riskFilter === 'risky' }" data-risk="risky" @click="riskFilter = 'risky'">高风险 {{ riskCounts.risky }}</button>
+          <button type="button" class="risk-filter" :class="{ active: riskFilter === 'all' }" data-risk="all" @click="riskFilter = 'all'">全部 {{ cleanableItems.length }}</button>
+          <button type="button" class="risk-filter" :class="{ active: riskFilter === 'safe' }" data-risk="safe" @click="riskFilter = 'safe'">安全 {{ riskCounts.safe }}</button>
+          <button type="button" class="risk-filter" :class="{ active: riskFilter === 'caution' }" data-risk="caution" @click="riskFilter = 'caution'">谨慎 {{ riskCounts.caution }}</button>
+          <button type="button" class="risk-filter" :class="{ active: riskFilter === 'risky' }" data-risk="risky" @click="riskFilter = 'risky'">高风险 {{ riskCounts.risky }}</button>
           <span class="filter-sep" />
           <span class="cc-faint">{{ formatTime(scan.startedAt) }} 扫描 · 耗时 {{ formatDuration(scan.elapsedMs) }}</span>
           <span v-if="scan.stats.truncated" class="cc-pill risk-caution">结果已截断</span>
@@ -1036,10 +1036,10 @@ async function handleBulkCommand(command: string) {
                 <div class="cc-faint">{{ group.count }} 项</div>
               </div>
               <div class="group-actions">
-                <button class="mini-btn" @click="toggleExpanded(group.taskId)">
+                <button type="button" class="mini-btn" @click="toggleExpanded(group.taskId)">
                   {{ expanded.has(group.taskId) ? '收起' : `说明 / 样例（${group.samples.length}）` }}
                 </button>
-                <button class="mini-btn" @click="showTaskItems(group.taskId)">明细 →</button>
+                <button type="button" class="mini-btn" @click="showTaskItems(group.taskId)">明细 →</button>
               </div>
 
               <div v-if="expanded.has(group.taskId)" class="group-samples">
@@ -1054,8 +1054,8 @@ async function handleBulkCommand(command: string) {
                   </div>
                   <div class="sample-size">{{ formatBytes(sample.size) }}</div>
                   <div class="sample-actions">
-                    <button class="link" @click="openDetail(sample)">详情</button>
-                    <button class="link" @click="openPath(sample.path)">打开位置</button>
+                    <button type="button" class="link" @click="openDetail(sample)">详情</button>
+                    <button type="button" class="link" @click="openPath(sample.path)">打开位置</button>
                   </div>
                 </div>
                 <div v-if="group.count > group.samples.length" class="sample-more">
@@ -1137,8 +1137,8 @@ async function handleBulkCommand(command: string) {
             </el-table-column>
             <el-table-column label="操作" width="132">
               <template #default="{ row }">
-                <button class="link item-detail-btn" @click.stop="openDetail(row)">详情</button>
-                <button
+                <button type="button" class="link item-detail-btn" @click.stop="openDetail(row)">详情</button>
+                <button type="button"
                   v-if="row.kind === 'file' || row.kind === 'directory' || row.kind === 'entry'"
                   class="link"
                   @click.stop="openPath(row.path)"
@@ -1179,8 +1179,8 @@ async function handleBulkCommand(command: string) {
             </div>
             <div class="sample-size">{{ item.size ? formatBytes(item.size) : '—' }}</div>
             <div class="sample-actions">
-              <button class="link" @click="openDetail(item)">详情</button>
-              <button class="link" @click="openPath(item.path)">打开位置</button>
+              <button type="button" class="link" @click="openDetail(item)">详情</button>
+              <button type="button" class="link" @click="openPath(item.path)">打开位置</button>
             </div>
           </div>
           <div v-if="!protectedItems.length" class="cc-empty">本次扫描没有受保护项。</div>

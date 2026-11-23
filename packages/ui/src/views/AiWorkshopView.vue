@@ -15,7 +15,8 @@
 defineOptions({ name: 'AiWorkshopView' })
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { formatTime } from '@cordclean/shared'
+import { formatBytes, formatTime } from '@cordclean/shared'
+import SectionIcon from '../components/SectionIcon.vue'
 import type { AiModelInfo, AiPluginDraft, AiWorkshopStatus, PluginManifest } from '@cordclean/shared'
 import {
   cancelAiWorkshopDraft,
@@ -149,7 +150,7 @@ const activeContent = computed(() => files.value.find((item) => item.path === ac
 const activeSize = computed(() => new Blob([activeContent.value]).size)
 
 function fileSizeText(content: string): string {
-  return `${Math.max(1, Math.round(new Blob([content]).size / 1024))}KB`
+  return formatBytes(new Blob([content]).size)
 }
 const dependencies = computed(() => Object.entries(draft.value?.dependencies ?? {}))
 
@@ -683,7 +684,7 @@ onUnmounted(() => {
   <div class="workshop-page">
     <div class="workshop-head cc-card">
       <div>
-        <h2>🧪 AI 插件工坊</h2>
+        <h2><SectionIcon name="flask" /> AI 插件工坊</h2>
         <p class="cc-hint">
           用一句话描述 → 生成 <b>v2 插件包</b>（清单 + 多文件 + 可选 <code>client/</code> 页面）→ 静态校验 → 审阅与编辑 → 通过
           staging 安装事务落盘（失败自动回滚）。安装前必须人工确认：插件以完整 Node 权限运行。
@@ -887,7 +888,7 @@ onUnmounted(() => {
                     <span class="draft-title">{{ item.requirement }}</span>
                     <span class="draft-meta">
                       {{ item.name }} · {{ item.kind }} · {{ item.fileCount }} 文件 ·
-                      {{ (item.totalBytes / 1024).toFixed(1) }}KB
+                      {{ formatBytes(item.totalBytes) }}
                       <template v-if="item.dependencyCount"> · {{ item.dependencyCount }} 依赖</template>
                       · {{ formatTime(item.savedAt) }}
                     </span>

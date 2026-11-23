@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CATEGORIES, RISK_META } from '@cordclean/shared'
+import { CATEGORIES, RISK_META, formatBytes } from '@cordclean/shared'
 import { buildPluginPageResponse, parsePluginPageRequest } from '../api/plugin-page-bridge.ts'
 import type {
   PluginPackageIssue,
@@ -42,6 +42,7 @@ import {
   planBatch,
   pluginDiagnostics,
   pluginStatusLabel,
+  descriptionNeedsToggle,
   summarizePlugins,
   type PluginFilterStatus,
 } from './plugins-view-model.ts'
@@ -651,8 +652,8 @@ function categoryName(id: string) {
           <el-switch :model-value="plugin.enabled" @change="(v: any) => toggle(plugin, !!v)" />
         </div>
 
-        <p class="plugin-desc" :class="{ clamped: !expanded[plugin.id] }">{{ plugin.description }}</p>
-        <button v-if="plugin.description" class="desc-toggle" @click="toggleExpanded(plugin.id)">
+        <p :id="`plugin-desc-${plugin.id}`" class="plugin-desc" :class="{ clamped: !expanded[plugin.id] }">{{ plugin.description }}</p>
+        <button type="button" v-if="descriptionNeedsToggle(plugin.description)" class="desc-toggle" :aria-expanded="!!expanded[plugin.id]" :aria-controls="`plugin-desc-${plugin.id}`" @click="toggleExpanded(plugin.id)">
           {{ expanded[plugin.id] ? '收起' : '展开' }}
         </button>
 
@@ -679,7 +680,7 @@ function categoryName(id: string) {
           <span class="cc-pill" :class="`status-${plugin.status}`">{{ pluginStatusLabel(plugin.status) }}</span>
           <span class="cc-pill">{{ plugin.taskCount }} 个任务</span>
           <el-button v-if="plugin.id === 'rule-pack'" size="small" @click="ruleOpen = true">规则命中</el-button>
-          <span v-if="pluginStats(plugin).items" class="cc-pill">上次扫描 {{ pluginStats(plugin).items }} 项 · {{ (pluginStats(plugin).bytes / 1024 / 1024).toFixed(1) }} MB</span>
+          <span v-if="pluginStats(plugin).items" class="cc-pill">上次扫描 {{ pluginStats(plugin).items }} 项 · {{ formatBytes(pluginStats(plugin).bytes) }}</span>
         </div>
 
         <div v-if="plugin.tasks.length" class="task-chips">
@@ -767,7 +768,7 @@ function categoryName(id: string) {
       <el-table :data="ruleHits.slice(0, 50)" size="small" max-height="420">
         <el-table-column prop="name" label="规则" min-width="220" show-overflow-tooltip />
         <el-table-column prop="items" label="命中项" width="90" />
-        <el-table-column label="体积" width="110"><template #default="{ row }">{{ (row.bytes / 1024 / 1024).toFixed(1) }} MB</template></el-table-column>
+        <el-table-column label="体积" width="110"><template #default="{ row }">{{ formatBytes(row.bytes) }}</template></el-table-column>
       </el-table>
       <p v-if="!ruleHits.length" class="cc-faint">还没有扫描结果，先到清理页扫描一次。</p>
       <template #footer><el-button @click="ruleOpen = false">关闭</el-button></template>
@@ -956,12 +957,27 @@ function categoryName(id: string) {
 }
 
 .plugin-desc.clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.desc-toggle {
+  align-self: flex-start;
+  margin: -2px 0 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--cc-primary);
+  font-size: 11.5px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.desc-toggle:hover {
+  opacity: 0.85;
+}
 .plugin-desc {
   margin: 0;
   font-size: 12.5px;
   color: var(--cc-text-dim);
   line-height: 1.6;
-  min-height: 40px;
 }
 
 .plugin-meta {

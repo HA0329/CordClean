@@ -85,7 +85,7 @@
 1. `packages/ui/src/navigation.ts`：在 `NavAreaId` 加 id，`NAV_AREAS` 加一条（标签/分组/图标/关键词/说明）。
 2. `packages/ui/src/components/AreaIcon.vue`：若用新图标，补一个 `<template v-else-if>` 分支。
 
-> **图标规范（2026-11-23 统一）**：页面级卡片标题的图标统一用内联 SVG 组件 `components/SectionIcon.vue`（数据在 `components/section-icons.ts`，24×24、`currentColor`、`stroke-width=1.9`，与 `AreaIcon` 同一视觉规范）；**不要再用 emoji 当标题图标**。新增图标：在 `SectionIconName` 联合类型 + `SECTION_ICON_PATHS` 加一条路径；`tests/ui-template-integrity.test.ts` 会校验「设置分组图标存在」「常规页标题无 emoji」「模板引用的图标名都有定义」。
+> **图标规范（2026-11-23 统一）**：页面级卡片标题的图标统一用内联 SVG 组件 `components/SectionIcon.vue`（数据在 `components/section-icons.ts`，24×24、`currentColor`、`stroke-width=1.9`，与 `AreaIcon` 同一视觉规范）；**所有页面（含 AI 顾问/工坊）的 h1-h4 标题、顶栏状态/主题/退出按钮都不要再使用 emoji 当图标**；原生 ``<button>`` 必须显式 ``type="button"``（``el-form`` 内否则可能触发原生 submit）；体积展示统一用 ``@cordclean/shared`` 的 ``formatBytes``、时间统一 ``formatTime``。新增图标：在 `SectionIconName` 联合类型 + `SECTION_ICON_PATHS` 加一条路径；`tests/ui-template-integrity.test.ts` 会校验「设置分组图标存在」「常规页标题无 emoji」「模板引用的图标名都有定义」。
 3. 新建 `views/XxxView.vue`，页面顶部统一使用 `cc-page-title > h1` 结构（e2e 依赖）。
 4. `App.vue` 的 `views` 映射加一行。
 5. `scripts/e2e-ui.mjs` 的 `expected` 加 `{ page: 'xxx', title: '...' }`；`tests/ui-navigation.test.ts` 的覆盖数量会自动校验。

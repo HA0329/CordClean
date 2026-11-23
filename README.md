@@ -7,7 +7,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.10`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、73 个 RPC 方法；95 个测试文件 / 711 个用例。
+当前版本 `0.6.10`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、73 个 RPC 方法；95 个测试文件 / 716 个用例。
 
 更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md) · 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md) · 安全政策：[SECURITY.md](SECURITY.md)
 
@@ -52,7 +52,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 72 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（711 个用例 / 95 个文件；口径见 [项目事实表](docs/project-facts.md)）
+- **测试**：Vitest（716 个用例 / 95 个文件；口径见 [项目事实表](docs/project-facts.md)）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -103,7 +103,7 @@ pnpm start:desktop    # Electron 桌面应用
 │   ├── host/                 # 传输层：RPC 方法 + WebSocket/HTTP 宿主
 │   ├── ui/                   # 界面：Vue 3 单页应用
 │   └── plugins/              # 12 个清理插件（每个是一个独立包）
-├── tests/                    # Vitest 测试（95 个文件 / 711 用例）
+├── tests/                    # Vitest 测试（95 个文件 / 716 用例）
 ├── bench/                    # 性能基准脚本
 ├── scripts/                  # 构建、冒烟测试、插件自测、Mock LLM、E2E
 └── docs/                     # 架构、威胁模型、插件规范、论文素材
@@ -270,7 +270,7 @@ PC-Cleaner v0.9.11 的即时通讯数据保护（`WeChat Files` / `Tencent Files
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 711 个用例 / 95 个文件
+pnpm test          # 716 个用例 / 95 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md + docs/benchmark.json
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）

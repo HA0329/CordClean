@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import type { UiCardContribution, UiContributionEntry } from '@cordclean/shared'
 import { fetchUiContributions, resolvePluginUi, state } from '../api/store.ts'
+import SectionIcon from './SectionIcon.vue'
 
 interface CardView {
   pluginId: string
@@ -145,7 +146,7 @@ onUnmounted(() => {
 <template>
   <div v-if="cards.length" class="cc-card plugin-cards">
     <div class="cc-card-title">
-      <h3>🧩 插件卡片</h3>
+      <h3><SectionIcon name="puzzle" /> 插件卡片</h3>
       <span class="cc-faint">由通用插件贡献 · {{ cards.length }} 项</span>
     </div>
     <div class="plugin-card-grid">

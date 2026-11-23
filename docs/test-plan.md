@@ -1,6 +1,6 @@
 # 测试设计（全量测试分层）
 
-当前规模：**95 个测试文件 / 711 个用例**（`pnpm exec vitest list --json`，2026-11-23；含 E7/E8 设计属性验证）。
+当前规模：**95 个测试文件 / 716 个用例**（`pnpm exec vitest list --json`，2026-11-23；含 E7/E8 设计属性验证）。
 
 > 数量口径以 [项目事实表](project-facts.md) 为准；本文件随测试增删同步更新，不要在各处手写用例数。
 
@@ -21,7 +21,7 @@
 | 设计属性 | e7-unload / e8-dependency | E7：正例 `ctx.effect` 资源卸载归零；反例未登记资源残留对照。E8：provider/consumer 依赖挂起与自动恢复（[E7](experiments/e7-unload-residue.md) / [E8](experiments/e8-dependency-response.md)） |
 | 界面区域模型 | `overview-view-model` / `clean-view-model` / `plugins-view-model` / `ai-view-model` / `ai-workshop-view-model` / `history-view-model` / `settings-view-model` | 各功能区三态、空状态分型、筛选/排序/批处理/错误分类/引导态等纯函数单测 |
 | 内置插件契约 | `plugin-<id>-contract` ×12 + `audit-plugin.ts` | 每个内置插件独立：默认状态、启用路径、任务注册数量与清单一致、任务元数据合法；真实扫描审计只读 |
-| 界面导航 | `ui-navigation` | 区域解析、深链接/瞬态页回落、搜索过滤、快捷键、偏好存储容错、状态徽标 |
+| UI 模板完整性 | `ui-template-integrity` | 静态扫描 Vue 模板：无正则/转义片段、h1-h4 无 emoji 图标、原生 button 必须 type、体积统一 formatBytes、SectionIcon 引用齐全 |`n| 界面导航 | `ui-navigation` | 区域解析、深链接/瞬态页回落、搜索过滤、快捷键、偏好存储容错、状态徽标 |
 | 选择交互 | selection | 推荐/分组/筛选/排序/汇总纯函数与千条级性能 |
 | 界面 | `scripts/e2e-ui.mjs`、`scripts/verify-clean-ui.mjs` | 6 页面渲染、扫描链路、v2 选择交互、无头 Edge 千条级验收 |
 | 审计/基准 | `scripts/audit-plugins.ts`、`scripts/audit-rules.ts`、`bench/scan.bench.ts` | 插件契约审计（只读）、规则库审计、性能基准 |

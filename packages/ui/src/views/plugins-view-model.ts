@@ -202,3 +202,13 @@ export function emptyFilterHint(query: string | null | undefined, status: Plugin
   if (status === 'stopped') return '所有插件都在运行中'
   return '没有插件'
 }
+/**
+ * 描述是否长到需要「展开/收起」。
+ *
+ * 短描述（如「统计并清空各磁盘回收站」）再给一个「展开」按钮没有意义，
+ * 还会在卡片里撑出空白、把按钮顶到中间；这里用纯函数判断，模板只渲染需要的按钮。
+ */
+export function descriptionNeedsToggle(description: unknown, limit = 60): boolean {
+  const text = typeof description === 'string' ? description.trim() : ''
+  return text.length > limit
+}

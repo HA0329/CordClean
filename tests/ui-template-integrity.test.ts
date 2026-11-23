@@ -1,17 +1,19 @@
 /**
  * UI 模板完整性回归：防止「批量替换/正则片段」被误写进界面文案，
- * 同时守住页面级标题的图标规范（内联 SVG `SectionIcon`，不再用 emoji 当标题图标）。
+ * 并守住页面级标题图标/按钮/格式化规范。
  *
- * 背景（2026-11-23）：
- * 1) 设置区升级时 11 个分组标题被写成 `<h3>[^<]*🧹\ 清理行为</h3>`，正则片段直接渲染；
- * 2) 侧边栏已换成内联 SVG 图标后，设置/概览/清理/历史页的卡片标题仍是 emoji 旧样式。
- * 这两类问题都靠静态单测兜底，避免再次靠肉眼发现。
+ * 背景（2026-11-23 细节审查发现的问题）：
+ * 1) 设置区 11 个分组标题被写成 `<h3>[^<]*🧹\ 清理行为</h3>`，正则片段直接渲染；
+ * 2) 侧边栏换内联 SVG 图标后，页面标题仍在用 emoji（旧样式）；
+ * 3) 26 个原生 `<button>` 漏写 `type`，设置页在 `el-form` 内的按钮可能触发原生提交；
+ * 4) 插件/工坊/设置页手写 MB/KB 格式化，与共享 `formatBytes` 不一致。
+ * 这些都由静态单测兜底，避免再次靠肉眼发现。
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { SETTINGS_GROUPS } from '../packages/ui/src/views/settings-view-model.ts'
-import { SECTION_ICON_PATHS, type SectionIconName } from '../packages/ui/src/components/section-icons.ts'
+import { SECTION_ICON_PATHS } from '../packages/ui/src/components/section-icons.ts'
 
 const UI_SRC = path.resolve('packages/ui/src')
 const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u
@@ -73,19 +75,43 @@ describe('UI 模板完整性', () => {
     }
   })
 
-  it('常规页（概览/清理/历史/设置）的卡片标题不再用 emoji 当图标', () => {
+  it('所有页面的 h1-h4 标题都不再用 emoji 当图标', () => {
     const problems: string[] = []
-    for (const view of ['OverviewView.vue', 'CleanView.vue', 'HistoryView.vue', 'SettingsView.vue']) {
-      const file = path.join(UI_SRC, 'views', view)
+    for (const file of vueFiles) {
       readFileSync(file, 'utf8')
         .split(/\r?\n/)
         .forEach((line, index) => {
-          if (/<h[23][\s>]/.test(line) && EMOJI.test(line)) {
-            problems.push(`${view}:${index + 1}: ${line.trim()}`)
+          if (/<h[1-4][\s>]/.test(line) && EMOJI.test(line)) {
+            problems.push(`${path.relative(process.cwd(), file)}:${index + 1}: ${line.trim()}`)
           }
         })
     }
-    expect(problems, `常规页标题仍有 emoji：\n${problems.join('\n')}`).toEqual([])
+    expect(problems, `页面标题仍有 emoji：\n${problems.join('\n')}`).toEqual([])
+  })
+
+  it('所有 <button> 都必须显式 type（避免表单内默认 submit）', () => {
+    const problems: string[] = []
+    for (const file of vueFiles) {
+      const text = readFileSync(file, 'utf8')
+      for (const match of text.matchAll(/<button\b(?:(?!>).)*>/g)) {
+        if (!/type=/.test(match[0])) problems.push(`${path.relative(process.cwd(), file)}: ${match[0].trim()}`)
+      }
+    }
+    expect(problems, `缺少 type="button" 的按钮：\n${problems.join('\n')}`).toEqual([])
+  })
+
+  it('视图不再手写 MB/KB 体积格式化（统一用 formatBytes）', () => {
+    const problems: string[] = []
+    for (const file of vueFiles) {
+      readFileSync(file, 'utf8')
+        .split(/\r?\n/)
+        .forEach((line, index) => {
+          if (/toFixed\(\d+\)\s*\}\}\s*(MB|KB|GB)/.test(line) || /\}\}KB/.test(line) || /\/ 1024 \/ 1024\)\.toFixed/.test(line)) {
+            problems.push(`${path.relative(process.cwd(), file)}:${index + 1}: ${line.trim()}`)
+          }
+        })
+    }
+    expect(problems, `手写体积格式化：\n${problems.join('\n')}`).toEqual([])
   })
 
   it('设置分组图标都在 SectionIcon 路径表里，且路径数据非空', () => {
