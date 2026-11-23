@@ -172,15 +172,26 @@ const readiness = computed(() =>
   }),
 )
 
-const generateAvailability = computed<Gate>(() =>
-  generateGate({
+const modelReady = computed(() => Boolean(String(workshopStatus.value?.model || workshopConfig.model || '').trim()))
+
+/**
+ * 生成按钮门禁：先按「忙碌/需求/启用/Key」给出第一个真实原因，
+ * 再补一条「没有可用模型」——只配了 Key 但没有模型时也不会生成。
+ */
+const generateAvailability = computed<Gate>(() => {
+  const gate = generateGate({
     busy: busy.value,
     installing: installing.value,
     requirement: requirement.value,
     available: available.value,
     configured: configured.value,
-  }),
-)
+  })
+  if (!gate.ok) return gate
+  if (!modelReady.value) {
+    return { ok: false, reason: '工坊还没有可用模型：打开接口设置拉取模型列表或手动填写模型名（无模型时不会生成）' }
+  }
+  return gate
+})
 
 const generation = computed(() =>
   generationStageView({
@@ -227,6 +238,14 @@ const installAvailability = computed<Gate>(() =>
 )
 
 const historyItems = computed(() => draftHistoryItems(draftHistory.value))
+
+/** 生成端自动修复记录（工坊在安装前自检时补齐/修正清单字段）；只用于界面提示 */
+const autoRepairNote = computed(() => {
+  const notes = draft.value?.notes ?? ''
+  const marker = notes.indexOf('[已自动修复]')
+  if (marker < 0) return ''
+  return notes.slice(marker).replace(/\s+/g, ' ').trim().slice(0, 280)
+})
 
 /* -------------------------------- 计时器 -------------------------------- */
 
@@ -488,6 +507,30 @@ function applyExample(text: string): void {
   requirement.value = text
 }
 
+/**
+ * 生成失败归类：宿主错误码优先；但安装前校验/输出截断等失败在传输层会统一兜底成
+ * INVALID_RESPONSE，界面按脱敏后的真实文案纠正分类，避免把「校验未通过」误报成「无法解析」。
+ */
+function classifyGenerationError(err: unknown): WorkshopFailure {
+  const failure = classifyWorkshopFailure(err)
+  const text = sanitizeErrorMessage(err)
+  if (!text) return failure
+  const refined = classifyWorkshopFailure(new Error(text))
+  return refined.kind === 'unknown' ? failure : refined
+}
+
+/** 安装失败文案：保留宿主原始信息，并在后面补上可执行的下一步 */
+function explainInstallFailure(raw: string): string {
+  if (/同名|已安装|already/i.test(raw)) return `${raw}（到插件页卸载同名插件后再安装）`
+  if (/校验|清单|入口源码|静态契约|bridge|client/i.test(raw)) {
+    return `${raw}（安装前校验被宿主拒绝：上方校验闸门已重新校验，修正后再安装）`
+  }
+  if (/依赖|acknowledge/i.test(raw)) return `${raw}（插件声明了第三方依赖：先勾选依赖确认再安装）`
+  if (/权限|acknowledgePermissions|已阅读/i.test(raw)) return `${raw}（先勾选「我已阅读清单与代码」再安装）`
+  if (/EPERM|EACCES|ENOSPC|磁盘|空间|只读/i.test(raw)) return `${raw}（可能是磁盘空间/目录权限问题，可检查数据目录后重试）`
+  return raw
+}
+
 async function generate(): Promise<void> {
   const gate = generateAvailability.value
   if (!gate.ok) {
@@ -512,10 +555,14 @@ async function generate(): Promise<void> {
     resetReview()
     await revalidate()
     rememberDraft(text, draft.value ?? next)
-    ElMessage.success('已生成插件包草稿，请检查校验结果')
+    ElMessage.success(
+      next.notes?.includes('[已自动修复]')
+        ? '已生成插件包草稿（部分清单字段已自动修复），请检查校验结果'
+        : '已生成插件包草稿，请检查校验结果',
+    )
   } catch (err) {
     if (seq !== generateSeq) return
-    generationError.value = classifyWorkshopFailure(err)
+    generationError.value = classifyGenerationError(err)
   } finally {
     if (seq === generateSeq) {
       busy.value = false
@@ -660,8 +707,10 @@ async function install(): Promise<void> {
     reviewed.value = false
     dependenciesAccepted.value = false
   } catch (err) {
-    installError.value = sanitizeErrorMessage(err) || '安装失败（未知原因）'
+    installError.value = explainInstallFailure(sanitizeErrorMessage(err) || '安装失败（未知原因）')
     ElMessage.error('安装失败：' + installError.value)
+    // 宿主的安装前校验与界面校验同源；失败后重新校验一次，让上方闸门显示最新问题
+    void revalidate()
   } finally {
     installing.value = false
   }
@@ -790,6 +839,10 @@ onUnmounted(() => {
               {{ generateAvailability.reason }}
             </span>
           </div>
+          <p v-if="!readiness.ready && readiness.blockers.length && !busy" class="cc-hint setup-blocked-note" role="status">
+            生成必须使用工坊自己的 AI 接口：{{ readiness.blockers.map((item) => item.title).join('；') }}。
+            未配置 Key / 无模型时工坊不可用（预期行为），不提供离线模板或其它绕过方式；请先按上方准备步骤补齐。
+          </p>
 
           <div v-if="busy" class="generation-progress" role="status" aria-live="polite">
             <div class="generation-head">
@@ -963,6 +1016,7 @@ onUnmounted(() => {
             <span v-if="effectiveManifest?.permissions?.subprocess"> · 子进程</span>
             · 完整权限运行，无法沙箱隔离
           </p>
+          <p v-if="autoRepairNote" class="cc-hint repair-note" :title="draft.notes">🛠 {{ autoRepairNote }}</p>
 
           <!-- 安装前校验摘要：闸门通过/未通过 + 危险 API 命中 -->
           <div class="validation-summary" :class="'is-' + validationSummary.status" aria-live="polite">
@@ -1072,6 +1126,9 @@ onUnmounted(() => {
           <el-checkbox v-model="reviewed" style="margin-top: 10px" :disabled="installing">
             我已阅读上述清单与代码，理解它会以完整权限运行
           </el-checkbox>
+          <p class="cc-hint install-check-hint">
+            安装前宿主会再用与安装同一套校验器检查清单 / 入口源码 / client 页面；任一项不通过都会拒绝安装且不写入文件。
+          </p>
           <div class="workshop-actions">
             <el-button
               type="primary"
@@ -1272,6 +1329,15 @@ onUnmounted(() => {
 .draft-restore:focus-visible { outline: 2px solid var(--cc-primary); outline-offset: 1px; }
 .workshop-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
 .gate-hint { font-size: 12px; color: var(--cc-warning, #b45309); }
+.setup-blocked-note {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--cc-border);
+  border-radius: 8px;
+  color: var(--cc-warning, #b45309);
+}
+.repair-note { color: var(--cc-warning, #b45309); }
+.install-check-hint { margin: 6px 0 0; }
 .guide-ready { margin: 0 0 6px; font-size: 12.5px; color: var(--cc-success, #1f9d55); }
 .workshop-guide .cc-card-title { margin-bottom: 10px; }
 .guide-list { display: flex; flex-direction: column; gap: 8px; }

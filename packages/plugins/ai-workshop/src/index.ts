@@ -10,8 +10,7 @@
 import Schema from 'schemastery'
 import { Service, type Context } from 'cordis'
 import { defineCleanerPlugin } from '@cordclean/shared'
-import { checkPluginSource } from '@cordclean/shared'
-import type { AiModelInfo, AiPluginDraft, AiPluginFile, AiWorkshopStatus, PluginManifest } from '@cordclean/shared'
+import type { AiModelInfo, AiPluginDraft, AiWorkshopStatus } from '@cordclean/shared'
 import {
   AiError,
   FALLBACK_MODELS,
@@ -33,6 +32,7 @@ import {
   requestSse,
   type AiConfig,
 } from '@cordclean/plugin-ai'
+import { WORKSHOP_PACKAGE_CONTRACT, prepareWorkshopDraft } from './contract.ts'
 
 export const Config = Schema.object({
   apiKey: Schema.string().default('').description('工坊独立 API Key（留空则读取环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY）'),
@@ -152,6 +152,20 @@ export class AiWorkshopService extends Service {
     return true
   }
 
+  /** 向界面推送生成阶段（request/streaming/received/validating/retry/done/cancelled） */
+  private emitProgress(phase: string, extra: { textLength?: number; toolCalls?: number } = {}): void {
+    try {
+      ;(this.ctx.emit as any)('ai/workshop/progress', {
+        phase,
+        textLength: Math.max(0, Math.floor(Number(extra.textLength) || 0)),
+        toolCalls: Math.max(0, Math.floor(Number(extra.toolCalls) || 0)),
+        elapsedMs: 0,
+      })
+    } catch {
+      /* UI 未连接忽略 */
+    }
+  }
+
   /** 真实流式生成（chat 形态）：边收 token / tool_calls 边上报进度，失败回退非流式 */
   private async streamChatDraft(
     request: ReturnType<typeof buildRequest>,
@@ -244,7 +258,7 @@ export class AiWorkshopService extends Service {
     const key = this.resolveKey()
     if (!key) {
       throw new AiError(
-        'AI 插件工坊还没有配置 API Key：请在「AI 插件工坊」页面的接口设置里填写，或设置环境变量 DEEPSEEK_API_KEY',
+        'AI 插件工坊还没有配置 API Key：请在「AI 插件工坊」页面的接口设置里填写，或设置环境变量 DEEPSEEK_API_KEY。未配置 Key 时工坊不可用（这是预期行为），也不会提供离线生成/模板等绕过方式。',
         'AUTH',
       )
     }
@@ -252,15 +266,21 @@ export class AiWorkshopService extends Service {
     const brief = this.projectBrief()
     const extra = String(base.systemPrompt ?? '').trim()
     const attempts = Math.max(1, Math.min(5, Math.trunc(base.retries ?? 1) + 1))
+    const baseMaxTokens = Math.max(32_768, base.maxTokens || 65_536)
+    /** 只有「输出被截断」才扩容 token；契约/语法失败扩容只会让输出更啰嗦 */
+    let boostTokens = false
     let lastError = '生成失败'
+    let lastFailure: 'unknown' | 'truncated' | 'contract' | 'syntax' | 'empty' = 'unknown'
     let feedback = ''
 
     for (let attempt = 0; attempt < attempts; attempt++) {
       // 每轮尝试前检查取消：用户放弃后不再发起重试/下一次请求
       if (signal.aborted) throw new AiError('生成已取消', 'CANCELLED')
-      const maxTokens = Math.min(131_072, Math.max(32_768, base.maxTokens || 65_536) * (attempt ? 2 : 1))
+      const maxTokens = boostTokens ? Math.min(131_072, baseMaxTokens * 2) : baseMaxTokens
       const systemPrompt =
         PLUGIN_SYSTEM_PROMPT +
+        '\n\n' +
+        WORKSHOP_PACKAGE_CONTRACT +
         (brief ? '\n\n' + brief : '') +
         (extra ? '\n\n【工坊额外要求】\n' + extra : '')
       const request = buildRequest(
@@ -270,11 +290,7 @@ export class AiWorkshopService extends Service {
         PLUGIN_USER_PREFIX + demand + feedback,
         [PLUGIN_TOOL],
       )
-      try {
-        ;(this.ctx.emit as any)('ai/workshop/progress', { phase: 'request', textLength: 0, toolCalls: 0, elapsedMs: 0 })
-      } catch {
-        /* UI 未连接忽略 */
-      }
+      this.emitProgress('request')
       let parsed: any
       let streamedToolArgs: any
       const streamed = await this.streamChatDraft(request, base, signal)
@@ -300,77 +316,74 @@ export class AiWorkshopService extends Service {
         parsed = parseResponse(base, result.payload)
       }
       if (parsed.truncated) {
+        lastFailure = 'truncated'
         lastError = `输出被截断（${parsed.finish ?? 'length'}）`
-        feedback = '\n\n上一次输出被截断。请直接输出完整、可运行的代码，不要省略、不要 JSON 包装。'
+        boostTokens = true
+        feedback = '\n\n上一次输出被截断。请直接输出完整、可运行的代码，不要省略、不要 JSON 包装；优先给精简实现，避免重复代码。'
+        this.emitProgress('retry')
         continue
       }
       const toolArgs = streamedToolArgs ?? parsed.toolCalls?.find((call: any) => call.name === 'emit_plugin')?.arguments ?? extractToolArgsFromText(parsed.text)
-      const packageFiles = normalizePluginFiles(toolArgs?.files) as AiPluginFile[]
-      const packageManifest = normalizePluginManifest(toolArgs?.manifest) as PluginManifest | undefined
+      const packageFiles = normalizePluginFiles(toolArgs?.files)
+      const packageManifest = normalizePluginManifest(toolArgs?.manifest)
       const entryName = packageManifest?.entry || 'index.mjs'
-      const fileCode = packageFiles.find((file) => file.path === entryName)?.content
+      // code 在工具契约里是可选的（推荐直接放 files）；按「manifest.entry → index.mjs → 第一个文件」兜底，
+      // 避免模型只给 files 时被误判为“没有返回有效代码”。
+      const fileCode =
+        packageFiles.find((file) => file.path === entryName)?.content ??
+        packageFiles.find((file) => file.path === 'index.mjs')?.content ??
+        packageFiles[0]?.content
       const code =
         toolArgs && typeof toolArgs.code === 'string' && toolArgs.code.trim()
           ? toolArgs.code.trim()
           : fileCode || extractPluginCode(parsed.text)
       const dependencies = normalizeDependencies(toolArgs?.dependencies ?? extractDependenciesFromText(parsed.text))
       const kind = pickPluginKind(toolArgs?.kind ?? extractKindFromCode(code))
-      if (!code) {
+      if (!code && packageFiles.length === 0) {
+        lastFailure = 'empty'
         lastError = '模型没有返回有效的插件代码'
-        feedback = '\n\n上一次没有返回有效代码。请输出 files 数组（至少包含入口文件），或输出单文件 code。'
+        feedback = '\n\n上一次没有返回有效代码。请输出 files 数组（至少包含入口文件 index.mjs），或输出单文件 code。'
+        this.emitProgress('retry')
         continue
       }
-      try {
-        ;(this.ctx.emit as any)('ai/workshop/progress', { phase: 'validating', textLength: parsed.text.length, toolCalls: 1, elapsedMs: 0 })
-      } catch {
-        /* ignore */
-      }
-      const allowRelativeImports = packageFiles.length > 0
-      // 模型偶尔会漏写 inject；对生成的草稿做一次保守的自动补全，避免静态校验/运行时失败
-      const injection = repairPluginInjections(code)
-      const contributions = repairPluginContributions(injection.code)
-      let repairedCode = contributions.code
-      if (injection.added.length) {
-        const entryFile = packageFiles.find((file) => file.path === entryName)
-        if (entryFile) entryFile.content = repairedCode
-      }
-      const addedServices = [...injection.added, ...contributions.added]
-      const check = checkPluginSource(repairedCode, { dependencies, mode: 'native', allowRelativeImports })
-      if (!check.ok) {
-        lastError = check.errors.slice(0, 2).join('；')
-        feedback =
-          '\n\n上一次生成的插件代码未通过静态契约检查：\n- ' +
-          check.errors.join('\n- ') +
-          '\n请修正后重新输出完整插件包：原生 Cordis 插件用 export function apply(ctx)；不要 import 框架包；第三方包必须在 dependencies 中声明。'
-        continue
-      }
-      const syntaxError = await checkPluginSyntax(repairedCode)
-      if (syntaxError) {
-        lastError = '语法错误：' + syntaxError
-        feedback = '\n\n上一次生成的插件代码有语法错误：\n' + syntaxError + '\n请输出语法完整、括号配对的代码。'
-        continue
-      }
-      const matched = repairedCode.match(/(?:export\s+const\s+name\s*=|name\s*:)\s*['"]([a-zA-Z0-9_-]+)['"]/)
-      try {
-        ;(this.ctx.emit as any)('ai/workshop/progress', { phase: 'done', textLength: parsed.text.length, toolCalls: 1, elapsedMs: 0 })
-      } catch {
-        /* ignore */
-      }
-      return {
-        name: matched?.[1] ?? packageManifest?.id ?? 'ai-plugin',
-        code: repairedCode,
-        notes:
-          parsed.text.slice(0, 200) +
-          (addedServices.length ? `（已自动补全：${addedServices.join(', ')}）` : ''),
+      this.emitProgress('validating', { textLength: parsed.text.length, toolCalls: 1 })
+      // 安装前自检：与宿主安装事务共用同一套共享校验器（清单 / 文件 / 入口源码 / client bridge）。
+      // 能自动修的字段直接修；修不了的把可读错误回喂给模型重试，避免「生成成功但装不上」。
+      const prep = prepareWorkshopDraft({
+        name: toolArgs?.name,
+        code,
+        files: packageFiles,
+        manifest: packageManifest,
         dependencies,
-        mode: 'native',
         kind,
-        format: 'package',
-        ...(packageManifest ? { manifest: packageManifest } : {}),
-        ...(packageFiles.length ? { files: packageFiles } : {}),
+        notes: parsed.text.slice(0, 200),
+      })
+      if (prep.errors.length) {
+        lastFailure = 'contract'
+        lastError = prep.errors.slice(0, 3).join('；')
+        feedback =
+          '\n\n上一次生成的插件包未通过安装前校验（宿主安装时会再次执行同一套校验）：\n- ' +
+          prep.errors.join('\n- ') +
+          '\n请逐条修正后重新输出完整插件包（manifest 与 files 必须一致；不要 import 未声明包；不要使用禁止 API）。'
+        this.ctx.logger.info('工坊插件包未通过安装前校验，自动重试：%s', prep.errors[0])
+        this.emitProgress('retry', { textLength: parsed.text.length, toolCalls: 1 })
+        continue
       }
+      const syntaxError = await checkPluginSyntax(prep.draft.code)
+      if (syntaxError) {
+        lastFailure = 'syntax'
+        lastError = '语法错误：' + syntaxError
+        feedback = '\n\n上一次生成的插件代码有语法错误：\n' + syntaxError + '\n请输出语法完整、括号配对的代码，不要省略结尾。'
+        this.ctx.logger.info('工坊插件代码语法错误，自动重试：%s', syntaxError.slice(0, 200))
+        this.emitProgress('retry', { textLength: parsed.text.length, toolCalls: 1 })
+        continue
+      }
+      // 校验期间用户可能点了「放弃生成」：迟到的结果不再返回给界面
+      if (signal.aborted) throw new AiError('生成已取消', 'CANCELLED')
+      this.emitProgress('done', { textLength: parsed.text.length, toolCalls: 1 })
+      return prep.draft
     }
-    throw new AiError(lastError, 'INVALID_RESPONSE')
+    throw finalDraftError(lastFailure, lastError)
   }
 }
 
@@ -403,48 +416,33 @@ function extractKindFromCode(code: string): string {
   return matched?.[1] ?? ''
 }
 
-const KNOWN_SERVICES = new Set([
-  'ui', 'cleaner', 'system', 'settings', 'window', 'pathPolicy', 'rules', 'evaluator',
-  'history', 'quarantine', 'compensate', 'executor', 'recycleBin', 'ai', 'aiContext', 'egress',
-])
-
-/** 自动补全 inject：生成草稿偶尔使用了 ctx.X 但忘记声明；返回修正后的代码与新增服务 */
-function repairPluginInjections(code: string): { code: string; added: string[] } {
-  const used = new Set<string>()
-  for (const match of code.matchAll(/ctx\.([A-Za-z_$][\w$]*)/g)) {
-    if (KNOWN_SERVICES.has(match[1])) used.add(match[1])
+/**
+ * 多次重试后的最终失败：按最后一次失败的阶段给准确错误码与可读文案。
+ * - 安装前校验 / 语法问题属于「生成物不合契约」→ BAD_REQUEST（界面归类为校验失败，可重试）；
+ * - 截断 / 空输出属于「模型没有给出完整内容」→ INVALID_RESPONSE；
+ * - 传输层错误（AUTH/TIMEOUT/NETWORK/CANCELLED）在请求阶段就抛出，不经过这里。
+ */
+function finalDraftError(kind: 'unknown' | 'truncated' | 'contract' | 'syntax' | 'empty', detail: string): AiError {
+  const reason = String(detail ?? '').trim() || '生成失败（未知原因）'
+  if (kind === 'truncated') {
+    return new AiError(
+      `模型输出被截断：多次重试仍未完整输出（可把需求拆小，或在接口设置里调大最大输出 token）。最后一次：${reason}`,
+      'INVALID_RESPONSE',
+    )
   }
-  if (!used.size) return { code, added: [] }
-  const injectMatch = code.match(/export\s+const\s+inject\s*=\s*\[([^\]]*)\]/)
-  const existing = injectMatch
-    ? [...injectMatch[1].matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1])
-    : []
-  const merged = [...new Set([...existing, ...used])].filter((service) => KNOWN_SERVICES.has(service))
-  const added = merged.filter((service) => !existing.includes(service))
-  if (!added.length) return { code, added: [] }
-  const declaration = 'export const inject = ' + JSON.stringify(merged) + ';'
-  let fixed = code
-  if (injectMatch) {
-    fixed = code.replace(injectMatch[0], declaration)
-  } else if (/export\s+function\s+apply\s*\(/.test(code)) {
-    fixed = code.replace(/(export\s+function\s+apply\s*\()/, declaration + '\n\n$1')
-  } else {
-    return { code, added: [] }
+  if (kind === 'contract') {
+    return new AiError(
+      `生成的插件包未通过安装前校验：${reason}。可以重试生成，或把需求拆小/补充约束后再试。`,
+      'BAD_REQUEST',
+    )
   }
-  return { code: fixed, added }
-}
-
-/** 自动补全 active 等插件的 commands 贡献：模型可能只调用 ctx.ui.command 但忘记导出 contributes */
-function repairPluginContributions(code: string): { code: string; added: string[] } {
-  if (/export\s+const\s+contributes\s*=/.test(code)) return { code, added: [] }
-  const ids = [...code.matchAll(/ctx\.ui\.command\(\s*name\s*,\s*['"]([^'"]+)['"]/g)].map((match) => match[1])
-  if (!ids.length) return { code, added: [] }
-  const declaration =
-    'export const contributes = ' +
-    JSON.stringify({ commands: ids.map((id) => ({ id, title: id })) }) +
-    ';\n\n'
-  if (!/export\s+function\s+apply\s*\(/.test(code)) return { code, added: [] }
-  return { code: code.replace(/(export\s+function\s+apply\s*\()/, declaration + '$1'), added: ids.map((id) => `command:${id}`) }
+  if (kind === 'syntax') {
+    return new AiError(`生成的插件代码有语法错误：${reason}。可以重试生成，或补充“输出完整代码”的要求。`, 'BAD_REQUEST')
+  }
+  if (kind === 'empty') {
+    return new AiError('模型没有返回有效的插件代码：请补充入口文件/插件包要求后重试。', 'INVALID_RESPONSE')
+  }
+  return new AiError(reason, 'INVALID_RESPONSE')
 }
 
 export default defineCleanerPlugin<Partial<AiConfig> & { extraBodyText?: string; extraHeadersText?: string }>({
