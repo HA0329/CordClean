@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import WorkflowSteps from '../components/WorkflowSteps.vue'
+import {
+  MAX_PERSISTED_SELECTION,
+  emptyResultKind,
+  parseCleanSession,
+  restoreSelection,
+  shouldRestoreSession,
+} from './clean-view-model.ts'
 import {
   CATEGORIES,
   RISK_META,
@@ -88,6 +95,8 @@ const VIEW_KEY = 'cordclean.clean.view'
 const PAGE_SIZE_KEY = 'cordclean.clean.pageSize'
 const SORT_KEY = 'cordclean.clean.sort'
 const POLICY_KEY = 'cordclean.clean.recommendPolicy'
+/** 同一次扫描结果下的筛选/选择会话（离开页面再回来时恢复） */
+const SESSION_KEY = 'cordclean.clean.session'
 
 function loadPref<T>(key: string, fallback: T): T {
   try {
@@ -95,6 +104,14 @@ function loadPref<T>(key: string, fallback: T): T {
     return raw === null ? fallback : (JSON.parse(raw) as T)
   } catch {
     return fallback
+  }
+}
+
+function loadRaw(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
   }
 }
 
@@ -608,19 +625,76 @@ async function runScanSingle(taskId: string) {
   await runScanWith([taskId])
 }
 
-// 新扫描结果：应用推荐策略、重置筛选与选择（首次加载已有扫描结果时同样适用）
+/* 空结果分类：扫描中 / 真的没有可清理项 / 只有受保护项 / 被筛选藏掉 */
+const emptyKind = computed(() =>
+  emptyResultKind({
+    hasScan: Boolean(scan.value),
+    scanning: scanning.value,
+    cleanableCount: cleanableItems.value.length,
+    protectedCount: protectedItems.value.length,
+    filteredCount: filtered.value.length,
+    filtersActive: filtersActive.value,
+  }),
+)
+
+/**
+ * 新扫描结果 vs 同一结果的重新进入：
+ * - 同一 scanId 且 24h 内 → 恢复筛选/选择/推荐策略（用户切去别的页面再回来不丢上下文）；
+ * - 新扫描结果 → 重新应用推荐策略并清空筛选（旧选择套到新结果上没有意义）。
+ */
 watch(
   scan,
   () => {
-    selected.value = new Set(recommendedIds.value)
-    appliedPolicyKey.value = policyKey.value
+    const currentScanId = scan.value?.scanId
+    const saved = parseCleanSession(loadRaw(SESSION_KEY))
+    const validIds = new Set(allItems.value.map((item) => item.id))
+    const protectedIds = new Set(protectedItems.value.map((item) => item.id))
+    if (saved && shouldRestoreSession(saved, currentScanId, Date.now())) {
+      search.value = saved.filters.search
+      riskFilter.value = saved.filters.risk
+      sizeFilter.value = saved.filters.size
+      taskFilter.value = saved.filters.task
+      onlyRecommended.value = saved.filters.onlyRecommended
+      recommendMinSize.value = ALLOWED_MIN_SIZE.includes(saved.recommend.minSize) ? saved.recommend.minSize : 0
+      recommendIncludeCaution.value = saved.recommend.includeCaution
+      selected.value = new Set(restoreSelection(saved, validIds, protectedIds))
+      appliedPolicyKey.value = policyKey.value
+    } else {
+      selected.value = new Set(recommendedIds.value)
+      appliedPolicyKey.value = policyKey.value
+      resetFilters()
+    }
     expanded.value = new Set()
-    resetFilters()
     page.value = 1
     applyPageIntent()
   },
   { immediate: true },
 )
+
+/** 保存当前扫描结果下的筛选与选择（页面卸载/变化时都会被调用，脏数据由解析层兜底） */
+function saveCleanSession(): void {
+  const current = scan.value
+  if (!current?.scanId) return
+  savePref(SESSION_KEY, {
+    scanId: current.scanId,
+    savedAt: Date.now(),
+    filters: {
+      search: search.value,
+      risk: riskFilter.value,
+      size: sizeFilter.value,
+      task: taskFilter.value,
+      onlyRecommended: onlyRecommended.value,
+    },
+    selectedIds: [...selected.value].slice(0, MAX_PERSISTED_SELECTION),
+    recommend: { minSize: recommendMinSize.value, includeCaution: recommendIncludeCaution.value },
+  })
+}
+
+watch(
+  [selected, search, riskFilter, sizeFilter, taskFilter, onlyRecommended, recommendMinSize, recommendIncludeCaution],
+  saveCleanSession,
+)
+onBeforeUnmount(saveCleanSession)
 
 function askClean() {
   if (!selected.value.size) {
@@ -807,7 +881,23 @@ async function handleBulkCommand(command: string) {
     <!-- 扫描结果 -->
     <template v-else>
       <span ref="resultsAnchor" class="results-anchor" />
-      <div class="cc-grid cc-grid-4">
+      <!-- 空结果：区分「真的没有」「只有受保护项」，避免用户以为是 bug -->
+      <div v-if="emptyKind === 'none' || emptyKind === 'protected-only'" class="cc-card empty-guide scan-empty">
+        <h3>{{ emptyKind === 'protected-only' ? '没有可自动清理的内容' : '本次扫描没有发现可清理项' }}</h3>
+        <p>
+          {{
+            emptyKind === 'protected-only'
+              ? `扫描到 ${protectedItems.length} 项受保护内容（系统关键目录 / 用户重要目录），CordClean 不会删除；可以查看原因或调整扫描任务后再试。`
+              : '可能原因：所选任务本次没有命中内容、缓存已被其它程序清理，或扫描范围内确实没有可清理项。'
+          }}
+        </p>
+        <div class="cc-actions">
+          <el-button v-if="protectedItems.length" size="small" @click="view = 'protected'">查看受保护项（{{ protectedItems.length }}）</el-button>
+          <el-button size="small" type="primary" :disabled="scanning || cleaning" @click="runScan">重新扫描</el-button>
+          <el-button size="small" @click="resetFilters">重置筛选</el-button>
+        </div>
+      </div>
+      <div v-if="cleanableItems.length" class="cc-grid cc-grid-4">
         <div class="cc-card cc-stat">
           <div class="cc-stat-label">可清理项</div>
           <div class="cc-stat-value">{{ cleanableItems.length.toLocaleString('zh-CN') }}</div>
@@ -830,7 +920,7 @@ async function handleBulkCommand(command: string) {
         </div>
       </div>
 
-      <p class="reconcile cc-hint">
+      <p v-if="cleanableItems.length" class="reconcile cc-hint">
         扫描发现 {{ allItems.length }} 项（{{ formatBytes(totalBytes) }}）：
         可清理 {{ cleanableItems.length }} 项（{{ formatBytes(cleanableBytes) }}）
         + 受保护 {{ protectedItems.length }} 项（{{ formatBytes(protectedBytes) }}）；
@@ -839,7 +929,7 @@ async function handleBulkCommand(command: string) {
       </p>
 
       <!-- 推荐策略横幅 -->
-      <div class="cc-card recommend-banner">
+      <div v-if="cleanableItems.length" class="cc-card recommend-banner">
         <div class="banner-main">
           <div class="banner-icon">✨</div>
           <div class="banner-text">
@@ -975,8 +1065,9 @@ async function handleBulkCommand(command: string) {
           </div>
 
           <div v-if="!categoryGroups.length" class="cc-empty">
-            当前筛选没有匹配项。
+            {{ filtersActive ? '当前筛选没有匹配项。' : '本次扫描没有可清理项。' }}
             <el-button v-if="filtersActive" size="small" text @click="resetFilters">重置筛选</el-button>
+            <el-button v-else size="small" text @click="runScan">重新扫描</el-button>
           </div>
         </div>
 
@@ -1232,7 +1323,9 @@ async function handleBulkCommand(command: string) {
         <p v-if="summary.byRisk.risky.count" class="warn-text">
           其中 {{ summary.byRisk.risky.count }} 项为高风险项，将先放入隔离区，可随时恢复。
         </p>
+        <p v-if="dryRun" class="warn-text">本次为预演：只统计将释放的空间，不会真正删除或移动任何文件。</p>
         <p class="cc-faint">所有删除都会经过路径策略校验与删除前复核，系统关键目录与用户重要目录不会被动到。</p>
+        <p class="cc-faint">取消不会丢失当前选择，可继续调整后再清理。</p>
       </div>
       <template #footer>
         <el-button @click="showConfirm = false">取消</el-button>

@@ -160,7 +160,7 @@ try {
   console.log('IPC 通道可用：', transport)
 
   // 清理上一次 UI 验收遗留的本地偏好（例如 clean 视图模式），保证分组表格一定渲染
-  await evaluate(`(() => { try { localStorage.removeItem('cordclean.clean.view'); localStorage.removeItem('cordclean.clean.selected'); } catch {} return true })()`)
+  await evaluate(`(() => { try { localStorage.removeItem('cordclean.clean.view'); localStorage.removeItem('cordclean.clean.selected'); localStorage.removeItem('cordclean.clean.session'); } catch {} return true })()`)
 
   const navNames = await evaluate('[...document.querySelectorAll(".nav-item")].map(el => (el.querySelector(".nav-label")?.textContent ?? el.textContent).trim())')
   console.log('侧边栏：', navNames.join(' / '))
