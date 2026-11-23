@@ -253,7 +253,6 @@ beforeAll(async () => {
     req.on('data', (chunk) => chunks.push(chunk as Buffer))
     req.on('end', () => {
       const url = String(req.url ?? '')
-      console.error('[CC-DIAG-SRV]', req.method, url)
       if (url.includes('/models')) return sendJson(res, 200, { data: [] })
       calls++
       if (url.startsWith('/auth/')) return sendJson(res, 401, { error: { message: 'invalid api key' } })
@@ -434,6 +433,15 @@ async function seedLastScan(app: Awaited<ReturnType<typeof boot>>) {
   })
   await app.ctx.cleaner.scan({ taskIds: ['sse-noop'] })
 }
+
+/**
+ * 流式边界用例只验证请求/回退/错误码，不验证磁盘画像。
+ * 桩掉默认上下文采集（扫 Program Files 与磁盘热点目录）：Windows CI 上该采集可达数十秒，
+ * 会把用例拖到超时；超时后未取消的游离 analyze 还会污染后续 stub 了 fetch 的用例。
+ */
+function stripSlowContext(app: Awaited<ReturnType<typeof boot>>) {
+  app.ctx.aiContext.collect = async () => []
+}
 const baseConfig = (prefix: string, extra: Record<string, unknown> = {}) => ({
   apiKey: 'test-key',
   baseUrl: `http://127.0.0.1:${port}/${prefix}`,
@@ -526,6 +534,7 @@ describe('服务层边界', () => {
   it('流式被 max_tokens 截断时报「输出被截断」而不是「JSON 不合法」（服务端不结束也不等待）', async () => {
     const app = await boot({ ...baseConfig('sse-truncated'), timeoutMs: 5_000 }, 'sse-truncated')
     await seedLastScan(app)
+    stripSlowContext(app)
     calls = 0
     try {
       // 走本地真实 SSE 回环（beforeAll 的 /sse-truncated/ 路由），与其它通过的流式用例同一 fetch 路径。
@@ -543,6 +552,7 @@ describe('服务层边界', () => {
   it('流式接口 401 时不回退非流式（只请求一次，保留 AUTH 码）', async () => {
     const app = await boot(baseConfig('sse-auth'), 'sse-auth')
     await seedLastScan(app)
+    stripSlowContext(app)
     const chatCalls: string[] = []
     vi.stubGlobal(
       'fetch',
@@ -552,7 +562,6 @@ describe('服务层边界', () => {
           return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
         }
         chatCalls.push(url)
-        console.error('[CC-DIAG-401] fetch #' + chatCalls.length, url, '\n' + (new Error('stack').stack ?? '').split('\n').slice(1, 5).join('\n'))
         return new Response(JSON.stringify({ error: { message: 'invalid api key' } }), {
           status: 401,
           headers: { 'content-type': 'application/json' },
@@ -571,6 +580,7 @@ describe('服务层边界', () => {
   it('流式超时后不继续回退非流式（不把一次请求拖成两次超时）', async () => {
     const app = await boot({ ...baseConfig('sse-hang'), timeoutMs: 300 }, 'sse-hang')
     await seedLastScan(app)
+    stripSlowContext(app)
     const chatCalls: string[] = []
     vi.stubGlobal(
       'fetch',

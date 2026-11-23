@@ -255,7 +255,6 @@ export async function requestSse(
       body: options.body,
       signal: controller.signal,
     })
-    console.error('[CC-DIAG] requestSse: response', response.status, 'ok=', response.ok, 'body?', !!response.body, url)
     if (options.signal?.aborted) throw new AiError('请求已取消', 'CANCELLED')
     if (!response.ok || !response.body) {
       const text = await response.text().catch(() => '')
@@ -266,11 +265,8 @@ export async function requestSse(
     reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
-    let readNo = 0
     while (true) {
       const { done, value } = await reader.read()
-      readNo += 1
-      console.error('[CC-DIAG] requestSse: read', readNo, 'done=', done, 'len=', value?.length ?? 0)
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       const events = buffer.split('\n\n')
