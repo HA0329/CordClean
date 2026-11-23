@@ -14,7 +14,8 @@
  *
  * 本模块不触碰 DOM / localStorage / 网络，只做数据变换。
  */
-import type { AiPluginDraft, AiPluginFile, PluginManifest } from '@cordclean/shared'
+import type { AiErrorCodeName, AiPluginDraft, AiPluginFile, PluginManifest } from '@cordclean/shared'
+import { aiErrorCodeOfRaw, stripAiErrorCodePrefix } from '../ai-error-codes.ts'
 
 /** 需求最大长度（超出部分截断，避免把超大文本塞进请求/存储） */
 export const MAX_REQUIREMENT_LENGTH = 4_000
@@ -369,21 +370,35 @@ const FAILURE_TEMPLATES: Record<WorkshopFailureKind, FailureTemplate> = {
   },
 }
 
+/** 稳定错误码 → 生成失败分类（未列出的码退回文案规则/unknown） */
+const WORKSHOP_CODE_KINDS: Partial<Record<AiErrorCodeName, WorkshopFailureKind>> = {
+  CANCELLED: 'cancelled',
+  TIMEOUT: 'timeout',
+  NETWORK: 'network',
+  AUTH: 'auth',
+  INVALID_RESPONSE: 'invalid-json',
+  BAD_REQUEST: 'validation',
+}
+
 /**
  * 把生成失败归类成结构化提示。
  *
- * 宿主只把错误 message 传回界面（没有稳定的错误码），所以用关键字归因；
- * 归因失败时保留脱敏后的原始信息，绝不把 Key / 本地路径展示给用户。
+ * 宿主把 AiError.code 带出（data.aiCode 或 message 的 [CODE] 前缀），码优先；
+ * 码缺失时才用关键字归因（兼容旧内核）。归因失败时保留脱敏后的原始信息，
+ * 绝不把 Key / 本地路径展示给用户。
  */
 export function classifyWorkshopFailure(
   input: unknown,
   options: { cancelled?: boolean } = {},
 ): WorkshopFailure {
-  const raw = rawErrorMessage(input)
+  const raw = stripAiErrorCodePrefix(rawErrorMessage(input))
   const sanitized = sanitizeErrorMessage(raw)
+  const code = aiErrorCodeOfRaw(input)
   const kind: WorkshopFailureKind = options.cancelled
     ? 'cancelled'
-    : (FAILURE_RULES.find((rule) => rule.test.test(raw))?.kind ?? 'unknown')
+    : (code ? WORKSHOP_CODE_KINDS[code] : undefined) ??
+      FAILURE_RULES.find((rule) => rule.test.test(raw))?.kind ??
+      'unknown'
   const template = FAILURE_TEMPLATES[kind]
   return {
     kind,

@@ -145,7 +145,7 @@ export function createElectronTransport(bridge: NonNullable<Window['cordclean']>
       try {
         return (await bridge.invoke(method, toCloneable(params))) as ApiResult<M>
       } catch (error: any) {
-        throw new RpcError(error?.code ?? -32000, error?.message ?? String(error))
+        throw new RpcError(error?.code ?? -32000, error?.message ?? String(error), error?.data)
       }
     },
     on<E extends ServerEvent>(event: E, listener: (payload: ServerEventMap[E]) => void) {

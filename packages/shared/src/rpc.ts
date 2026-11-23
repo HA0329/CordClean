@@ -90,6 +90,23 @@ export type ServerEventMap = {
 }
 
 /** 方法参数 / 返回值类型表（客户端与服务端共用，保证类型安全） */
+/**
+ * AI 错误的稳定错误码（插件 ai / ai-workshop 抛出，跨外壳原样带回界面）。
+ *
+ * 界面优先按码分类，文案只作兜底；新增码时同步 packages/host/src/rpc-error.ts
+ * 与 packages/ui/src/ai-error-codes.ts 的映射。
+ */
+export type AiErrorCodeName =
+  | 'AUTH'
+  | 'RATE_LIMIT'
+  | 'SERVER'
+  | 'TIMEOUT'
+  | 'NETWORK'
+  | 'HTTP'
+  | 'INVALID_RESPONSE'
+  | 'BAD_REQUEST'
+  | 'CANCELLED'
+
 export interface ApiMap {
   'app/info': { params: void; result: AppInfo }
   'app/open-path': { params: { path: string }; result: void }

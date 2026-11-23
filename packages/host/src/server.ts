@@ -16,6 +16,7 @@ import type { Duplex } from 'node:stream'
 import type { Context } from 'cordis'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { RpcRequest, RpcResponse, ServerEvent } from '@cordclean/shared'
+import { serializeRpcError } from './rpc-error.ts'
 import { resolvePluginClientAsset } from '@cordclean/core'
 import { dlog } from './diagnostics.ts'
 import { shouldLogRpc, summarizeRpcParams } from './logging.ts'
@@ -225,7 +226,8 @@ export async function startHostServer(options: HostServerOptions): Promise<HostS
       return {
         jsonrpc: '2.0',
         id: request.id,
-        error: { code: typeof err.code === 'number' ? err.code : RPC_ERRORS.INTERNAL, message: err.message ?? String(error) },
+        // 稳定错误码（AI 等）通过 message 前缀 + data.aiCode 带出，跨两个外壳一致
+        error: serializeRpcError(err, RPC_ERRORS.INTERNAL),
       }
     }
   }

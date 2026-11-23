@@ -13,7 +13,8 @@
  *
  * 这里只做纯数据计算，不碰 DOM / 网络 / localStorage，方便脱离界面单测。
  */
-import type { RiskLevel } from '@cordclean/shared'
+import type { AiErrorCodeName, RiskLevel } from '@cordclean/shared'
+import { aiErrorCodeOfRaw, stripAiErrorCodePrefix } from '../ai-error-codes.ts'
 
 export const RISK_LEVELS: readonly RiskLevel[] = ['safe', 'caution', 'risky']
 
@@ -426,16 +427,34 @@ export function redactSensitiveText(input: unknown): string {
   return compact.length > 400 ? compact.slice(0, 400) + '…' : compact
 }
 
+/** 稳定错误码 → 分类；码命中时不再看文案（文案只作旧内核/第三方插件的兜底） */
+const AI_CODE_KINDS: Record<AiErrorCodeName, AiErrorKind> = {
+  AUTH: 'auth',
+  RATE_LIMIT: 'rate-limit',
+  SERVER: 'server',
+  TIMEOUT: 'timeout',
+  NETWORK: 'network',
+  HTTP: 'server',
+  INVALID_RESPONSE: 'invalid-json',
+  BAD_REQUEST: 'bad-request',
+  CANCELLED: 'cancelled',
+}
+
 /**
  * 把一次分析失败归类成用户可读的结构化错误。
  * - 取消优先：用户点过「取消生成」时，底层可能抛超时/AbortError，不能误报成故障；
- * - 匹配不到的错误按 unknown 处理，但默认认为可重试。
+ * - 稳定错误码优先：宿主把 AiError.code 带出（data.aiCode 或 message 的 [CODE] 前缀），
+ *   厂商/插件改文案也不会分类漂移；
+ * - 码缺失时才退回文案规则（兼容旧内核）；仍匹配不到按 unknown 处理，默认可重试。
  */
 export function classifyAiError(raw: unknown, options: { cancelled?: boolean } = {}): AiErrorInfo {
-  const detail = redactSensitiveText(raw)
+  const detail = stripAiErrorCodePrefix(redactSensitiveText(raw))
+  const code = aiErrorCodeOfRaw(raw)
   let kind: AiErrorKind = 'unknown'
   if (options.cancelled) {
     kind = 'cancelled'
+  } else if (code) {
+    kind = AI_CODE_KINDS[code]
   } else {
     const haystack = detail || (typeof raw === 'string' ? raw : '')
     for (const rule of ERROR_RULES) {

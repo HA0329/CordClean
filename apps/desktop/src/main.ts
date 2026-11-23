@@ -10,7 +10,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain, Menu, protocol, shell } from 'electron'
 import { createApp, defaultDataDir, resolvePluginClientAsset } from '@cordclean/core'
-import { createHandlers, type ShellAdapter } from '@cordclean/host'
+import { createHandlers, serializeRpcError, type ShellAdapter } from '@cordclean/host'
 import { onLogEvent } from '@cordclean/utils'
 import { createElectronWindowBackend } from './window-backend.ts'
 
@@ -173,7 +173,13 @@ async function createKernel() {
     try {
       return await handler(params ?? {})
     } catch (error: any) {
-      throw new Error(error?.message ?? String(error))
+      // IPC 跨进程时 Error 自定义属性可能丢失：把稳定错误码写进 message 前缀，
+      // 同时尽量保留 code/data 供 preload 透传（Web 外壳走 JSON-RPC 的 error.data）。
+      const payload = serializeRpcError(error, -32000)
+      const wrapped = new Error(payload.message) as Error & { code?: number; data?: unknown }
+      wrapped.code = payload.code
+      if (payload.data) wrapped.data = payload.data
+      throw wrapped
     }
   })
 
