@@ -314,8 +314,15 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 300))
   }
   await evaluate("document.querySelector('.sidebar-toggle')?.click()")
-  await new Promise((resolve) => setTimeout(resolve, 400))
-  const railWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
+  // 宽度有 180ms 过渡：轮询到稳定值，避免用固定 sleep 抢在动画中间测到旧宽度
+  const railWidth = await waitFor(
+    '侧边栏折叠到 68px',
+    async () => {
+      const width = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
+      return width > 0 && width <= 100 ? width : undefined
+    },
+    5_000,
+  )
   const icons = await evaluate("document.querySelectorAll('.sidebar .nav-item .area-icon').length")
   const labels = await evaluate("document.querySelectorAll('.sidebar .nav-label').length")
   await evaluate("document.querySelector('.sidebar [data-area=\"plugins\"]')?.click()")
@@ -331,8 +338,14 @@ try {
   if (labels !== 0) throw new Error(`折叠后仍有文字标签：${labels}`)
   await capture("rail")
   await evaluate("document.querySelector('.sidebar-toggle')?.click()")
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  const expandedWidth = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
+  const expandedWidth = await waitFor(
+    '侧边栏展开到 232px',
+    async () => {
+      const width = await evaluate("Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width ?? -1)")
+      return width > 200 ? width : undefined
+    },
+    5_000,
+  )
   const expandedLabels = await evaluate("document.querySelectorAll('.sidebar .nav-label').length")
   console.log(`✓ 侧边栏展开：宽度=${expandedWidth}px，文字标签=${expandedLabels} 项`)
   if (expandedWidth < 200 || expandedLabels < 7) throw new Error('侧边栏展开后宽度/标签异常')
