@@ -4,6 +4,28 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.12 — 2026-11-23
+
+### AI 插件加固（不做无 Key 绕过）
+
+- AI 清理顾问：分析/插件生成提示词契约加固、`preparePluginDraft` 预检与自动重试、`isRetryableAiCode` 统一重试、
+  429/503 遵守 Retry-After、CANCELLED 不回退非流式、SSE 截断正确归类、虚构 taskId 降级；
+- AI 插件工坊：v2 包契约注入、安装前自检/自动修复（清单/files/client/inject/bridge）、错误分类与 retry 阶段、
+  无 Key/无模型明确不可用 + 去配置引导。
+
+### 12 个内置插件整改收口
+
+- 核心：`cleaner.scan` 未知 taskIds 报错（不再静默全量）；
+- empty-dirs 白名单（自身隔离区/AppData/系统目录）；large-files/duplicates 排除应用运行时库与程序目录；
+- registry 孤儿卸载项检测、leftovers 扩根+排除、scheduler 启动补跑+nextRunAt、shortcuts MSI/UWP/悬空 .url、
+  recycle $I/$R 配对异常、startup 计划任务可禁用/恢复、rule-pack 被拒规则 17→0/错误 72→0/规则 385 条。
+
+### 验证
+
+- **106 个测试文件 / 931 个用例通过**；typecheck、build、docs:check、e2e 7 页面通过；
+- 12 插件审计契约违例 0；rule-pack 真实命中 467 项 / 约 3.88 GB。
+
+详细说明：[docs/release-notes-v0.6.12.md](docs/release-notes-v0.6.12.md)
 ## v0.6.11 — 2026-11-23
 
 ### 侧边栏与 7 个功能区独立升级

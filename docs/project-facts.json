@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-23T15:10:50.964Z",
-  "commit": "accad9e",
-  "version": "0.6.11",
+  "generatedAt": "2026-11-23T15:33:30.728Z",
+  "commit": "aa151cc",
+  "version": "0.6.12",
   "plugins": {
     "total": 12,
     "defaultEnabled": 8,
@@ -25,8 +25,8 @@
   "tasks": 38,
   "rpcMethods": 73,
   "tests": {
-    "files": 104,
-    "cases": 887
+    "files": 106,
+    "cases": 931
   },
   "rules": {
     "catalogCategories": 28,
