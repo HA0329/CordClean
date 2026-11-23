@@ -83,6 +83,11 @@ export interface StagePluginPackageOptions {
    * 抛错即视为安装失败，暂存目录会被清理。
    */
   prepareStaging?: (stagingDir: string, manifest: PluginManifest) => Promise<void>
+  /**
+   * 可选：删除 staging/插件目录的统一出口（默认模块内 rm）。
+   * 内核会传入执行器的 deleteInternal，让插件的维护性删除也走唯一入口。
+   */
+  cleanup?: (dir: string) => Promise<void>
 }
 
 export interface StagedPluginPackage {
@@ -107,6 +112,8 @@ export interface PluginInstallResult {
 export interface CommitPluginPackageOptions {
   pluginsDir: string
   upgrade?: boolean
+  /** 可选：删除 staging 的统一出口（内核传执行器 deleteInternal） */
+  cleanup?: (dir: string) => Promise<void>
 }
 
 function stageTimestamp(): string {
@@ -327,6 +334,10 @@ export async function stagePluginPackage(options: StagePluginPackageOptions): Pr
   const stagingRoot = path.join(path.resolve(options.pluginsDir), PLUGIN_STAGING_DIR)
   await mkdir(stagingRoot, { recursive: true })
   const stagingDir = path.join(stagingRoot, `${manifest.id}-${stageTimestamp()}`)
+  const cleanupDir = async (dir: string): Promise<void> => {
+    if (options.cleanup) await options.cleanup(dir)
+    else await rm(dir, { recursive: true, force: true })
+  }
   try {
     await copyPackageTree(sourceDir, stagingDir, limits)
     // 复查暂存副本，防止复制过程中源目录变化
@@ -344,7 +355,7 @@ export async function stagePluginPackage(options: StagePluginPackageOptions): Pr
     }
     if (options.prepareStaging) await options.prepareStaging(stagingDir, staged.validation.manifest)
   } catch (error) {
-    await rm(stagingDir, { recursive: true, force: true }).catch(() => {})
+    await cleanupDir(stagingDir).catch(() => {})
     throw error
   }
 
@@ -370,11 +381,15 @@ export async function commitPluginPackage(
   const pluginsDir = path.resolve(options.pluginsDir)
   const targetDir = path.join(pluginsDir, staged.id)
   await mkdir(pluginsDir, { recursive: true })
+  const cleanupDir = async (dir: string): Promise<void> => {
+    if (options.cleanup) await options.cleanup(dir)
+    else await rm(dir, { recursive: true, force: true })
+  }
 
   let backupDir: string | undefined
   if (await pathExists(targetDir)) {
     if (!options.upgrade) {
-      await rm(staged.stagingDir, { recursive: true, force: true }).catch(() => {})
+      await cleanupDir(staged.stagingDir).catch(() => {})
       throw new PluginInstallError('already-installed', `插件 ${staged.id} 已安装；升级请显式传入 upgrade`)
     }
     backupDir = path.join(pluginsDir, PLUGIN_TRASH_DIR, `${staged.id}-${stageTimestamp()}`)
@@ -388,7 +403,7 @@ export async function commitPluginPackage(
     if (backupDir) {
       await rename(backupDir, targetDir).catch(() => {})
     }
-    await rm(staged.stagingDir, { recursive: true, force: true }).catch(() => {})
+    await cleanupDir(staged.stagingDir).catch(() => {})
     throw new PluginInstallError('commit-failed', `插件落盘失败：${(error as Error).message}`)
   }
   // 暂存根目录为空时顺手移除；还有其它进行中的安装时 rmdir 失败即可
@@ -410,12 +425,15 @@ export async function installPluginPackage(options: StagePluginPackageOptions): 
   return commitPluginPackage(staged, {
     pluginsDir: options.pluginsDir,
     upgrade: options.upgrade === true,
+    cleanup: options.cleanup,
   })
 }
 
 export interface RemovePluginPackageOptions {
   /** true（默认）移到 `.trash` 保留旧版本，false 直接删除 */
   backup?: boolean
+  /** 可选：删除插件目录的统一出口（内核传执行器 deleteInternal） */
+  cleanup?: (dir: string) => Promise<void>
 }
 
 /** 卸载插件包：默认移入 `.trash` 而不是直接删除，便于回滚与排查 */
@@ -431,7 +449,8 @@ export async function removePluginPackage(
   const targetDir = path.join(root, id)
   if (!(await pathExists(targetDir))) throw new PluginInstallError('not-installed', `插件 ${id} 未安装`)
   if (options.backup === false) {
-    await rm(targetDir, { recursive: true, force: true })
+    if (options.cleanup) await options.cleanup(targetDir)
+    else await rm(targetDir, { recursive: true, force: true })
     return { dir: targetDir }
   }
   const backupDir = path.join(root, PLUGIN_TRASH_DIR, `${id}-${stageTimestamp()}`)
@@ -441,8 +460,13 @@ export async function removePluginPackage(
 }
 
 /** 启动时清理上次中断留下的暂存目录（不影响已安装插件） */
-export async function cleanupPluginStaging(pluginsDir: string): Promise<void> {
-  await rm(path.join(path.resolve(pluginsDir), PLUGIN_STAGING_DIR), { recursive: true, force: true })
+export async function cleanupPluginStaging(
+  pluginsDir: string,
+  cleanup?: (dir: string) => Promise<void>,
+): Promise<void> {
+  const stagingRoot = path.join(path.resolve(pluginsDir), PLUGIN_STAGING_DIR)
+  if (cleanup) await cleanup(stagingRoot)
+  else await rm(stagingRoot, { recursive: true, force: true })
 }
 
 /** 插件包目录默认位置（相对 dataDir） */

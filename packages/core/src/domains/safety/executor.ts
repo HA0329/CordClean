@@ -8,7 +8,7 @@
  * - `quarantinedBytes`：进了隔离区的字节（可恢复）；
  * - `vanished`：执行前发现目标已不存在（不虚报释放量）。
  */
-import { readdir, stat } from 'node:fs/promises'
+import { lstat, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { Service, type Context } from 'cordis'
 import type { CleanItemResult } from '@cordclean/shared'
@@ -35,8 +35,11 @@ export type InternalDeleteReason =
   | 'startup-entry'
   | 'quarantine'
   | 'logs'
+  | 'log-file'
   | 'plugin-staging'
+  | 'plugin-package'
   | 'generated-plugins'
+  | 'mover-source'
 
 export interface InternalDeleteResult {
   ok: boolean
@@ -105,7 +108,7 @@ async function findProtectedDescendant(root: string): Promise<string | undefined
 }
 
 export class ExecutorService extends Service {
-  static inject = ['compensate', 'recycleBin', 'settings', 'system']
+  static inject = ['compensate', 'recycleBin', 'settings', 'system', 'pathPolicy']
 
   constructor(ctx: Context) {
     super(ctx, 'executor')
@@ -217,10 +220,12 @@ export class ExecutorService extends Service {
     }
     if (!normalized) return deny('路径为空')
     const dataDir = env.dataDir
-    const dataRoots: Record<Exclude<InternalDeleteReason, 'recycle-bin' | 'startup-entry'>, string[]> = {
+    const dataRoots: Record<Exclude<InternalDeleteReason, 'recycle-bin' | 'startup-entry' | 'mover-source'>, string[]> = {
       quarantine: [path.join(dataDir, 'quarantine')],
       logs: [path.join(dataDir, 'logs')],
+      'log-file': [path.join(dataDir, 'logs')],
       'plugin-staging': [path.join(dataDir, 'plugins', '.staging')],
+      'plugin-package': [path.join(dataDir, 'plugins')],
       'generated-plugins': [path.join(dataDir, 'generated-plugins')],
     }
     if (reason === 'recycle-bin') {
@@ -240,11 +245,18 @@ export class ExecutorService extends Service {
         return deny('不在启动文件夹内')
       }
       if (!/\.(lnk|url)$/i.test(normalized)) return deny('不是快捷方式文件')
+    } else if (reason === 'mover-source') {
+      // 搬家后删除源文件：源路径仍必须落在当前允许清理范围内（与删除同一套策略）
+      const check = this.ctx.pathPolicy.check(normalized)
+      if (!check.allowed) return deny(`路径不在允许清理范围（${check.reason ?? 'outside'}）`)
     } else if (!dataRoots[reason].some((root) => isSubPath(root, normalized))) {
       return deny('不在允许的内部维护目录内')
+    } else if (reason === 'plugin-package' && pathKey(normalized) === pathKey(path.join(dataDir, 'plugins'))) {
+      return deny('不能删除插件包根目录')
     }
     try {
-      const result = await deletePath(normalized, { recursive: false, retries: 1 })
+      const info = await lstat(normalized).catch(() => undefined)
+      const result = await deletePath(normalized, { recursive: Boolean(info?.isDirectory()), retries: 1 })
       this.ctx.logger?.debug?.('内部删除（%s）：%s', reason, target)
       return { ok: true, bytes: result.bytes }
     } catch (error) {

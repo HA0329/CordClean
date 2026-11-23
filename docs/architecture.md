@@ -4,7 +4,7 @@
 > 关键流程、安全模型与工程折中。所有结论均可在源码中找到对应实现。
 >
 > 事实基准：12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法、
-> 71 个测试文件 / 508 个用例、规则库 37 类/401 条（catalog 28 类/271 条 + extra 9 类/130 条）。数字由
+> 71 个测试文件 / 511 个用例、规则库 37 类/401 条（catalog 28 类/271 条 + extra 9 类/130 条）。数字由
 > [`pnpm facts`](../scripts/collect-facts.ts) 生成，口径见 [项目事实表](project-facts.md)。
 > 安全边界与残余风险另见 [威胁模型与信任边界](threat-model.md)。
 
@@ -327,7 +327,7 @@ ctx.effect(() => {
 
 | 层次 | 方式 | 覆盖 |
 | --- | --- | --- |
-| 单元 / 集成 | Vitest（71 个测试文件 / **508 个用例**，口径见 [项目事实表](project-facts.md)） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
+| 单元 / 集成 | Vitest（71 个测试文件 / **511 个用例**，口径见 [项目事实表](project-facts.md)） | 路径策略与攻击面、文件系统安全、长路径/UNC、引擎、插件管理、外部插件边界、隔离区、设置/历史、Host/Origin 鉴权、RPC、AI、规则纯逻辑 |
 | 设计属性 | `tests/e7-unload.test.ts` / `tests/e8-dependency.test.ts` | E7 卸载无残留；E8 provider/consumer 依赖挂起与自动恢复（见 [E7](experiments/e7-unload-residue.md) / [E8](experiments/e8-dependency-response.md)） |
 | 插件审计 | `scripts/audit-plugins.ts` | 12 个内置插件真实扫描 + 清理项契约不变量（只读） |
 | 插件自测 | `scripts/check-*.ts` | 现有插件的定向验证（只扫描，清理只用 dryRun） |
@@ -344,7 +344,7 @@ AI 插件的测试使用本地 HTTP Mock：验证请求体（隐私约束：不�
 JSON 解析（含 ```json 围栏）、字段兜底（风险值非法时降级为 caution）、
 接口 500、超时、非 JSON 输出、环境变量凭据。
 
-自测阶段、各功能迭代与批次安全加固共发现并修复 **74 个缺陷**（D-01~D-74），
+自测阶段、各功能迭代与批次安全加固共发现并修复 **76 个缺陷**（D-01~D-76），
 记录在 [缺陷记录](defect-log.md)。其中 D-01（越界删除）、D-10（路径校验性能）、
 D-19（DNS rebinding/Origin）与 D-26（清空白名单放大）具有代表性，可作为论文第 6 章
 「测试发现的问题与改进」的素材。
@@ -498,7 +498,7 @@ catalog.json / 用户规则（数据）
                               └─ compact   → SQLite VACUUM（不删数据）
 ```
 
-> 内部维护路径（回收站 `$I/$R`、启动项快捷方式、隔离区、日志、插件 staging）不走补偿链，但也不再由插件直接 `fs.unlink`：执行器提供 `deleteInternal(path, reason)` 受控通道，按 reason 校验前缀后删除并记日志（见 `packages/core/src/domains/safety/executor.ts` 与 defect-log D-74）。
+> 内部维护路径（回收站 `$I/$R`、启动项快捷方式、隔离区、日志、插件 staging）不走补偿链，但也不再由插件直接 `fs.unlink`：执行器提供 `deleteInternal(path, reason)` 受控通道，按 reason 校验前缀后删除并记日志；`plugin-installer` 暂存/插件包、`mover` 删源也已接入（cleanup/deleteSource 回调，见 defect-log D-74/D-76）。
 
 ### 12.1 七步链的判定
 

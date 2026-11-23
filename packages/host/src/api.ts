@@ -287,6 +287,8 @@ export function createHandlers(api: ApiContext): HandlerMap {
           check: (target) => ctx.pathPolicy.check(target),
           isProtected: (target) => ctx.pathPolicy.isProtected(target),
           link: link === true,
+          // 复制成功后删源文件也走执行器内部通道（要求源路径仍在允许清理范围内）
+          deleteSource: (target) => ctx.executor.deleteInternal(target, 'mover-source'),
         },
       ),
     'clean/undo-state': () => {

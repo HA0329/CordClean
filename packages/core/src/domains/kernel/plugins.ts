@@ -235,6 +235,12 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     }
   }
 
+  /** 插件维护目录的统一删除出口（staging/已安装包目录都经执行器内部通道） */
+  private async deleteInternalDir(target: string, reason: 'plugin-staging' | 'plugin-package'): Promise<void> {
+    const result = await this.ctx.executor.deleteInternal(target, reason)
+    if (!result.ok) throw new Error(result.error ?? '内部目录删除失败')
+  }
+
   /** v2 插件包目录（dataDir/plugins） */
   private packagesDir(): string {
     return path.join(path.dirname(this.ctx.settings.file), PLUGIN_PACKAGES_DIR)
@@ -259,7 +265,7 @@ export class PluginManagerService extends Service implements PluginManagerLike {
   /** 扫描 dataDir/plugins 下的 v2 插件包并登记为 external 记录 */
   private async loadPackagePlugins(options: { autoEnable?: boolean } = {}): Promise<void> {
     const dir = this.packagesDir()
-    await cleanupPluginStaging(dir).catch(() => {})
+    await cleanupPluginStaging(dir, (target) => this.deleteInternalDir(target, 'plugin-staging')).catch(() => {})
     const scan = await scanPluginPackages(dir, { appVersion: this.appVersion })
     this.packageScan = scan
     for (const problem of scan.problems) {
@@ -768,6 +774,8 @@ export class PluginManagerService extends Service implements PluginManagerLike {
       appVersion: this.appVersion,
       upgrade: options.upgrade === true,
       prepareStaging: options.prepareStaging,
+      // 暂存目录清理也走执行器内部通道（唯一删除入口）
+      cleanup: (target) => this.deleteInternalDir(target, 'plugin-staging'),
     })
     const id = packagePluginId(result.id)
     const existing = this.records.get(id)
@@ -798,7 +806,9 @@ export class PluginManagerService extends Service implements PluginManagerLike {
     await this.disable(id)
     this.records.delete(id)
     this.ctx.settings.patch({ plugins: { [id]: { enabled: false, config: {}, externalPath: '' } } })
-    await removePluginPackage(this.packagesDir(), manifest.id)
+    await removePluginPackage(this.packagesDir(), manifest.id, {
+      cleanup: (target) => this.deleteInternalDir(target, 'plugin-package'),
+    })
     this.emitChanged()
   }
 

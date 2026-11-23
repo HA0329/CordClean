@@ -6,6 +6,8 @@ import { createSandbox } from './helpers.ts'
 
 const sandbox = createSandbox()
 const app = await createApp({ dataDir: sandbox.dataDir, logger: false, loadPlugins: false })
+// 恢复目标必须落在当前允许清理范围内（与删除同一套策略）
+app.ctx.pathPolicy.addRoot(sandbox.root)
 
 afterAll(async () => {
   await app.dispose()
@@ -114,14 +116,36 @@ describe('隔离区', () => {
     expect(existsSync(victim)).toBe(true)
   })
 
-  it('清单被篡改：restore 拒绝相对路径与隔离区内目标', async () => {
-    const source = sandbox.file('quarantine/g.txt', 'g-content')
-    const session = app.ctx.quarantine.beginSession('session-7')
+  it('清单被篡改：restore 拒绝受保护系统目录目标', async () => {
+    const source = sandbox.file('quarantine/h.txt', 'h-content')
+    const session = app.ctx.quarantine.beginSession('session-8')
     const record = await session.move(source, 'temp', 9)
-    const manifest = path.join(app.ctx.quarantine.directory, 'session-7', 'manifest.jsonl')
-    writeFileSync(manifest, JSON.stringify({ ...record, originalPath: 'relative\\g.txt' }) + '\n')
+    const manifest = path.join(app.ctx.quarantine.directory, 'session-8', 'manifest.jsonl')
+    const target = path.join(app.ctx.system.env.windowsDir, 'System32', 'cordclean-probe.dll')
+    writeFileSync(manifest, JSON.stringify({ ...record, originalPath: target }) + '\n')
 
     const result = await app.ctx.quarantine.restore([record.id])
+    expect(result.restored).toBe(0)
+    expect(result.failed[0].message).toContain('允许清理范围')
+    expect(existsSync(target)).toBe(false)
+  })
+
+  it('清单被篡改：恢复目标必须是绝对路径且不在隔离区内', async () => {
+    const source = sandbox.file('quarantine/i.txt', 'i-content')
+    const session = app.ctx.quarantine.beginSession('session-9')
+    const record = await session.move(source, 'temp', 9)
+    const manifest = path.join(app.ctx.quarantine.directory, 'session-9', 'manifest.jsonl')
+
+    writeFileSync(manifest, JSON.stringify({ ...record, originalPath: 'relative\\i.txt' }) + '\n')
+    let result = await app.ctx.quarantine.restore([record.id])
+    expect(result.restored).toBe(0)
+    expect(result.failed[0].message).toContain('恢复目标')
+
+    writeFileSync(
+      manifest,
+      JSON.stringify({ ...record, originalPath: path.join(app.ctx.quarantine.directory, 'escape.txt') }) + '\n',
+    )
+    result = await app.ctx.quarantine.restore([record.id])
     expect(result.restored).toBe(0)
     expect(result.failed[0].message).toContain('恢复目标')
   })

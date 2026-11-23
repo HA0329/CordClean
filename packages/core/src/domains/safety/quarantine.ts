@@ -5,7 +5,7 @@
  * 并在同一目录维护 `manifest.jsonl` 记录原始路径，支持一键恢复。
  * 这是本工具与「直接删文件」的清理软件在安全性上的关键差异。
  */
-import { appendFileSync, existsSync, mkdirSync, promises as fs, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { Service, type Context } from 'cordis'
 import type { QuarantineLike, QuarantineRecord } from '@cordclean/shared'
@@ -60,7 +60,7 @@ function isQuarantineRecord(value: unknown): value is QuarantineRecord {
 }
 
 export class QuarantineService extends Service implements QuarantineLike {
-  static inject = ['settings']
+  static inject = ['settings', 'pathPolicy', 'executor']
 
   /** 隔离区根目录 */
   readonly directory: string
@@ -241,6 +241,17 @@ export class QuarantineService extends Service implements QuarantineLike {
           remaining.push(record)
           continue
         }
+        // 恢复目标必须仍在当前允许清理范围内：清单可被篡改，
+        // 不能把文件恢复到系统目录/任意位置（与删除使用同一套路径策略）
+        const targetCheck = this.ctx.pathPolicy.check(record.originalPath)
+        if (!targetCheck.allowed) {
+          failed.push({
+            id: record.id,
+            message: `原路径当前不在允许清理范围（${targetCheck.reason ?? 'outside'}），请启用对应插件后再恢复`,
+          })
+          remaining.push(record)
+          continue
+        }
         try {
           if (!existsSync(source)) throw new Error('隔离文件已不存在')
           if (existsSync(record.originalPath)) {
@@ -256,12 +267,8 @@ export class QuarantineService extends Service implements QuarantineLike {
       }
       writeFileSync(path.join(dir, MANIFEST), remaining.map((item) => JSON.stringify(item)).join('\n') + (remaining.length ? '\n' : ''), 'utf8')
       if (!remaining.length) {
-        // 会话已清空：只删除已经解析到隔离区内部的目录
-        try {
-          await fs.rm(dir, { recursive: true, force: true })
-        } catch {
-          /* ignore */
-        }
+        // 会话已清空：目录删除也经执行器内部通道（quarantine reason 校验前缀）
+        await this.ctx.executor.deleteInternal(dir, 'quarantine').catch(() => undefined)
       }
     }
     return { restored, failed }
@@ -290,12 +297,9 @@ export class QuarantineService extends Service implements QuarantineLike {
           this.ctx.logger?.warn?.('隔离区清单中的文件名非法，已丢弃该记录（未执行删除）：%s', String(record.storedName).slice(0, 120))
           continue
         }
-        try {
-          await fs.rm(storedPath, { force: true })
-          removed++
-        } catch {
-          remaining.push(record)
-        }
+        const deleted = await this.ctx.executor.deleteInternal(storedPath, 'quarantine')
+        if (deleted.ok) removed++
+        else remaining.push(record)
       }
       if (remaining.length !== records.length) {
         writeFileSync(
@@ -305,11 +309,7 @@ export class QuarantineService extends Service implements QuarantineLike {
         )
       }
       if (!remaining.length) {
-        try {
-          await fs.rm(dir, { recursive: true, force: true })
-        } catch {
-          /* ignore */
-        }
+        await this.ctx.executor.deleteInternal(dir, 'quarantine').catch(() => undefined)
       }
     }
     return removed

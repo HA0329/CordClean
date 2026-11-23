@@ -67,6 +67,37 @@ describe('执行器内部删除通道', () => {
     expect((await app.ctx.executor.deleteInternal(path.join(startupDir, 'probe.txt'), 'startup-entry')).ok).toBe(false)
     expect((await app.ctx.executor.deleteInternal(path.join(sandbox.root, 'probe.lnk'), 'startup-entry')).ok).toBe(false)
   })
+  it('plugin-package / plugin-staging 只允许删除插件目录内部（支持递归目录）', async () => {
+    const app = await boot('internal-package')
+    const dataDir = app.ctx.system.env.dataDir
+    const pkg = path.join(dataDir, 'plugins', 'probe-pkg')
+    mkdirSync(path.join(pkg, 'sub'), { recursive: true })
+    writeFileSync(path.join(pkg, 'sub', 'a.js'), 'x')
+    const removed = await app.ctx.executor.deleteInternal(pkg, 'plugin-package')
+    expect(removed.ok).toBe(true)
+    expect(existsSync(pkg)).toBe(false)
+    // 插件包根目录本身不允许删除
+    expect((await app.ctx.executor.deleteInternal(path.join(dataDir, 'plugins'), 'plugin-package')).ok).toBe(false)
+
+    const staging = path.join(dataDir, 'plugins', '.staging', 'probe-stage')
+    mkdirSync(staging, { recursive: true })
+    writeFileSync(path.join(staging, 'a.js'), 'x')
+    expect((await app.ctx.executor.deleteInternal(staging, 'plugin-staging')).ok).toBe(true)
+    expect(existsSync(staging)).toBe(false)
+  })
+
+  it('mover-source 通道要求源路径在当前允许清理范围内', async () => {
+    const app = await boot('internal-mover')
+    const file = sandbox.file('mover/source.txt', 'data')
+    // 未登记辖区：拒绝
+    expect((await app.ctx.executor.deleteInternal(file, 'mover-source')).ok).toBe(false)
+    expect(existsSync(file)).toBe(true)
+    // 登记辖区后允许
+    app.ctx.pathPolicy.addRoot(sandbox.root)
+    const removed = await app.ctx.executor.deleteInternal(file, 'mover-source')
+    expect(removed.ok).toBe(true)
+    expect(existsSync(file)).toBe(false)
+  })
 })
 
 describe('recycle / startup 走执行器', () => {

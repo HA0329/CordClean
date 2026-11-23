@@ -103,7 +103,7 @@ export interface TaskCleanContext {
    * 内部维护路径的受控删除（回收站 `$I/$R`、启动文件夹快捷方式、隔离区、日志、插件 staging）。
    * 自定义清理插件不再直接 `fs.unlink`，统一交给执行器校验前缀后删除。
    */
-  deleteInternal?(path: string, reason: 'recycle-bin' | 'startup-entry' | 'quarantine' | 'logs' | 'plugin-staging' | 'generated-plugins'): Promise<{ ok: boolean; bytes: number; error?: string }>
+  deleteInternal?(path: string, reason: 'recycle-bin' | 'startup-entry' | 'quarantine' | 'logs' | 'log-file' | 'plugin-staging' | 'plugin-package' | 'generated-plugins' | 'mover-source'): Promise<{ ok: boolean; bytes: number; error?: string }>
   throwIfAborted(): void
 }
 

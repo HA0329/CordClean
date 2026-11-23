@@ -58,7 +58,7 @@ once + 5 分钟 TTL；执行器在真正删除前同步 consume()，同一票据
 - 残余：逐项删除时若个别子项被占用，会留下部分内容并返回失败结果（不再保证「要么全删要么不动」）。
 ### 🟡 D4. “唯一删除入口”的内部维护例外（已收敛为受控通道）
 
-- 现状：执行器新增 `deleteInternal(path, reason)` 受控内部通道，按 reason 校验前缀（`recycle-bin`/`startup-entry`/`quarantine`/`logs`/`plugin-staging`/`generated-plugins`）；`startup`、`recycle` 插件已改用它，插件内不再有 `fs.unlink`/`deletePath` 直删。`plugin-installer`、`mover`、日志与隔离区服务内部的维护性删除仍是模块内直接删除（后续批次继续收敛）。
+- 现状：执行器新增 `deleteInternal(path, reason)` 受控内部通道，按 reason 校验前缀（`recycle-bin`/`startup-entry`/`quarantine`/`logs`/`plugin-staging`/`generated-plugins`）；`startup`、`recycle` 插件已改用它，插件内不再有 `fs.unlink`/`deletePath` 直删。`plugin-installer` 暂存/插件包卸载、`mover` 删源、隔离区目录清理也已收敛到该通道（cleanup/deleteSource 回调）；只剩日志轮转（logger 基础设施，无 ctx）属于已记录例外。
 - 论文写法：写“**用户数据**删除统一经补偿链 + 执行器；内部维护路径经执行器受控通道或模块内维护删除”，并指向 [威胁模型](threat-model.md)。不要写“所有文件删除都只有一个入口”。
 ### ✅ D5. 性能快照已在目标机重跑（v0.6.10）
 
@@ -74,7 +74,7 @@ once + 5 分钟 TTL；执行器在真正删除前同步 consume()，同一票据
 
 - 现状：`manifest.jsonl` 行结构校验；`storedName` 必须是单层文件名且解析后位于会话目录内，非法记录丢弃并告警；`restore()` 校验原路径必须是绝对路径且不在隔离区内。
 - 证据：`tests/quarantine.test.ts` 3 条篡改用例（相对路径穿越、绝对路径、非法恢复目标）。
-- 残余：同用户仍可篡改 manifest 的 `originalPath`，把恢复目标指向隔离区外的任意绝对路径（仅在用户主动点恢复时触发）；彻底方案是给清单加 HMAC/签名。
+- 残余：恢复目标已加路径策略校验（D-75：系统目录/辖区外一律拒绝）；同用户仍可篡改清单把目标指向「当前允许清理范围内」的其他位置；清单 HMAC 签名仍未做（密钥与清单同目录同用户可读，收益有限，留作后续）。
 ## 4. 论文里建议怎么写
 
 - 已对齐的部分：直接引用 [project-facts.md](project-facts.md) 与 [benchmark.md](benchmark.md)，不要在各章手抄数字。

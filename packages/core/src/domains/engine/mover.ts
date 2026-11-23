@@ -8,7 +8,8 @@
  * - 冲突时自动加后缀，绝不覆盖；
  * - 复制后校验字节数，成功才删除源；失败清理半成品目标文件。
  *
- * 注意：这是「移动」，不是删除。它不签发 CleanTicket，也不走执行器；
+ * 注意：这是「移动」，不是删除。它不签发 CleanTicket；源文件删除经
+ * 执行器内部通道（reason=mover-source，仍要求路径在允许清理范围内），
  * 因此不会计入清理历史，空间变化靠前后磁盘可用量观察。
  */
 import { copyFile, mkdir, rename, stat, symlink, unlink } from 'node:fs/promises'
@@ -36,6 +37,11 @@ export interface MoveFileOptions {
   concurrency?: number
   /** 移动后是否在原位置创建符号链接（失败会自动还原） */
   link?: boolean
+  /**
+   * 可选：复制成功后删除源文件的统一出口（内核传执行器 deleteInternal，
+   * reason=mover-source）；缺省时模块内 unlink。
+   */
+  deleteSource?: (target: string) => Promise<{ ok: boolean; error?: string }>
 }
 
 function absolute(value: string): boolean {
@@ -91,6 +97,14 @@ export async function moveFiles(request: MoveFileRequest, options: MoveFileOptio
       if (!absolute(source)) throw new Error('源路径必须是绝对路径')
       const info = await stat(source)
       if (!info.isFile() && !info.isDirectory()) throw new Error('只支持移动文件或目录')
+      const removeSource = async (target: string): Promise<void> => {
+        if (!options.deleteSource) {
+          await unlink(target)
+          return
+        }
+        const result = await options.deleteSource(target)
+        if (!result.ok) throw new Error(result.error ?? '删除源文件失败')
+      }
       if (path.dirname(source).toLowerCase() === targetDir.toLowerCase()) {
         throw new Error('目标目录与源目录相同')
       }
@@ -118,7 +132,7 @@ export async function moveFiles(request: MoveFileRequest, options: MoveFileOptio
         await copyFile(source, target)
         const copied = await stat(target)
         if (copied.size !== info.size) throw new Error('复制后大小不一致')
-        await unlink(source)
+        await removeSource(source)
         if (options.link) {
           try {
             await symlink(target, source, 'file')

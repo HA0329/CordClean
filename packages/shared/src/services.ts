@@ -590,7 +590,16 @@ export interface ExecutorLike {
    */
   deleteInternal(
     target: string,
-    reason: 'recycle-bin' | 'startup-entry' | 'quarantine' | 'logs' | 'plugin-staging' | 'generated-plugins',
+    reason:
+      | 'recycle-bin'
+      | 'startup-entry'
+      | 'quarantine'
+      | 'logs'
+      | 'log-file'
+      | 'plugin-staging'
+      | 'plugin-package'
+      | 'generated-plugins'
+      | 'mover-source',
   ): Promise<{ ok: boolean; bytes: number; error?: string }>
 }
 
