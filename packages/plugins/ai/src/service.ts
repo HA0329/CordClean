@@ -687,7 +687,9 @@ export class AiService extends Service implements AiLike {
       this.cache = analysis
       return analysis
     }
+    console.error('[CC-DIAG] analyze: enter')
     const profile = await this.buildProfile(options.extraContext, signal)
+    console.error('[CC-DIAG] analyze: profile done')
     this.throwIfAborted(signal)
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan
@@ -698,6 +700,7 @@ export class AiService extends Service implements AiLike {
           .map((item) => ({ id: item.id, mb: Math.round(item.size / 1024 / 1024), risk: item.risk, task: item.taskId }))
       : []
     const rootCandidates = await this.collectRootCandidates(signal)
+    console.error('[CC-DIAG] analyze: rootCandidates done')
     this.throwIfAborted(signal)
     const rootHint = rootCandidates.length
       ? '\n\n可选的新增扫描根（来自用户目录下的一级目录，只能选这些 rootId）：\n' + JSON.stringify(rootCandidates.map((item) => ({ rootId: item.id, mb: Math.round(item.size / 1024 / 1024) })))
@@ -706,6 +709,7 @@ export class AiService extends Service implements AiLike {
       ? '\n\n以下是本次扫描得到的候选清理项（只能从这些 id 中选择，不得虚构）：\n' + JSON.stringify(candidates)
       : '\n\n当前没有可用的扫描结果，selection 必须为空数组。'
     const contextSections = await this.ctx.aiContext.collect(options.contextProviders ?? config.contextProviders)
+    console.error('[CC-DIAG] analyze: context collect done')
     this.throwIfAborted(signal)
     this.lastContextUsed = contextSections.map((section) => section.id)
     const contextText = contextSections.length
@@ -736,6 +740,7 @@ export class AiService extends Service implements AiLike {
         let text = ''
         let reasoning = ''
         let finish: string | undefined
+        console.error('[CC-DIAG] analyze: requestSse start', request.url)
         await requestSse(request.url, {
           headers: request.headers,
           body: JSON.stringify({ ...request.body, stream: true }),
@@ -745,6 +750,7 @@ export class AiService extends Service implements AiLike {
           // 不能依赖「响应自然结束」才发现截断。
           stopWhen: () => truncatedInStream,
         }, (payload) => {
+          console.error('[CC-DIAG] analyze: onData')
           const delta = parseSseDelta(config.apiShape, payload)
           if (delta.text) {
             text += delta.text
@@ -759,6 +765,7 @@ export class AiService extends Service implements AiLike {
           finish = sseFinishReason(config.apiShape, payload) ?? finish
           if (isTruncatedFinish(finish)) truncatedInStream = true
         })
+        console.error('[CC-DIAG] analyze: requestSse done, textLen=', text.trim().length, 'finish=', finish, 'trunc=', truncatedInStream)
         if (text.trim()) {
           ;(this.ctx.emit as any)('ai/stream', { kind: 'done', text })
           result = { status: 200, latencyMs: Date.now() - streamStartedAt, payload: {} }
@@ -772,6 +779,7 @@ export class AiService extends Service implements AiLike {
           }
         }
       } catch (error) {
+        console.error('[CC-DIAG] analyze: stream catch', error instanceof AiError ? `AiError/${error.code}` : `non-AiError/${error?.constructor?.name}`, errorMessage(error))
         // 用户取消：不要吞掉后回退非流式（那会多打一次请求，且界面会显示成超时/网络错误）
         if (signal.aborted || (error instanceof AiError && error.code === 'CANCELLED')) {
           throw new AiError('请求已取消', 'CANCELLED')
