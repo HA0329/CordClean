@@ -31,6 +31,7 @@ export const QUIET_RPC_METHODS = new Set([
   'ai/models',
   'ai/workshop/status',
   'ai/workshop/models',
+  'ai/workshop/cancel',
   'scan/last',
   'app/logs/export',
   'ui/contributions',

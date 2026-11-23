@@ -84,7 +84,7 @@ export type ServerEventMap = {
   'plugin/ui-event': import('./plugin-api.ts').PluginUiEvent
   'plugin/notify': import('./plugin-api.ts').PluginNotifyEvent
   'ai/stream': { kind: 'delta' | 'done'; text?: string; reasoning?: string }
-  'ai/workshop/progress': { phase: 'request' | 'streaming' | 'received' | 'validating' | 'done' | 'retry'; textLength: number; toolCalls: number; elapsedMs: number }
+  'ai/workshop/progress': { phase: 'request' | 'streaming' | 'received' | 'validating' | 'done' | 'retry' | 'cancelled'; textLength: number; toolCalls: number; elapsedMs: number }
   'scheduler/scan': { at: number; items?: number; bytes?: number; elapsedMs?: number; errors?: number; error?: string; blocked?: boolean; reason?: string; autoCleaned?: boolean; cleaned?: number; freedBytes?: number; recycledBytes?: number; mode?: string }
   log: LogEntry
 }
@@ -184,6 +184,8 @@ export interface ApiMap {
   'ai/workshop/status': { params: void; result: AiWorkshopStatus }
   /** AI 插件工坊生成 v2 插件包草稿（走独立的 ai-workshop 插件） */
   'ai/workshop/draft': { params: { requirement: string }; result: AiPluginDraft }
+  /** 取消正在进行的工坊生成：真正中断宿主 HTTP 请求（返回是否有进行中的生成） */
+  'ai/workshop/cancel': { params: void; result: { cancelled: boolean } }
   /** AI 插件工坊自己的模型列表（独立接口配置） */
   'ai/workshop/models': { params: { refresh?: boolean }; result: { source: 'remote' | 'fallback'; models: AiModelInfo[] } }
   'ai/plugin/validate': {

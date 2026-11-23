@@ -18,6 +18,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatTime } from '@cordclean/shared'
 import type { AiModelInfo, AiPluginDraft, AiWorkshopStatus, PluginManifest } from '@cordclean/shared'
 import {
+  cancelAiWorkshopDraft,
   draftAiWorkshopPlugin,
   fetchAiWorkshopModels,
   fetchAiWorkshopStatus,
@@ -523,16 +524,24 @@ async function generate(): Promise<void> {
 }
 
 /**
- * 放弃本次生成：宿主没有工坊取消接口，无法真正中断已发出的请求；
- * 这里用序号让「之后返回的结果被丢弃」，不覆盖当前草稿，也不会并发写坏状态。
+ * 放弃本次生成：先让宿主真正中断 HTTP 请求（ai/workshop/cancel），
+ * 再用序号丢弃可能迟到的结果，确保不覆盖当前草稿。
  */
-function cancelGenerate(): void {
+async function cancelGenerate(): Promise<void> {
   if (!busy.value) return
   generateSeq += 1
   busy.value = false
   stopTimer()
   state.workshopProgress = undefined
-  cancelledNotice.value = '已放弃本次生成：迟到的返回结果会被丢弃，不会替换当前草稿。'
+  let interrupted = false
+  try {
+    interrupted = (await cancelAiWorkshopDraft()).cancelled
+  } catch {
+    /* 旧内核没有取消接口：退回「丢弃迟到结果」 */
+  }
+  cancelledNotice.value = interrupted
+    ? '已请求中断本次生成：宿主 HTTP 请求已取消，迟到的结果会被丢弃，不会替换当前草稿。'
+    : '已放弃本次生成：当前内核没有可中断的请求（或已结束），迟到的结果会被丢弃，不会替换当前草稿。'
 }
 
 function retryGenerate(): void {
@@ -793,7 +802,7 @@ onUnmounted(() => {
             </div>
             <div class="workshop-actions">
               <el-button size="small" @click="cancelGenerate">放弃本次生成</el-button>
-              <span class="cc-faint">已发出的请求无法中断；放弃后迟到结果会被丢弃，不会替换当前草稿。</span>
+              <span class="cc-faint">放弃会请求中断宿主 HTTP 请求；即使取消失败，迟到结果也会被丢弃，不会替换当前草稿。</span>
             </div>
           </div>
 

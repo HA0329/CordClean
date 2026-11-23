@@ -475,6 +475,10 @@ export function createHandlers(api: ApiContext): HandlerMap {
       }
       return workshop.draftPlugin(String(requirement ?? ''))
     },
+    'ai/workshop/cancel': () => {
+      const workshop = (ctx as unknown as { aiWorkshop?: { cancelDraft?(): boolean } }).aiWorkshop
+      return { cancelled: workshop?.cancelDraft ? workshop.cancelDraft() : false }
+    },
     'ai/workshop/models': async ({ refresh }) => {
       const workshop = (
         ctx as unknown as { aiWorkshop?: { models?(refresh: boolean): Promise<{ source: 'remote' | 'fallback'; models: any[] }> } }

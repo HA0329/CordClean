@@ -565,6 +565,11 @@ export async function draftAiWorkshopPlugin(requirement: string): Promise<AiPlug
   return requireTransport().request('ai/workshop/draft', { requirement })
 }
 
+/** 取消正在进行的工坊生成：真正中断宿主 HTTP 请求 */
+export async function cancelAiWorkshopDraft(): Promise<{ cancelled: boolean }> {
+  return requireTransport().request('ai/workshop/cancel', undefined)
+}
+
 /** 工坊自己的模型列表（独立接口配置） */
 export async function fetchAiWorkshopModels(refresh = false): Promise<{ source: 'remote' | 'fallback'; models: AiModelInfo[] }> {
   return requireTransport().request('ai/workshop/models', { refresh })

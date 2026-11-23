@@ -57,6 +57,10 @@ export const Config = Schema.object({
 export class AiWorkshopService extends Service {
   private readonly config: AiConfig
   private modelCache?: { at: number; models: AiModelInfo[]; source: 'remote' | 'fallback' }
+  /** 当前正在进行的生成：宿主 cancel 接口用它真正中断 HTTP 请求 */
+  private draftController?: AbortController
+  /** 生成序号：取消/新生成都会 +1，迟到的结果据此判断是否还属于当前请求 */
+  private draftSeq = 0
 
   constructor(ctx: Context, raw: Partial<AiConfig> & { extraBodyText?: string; extraHeadersText?: string }) {
     super(ctx, 'aiWorkshop')
@@ -130,10 +134,29 @@ export class AiWorkshopService extends Service {
     }
   }
 
+  /**
+   * 取消正在进行的生成：中断宿主 HTTP 请求（SSE / JSON）。
+   * 返回 false 表示当前没有进行中的生成（界面可提示「没有可取消的生成」）。
+   */
+  cancelDraft(): boolean {
+    const controller = this.draftController
+    this.draftSeq++
+    this.draftController = undefined
+    if (!controller) return false
+    controller.abort()
+    try {
+      ;(this.ctx.emit as any)('ai/workshop/progress', { phase: 'cancelled', textLength: 0, toolCalls: 0, elapsedMs: 0 })
+    } catch {
+      /* UI 未连接忽略 */
+    }
+    return true
+  }
+
   /** 真实流式生成（chat 形态）：边收 token / tool_calls 边上报进度，失败回退非流式 */
   private async streamChatDraft(
     request: ReturnType<typeof buildRequest>,
     config: AiConfig,
+    signal?: AbortSignal,
   ): Promise<{ text: string; toolCalls: Array<{ name: string; arguments: any }>; finish?: string } | null> {
     if (config.apiShape !== 'chat') return null
     let text = ''
@@ -162,6 +185,7 @@ export class AiWorkshopService extends Service {
           headers: request.headers,
           body: JSON.stringify({ ...(request.body as Record<string, unknown>), stream: true }),
           timeoutMs: config.timeoutMs || 180_000,
+          signal,
         },
         (payload: any) => {
           const choice = payload?.choices?.[0]
@@ -181,6 +205,8 @@ export class AiWorkshopService extends Service {
         },
       )
     } catch (error) {
+      // 用户取消：不要吞掉后回退到非流式，直接把 CANCELLED 抛给上层
+      if (signal?.aborted) throw new AiError('生成已取消', 'CANCELLED')
       this.ctx.logger.warn('工坊流式请求失败，回退非流式：%s', error instanceof Error ? error.message : String(error))
       return null
     }
@@ -198,7 +224,21 @@ export class AiWorkshopService extends Service {
     return { text, toolCalls, finish }
   }
 
+  /** 对外入口：同一时间只允许一个生成；新生成会先取消上一次请求 */
   async draftPlugin(requirement: string): Promise<AiPluginDraft> {
+    this.cancelDraft()
+    this.draftSeq += 1
+    const seq = this.draftSeq
+    const controller = new AbortController()
+    this.draftController = controller
+    try {
+      return await this.runDraft(requirement, controller.signal)
+    } finally {
+      if (this.draftSeq === seq && this.draftController === controller) this.draftController = undefined
+    }
+  }
+
+  private async runDraft(requirement: string, signal: AbortSignal): Promise<AiPluginDraft> {
     const demand = String(requirement ?? '').trim()
     if (!demand) throw new AiError('请先描述你想要的插件', 'BAD_REQUEST')
     const key = this.resolveKey()
@@ -216,6 +256,8 @@ export class AiWorkshopService extends Service {
     let feedback = ''
 
     for (let attempt = 0; attempt < attempts; attempt++) {
+      // 每轮尝试前检查取消：用户放弃后不再发起重试/下一次请求
+      if (signal.aborted) throw new AiError('生成已取消', 'CANCELLED')
       const maxTokens = Math.min(131_072, Math.max(32_768, base.maxTokens || 65_536) * (attempt ? 2 : 1))
       const systemPrompt =
         PLUGIN_SYSTEM_PROMPT +
@@ -235,7 +277,7 @@ export class AiWorkshopService extends Service {
       }
       let parsed: any
       let streamedToolArgs: any
-      const streamed = await this.streamChatDraft(request, base)
+      const streamed = await this.streamChatDraft(request, base, signal)
       if (streamed) {
         parsed = {
           text: streamed.text,
@@ -253,6 +295,7 @@ export class AiWorkshopService extends Service {
           body: request.body,
           timeoutMs: base.timeoutMs || 180_000,
           retries: base.retries ?? 1,
+          signal,
         })
         parsed = parseResponse(base, result.payload)
       }

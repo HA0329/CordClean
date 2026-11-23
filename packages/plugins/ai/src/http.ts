@@ -17,6 +17,8 @@ export type AiErrorCode =
   | 'HTTP'
   | 'INVALID_RESPONSE'
   | 'BAD_REQUEST'
+  /** 外部主动取消（例如工坊「放弃生成」真正中断了 HTTP 请求） */
+  | 'CANCELLED'
 
 /** 带分类与 HTTP 状态的 AI 错误 */
 export class AiError extends Error {
@@ -132,6 +134,8 @@ export async function requestJson(url: string, options: RequestOptions): Promise
         throw error
       }
       const err = error as Error & { name?: string }
+      // 外部主动取消：不重试、不包装成超时，让上层能区分「用户放弃」和「真的超时」
+      if (options.signal?.aborted) throw new AiError('请求已取消', 'CANCELLED')
       const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError'
       const wrapped = new AiError(
         isTimeout ? `请求超时（超过 ${options.timeoutMs} ms）` : `网络请求失败：${err?.message ?? String(error)}`,
