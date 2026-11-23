@@ -253,6 +253,7 @@ beforeAll(async () => {
     req.on('data', (chunk) => chunks.push(chunk as Buffer))
     req.on('end', () => {
       const url = String(req.url ?? '')
+      console.error('[CC-DIAG-SRV]', req.method, url)
       if (url.includes('/models')) return sendJson(res, 200, { data: [] })
       calls++
       if (url.startsWith('/auth/')) return sendJson(res, 401, { error: { message: 'invalid api key' } })
@@ -551,6 +552,7 @@ describe('服务层边界', () => {
           return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
         }
         chatCalls.push(url)
+        console.error('[CC-DIAG-401] fetch #' + chatCalls.length, url, '\n' + (new Error('stack').stack ?? '').split('\n').slice(1, 5).join('\n'))
         return new Response(JSON.stringify({ error: { message: 'invalid api key' } }), {
           status: 401,
           headers: { 'content-type': 'application/json' },
