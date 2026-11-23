@@ -1,0 +1,115 @@
+name: Release assets
+
+# 目的：在 GitHub runner 上创建/补建 Release 并上传源码 zip。
+# 背景：维护者本机 api.github.com 不可达（本地加速器只转发 github.com），
+# 但 Actions runner 可直连 api.github.com，因此把发布动作放到 CI 里执行。
+#
+# 触发：push 到 main（含本文件自身）或手动 workflow_dispatch。
+# 幂等：Release 已存在则跳过创建；同名资产已存在则跳过上传；版本号取自 package.json。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-assets
+  cancel-in-progress: false
+
+jobs:
+  publish-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout（含 tag，供 Release 使用）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install（frozen lockfile）
+        run: pnpm install --frozen-lockfile
+
+      - name: 读取版本号 / 发布说明 / 资产名
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = "v$version"
+          $notes = "docs/release-notes-$tag.md"
+          if (-not (Test-Path $notes)) { throw "缺少发布说明：$notes" }
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "TAG=$tag" >> $env:GITHUB_ENV
+          "NOTES=$notes" >> $env:GITHUB_ENV
+          "ZIP=CordClean-$tag.zip" >> $env:GITHUB_ENV
+          Write-Output "version=$version tag=$tag notes=$notes zip=CordClean-$tag.zip"
+
+      - name: 确保 tag 存在（缺失则创建并推送）
+        shell: pwsh
+        run: |
+          git fetch --tags --force
+          if (git rev-parse -q --verify "refs/tags/$env:TAG") {
+            $tagCommit = git rev-list -n 1 $env:TAG
+            Write-Output "tag $env:TAG -> $tagCommit"
+          } else {
+            Write-Output "tag $env:TAG 不存在，创建 annotated tag 并推送…"
+            git tag -a $env:TAG -m "CordClean $env:TAG"
+            git push origin $env:TAG
+            if ($LASTEXITCODE -ne 0) { throw "推送 tag 失败" }
+          }
+
+      - name: Checkout 发布 tag（保证资产与 tag 源码一致）
+        shell: pwsh
+        run: |
+          git checkout --detach $env:TAG
+          Write-Output "packaging from $(git rev-parse HEAD) ($env:TAG)"
+
+      - name: 生成源码发布目录
+        run: node scripts/package-release.mjs --out .
+
+      - name: 压缩为 CordClean-v<version>.zip
+        shell: pwsh
+        run: |
+          $dir = "CordClean-$env:TAG"
+          if (-not (Test-Path $dir)) { throw "缺少发布目录：$dir" }
+          if (Test-Path $env:ZIP) { Remove-Item $env:ZIP -Force }
+          Compress-Archive -Path $dir -DestinationPath $env:ZIP -CompressionLevel Optimal
+          Get-Item $env:ZIP | ForEach-Object {
+            Write-Output ("asset: " + $_.Name + " " + [Math]::Round($_.Length / 1MB, 2) + " MB")
+          }
+
+      - name: 创建/补建 Release 并上传资产（幂等）
+        shell: pwsh
+        run: |
+          gh release view $env:TAG --json url 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "Release $env:TAG 不存在，创建中…"
+            gh release create $env:TAG --title "CordClean $env:TAG" --notes-file $env:NOTES
+            if ($LASTEXITCODE -ne 0) { throw "gh release create 失败" }
+          } else {
+            Write-Output "Release $env:TAG 已存在，检查资产…"
+          }
+
+          $names = @(gh release view $env:TAG --json assets --jq ".assets[].name" 2>$null)
+          if ($names -contains $env:ZIP) {
+            Write-Output "资产已存在，跳过上传：$env:ZIP"
+          } else {
+            Write-Output "上传资产：$env:ZIP"
+            gh release upload $env:TAG $env:ZIP --clobber
+            if ($LASTEXITCODE -ne 0) { throw "gh release upload 失败" }
+          }
+
+          gh release view $env:TAG --json url,tagName,assets --jq "{url: .url, tag: .tagName, assets: [.assets[].name]}"
