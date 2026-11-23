@@ -1,6 +1,6 @@
 # 测试设计（全量测试分层）
 
-当前规模：**70 个测试文件 / 500 个用例**（`pnpm exec vitest list --json`，2026-11-23；含 E7/E8 设计属性验证）。
+当前规模：**71 个测试文件 / 508 个用例**（`pnpm exec vitest list --json`，2026-11-23；含 E7/E8 设计属性验证）。
 
 > 数量口径以 [项目事实表](project-facts.md) 为准；本文件随测试增删同步更新，不要在各处手写用例数。
 
@@ -16,7 +16,7 @@
 | 传输/鉴权 | rpc / host-server / validation / api-flow | token、Host（DNS rebinding）、Origin、WS maxPayload、畸形 URL、参数校验、真实 handler 全链路 |
 | 安全回归 | batch1-hardening | settings 原型污染/自愈、`addClearRoot` 放大、清理会话收尾、旧扫描覆盖、撤销凭据 |
 | 平台/插件 | plugins / plugins-robust / worker-host / external-proxy / external-install / generic-plugin / plugin-window / architecture | 插件生命周期、worker 故障隔离、外部插件信任边界（fsRoots/env/clearRoot）、原生 Cordis 插件、UI 贡献/iframe/窗口托盘、依赖方向 |
-| 引擎/规则 | engine / engine-robust / rules / rule-pack-evaluator / plugin-rules / quarantine / sessions / scheduler / undo / in-use / safety-hardening | 扫描清理、规则与 protected 语义、隔离恢复、会话中断、调度授权、目录预检/逐项降级、一次性令牌 |
+| 引擎/规则 | engine / engine-robust / rules / rule-pack-evaluator / plugin-rules / quarantine / sessions / scheduler / undo / in-use / safety-hardening / internal-delete | 扫描清理、规则与 protected 语义、隔离恢复、会话中断、调度授权、目录预检/逐项降级、一次性令牌、内部删除通道 |
 | AI | ai / ai-shapes / ai-robust / ai-context / ai-selection / ai-tools / ai-vision / ai-stream-analyze / ai-model-metadata / ai-config-defaults / ai-budget / ai-plugin-workshop / ai-plugin-native-kinds | 三种接口形态、推理等级、重试、隐私脱敏、选择项校验、模型元数据、流式分析、原生插件提示词/契约 |
 | 设计属性 | e7-unload / e8-dependency | E7：正例 `ctx.effect` 资源卸载归零；反例未登记资源残留对照。E8：provider/consumer 依赖挂起与自动恢复（[E7](experiments/e7-unload-residue.md) / [E8](experiments/e8-dependency-response.md)） |
 | 选择交互 | selection | 推荐/分组/筛选/排序/汇总纯函数与千条级性能 |

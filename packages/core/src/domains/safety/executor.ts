@@ -9,9 +9,10 @@
  * - `vanished`：执行前发现目标已不存在（不虚报释放量）。
  */
 import { readdir, stat } from 'node:fs/promises'
+import path from 'node:path'
 import { Service, type Context } from 'cordis'
 import type { CleanItemResult } from '@cordclean/shared'
-import { clearDirectory, compactSqlite, deletePath, describeDeleteError, mapLimit, pathKey } from '@cordclean/utils'
+import { clearDirectory, compactSqlite, deletePath, describeDeleteError, isSubPath, mapLimit, normalizePath, pathKey } from '@cordclean/utils'
 import type { QuarantineSession } from './quarantine.ts'
 import { isCleanTicket, type CleanTicket, type CleanTicketItem } from './compensate.ts'
 import { protectedComponentName } from './path-policy.ts'
@@ -21,6 +22,26 @@ export interface ExecuteOptions {
   session?: QuarantineSession
   dryRun?: boolean
   onItem?(result: CleanItemResult): void
+}
+
+/**
+ * 内部维护路径的删除理由（受控通道，非用户数据辖区）。
+ *
+ * 这些路径被路径策略保护或不属于清理辖区，不能走补偿链；但也不允许插件
+ * 直接 `fs.unlink`：统一经 `ExecutorService.deleteInternal()` 按 reason 校验前缀后删除。
+ */
+export type InternalDeleteReason =
+  | 'recycle-bin'
+  | 'startup-entry'
+  | 'quarantine'
+  | 'logs'
+  | 'plugin-staging'
+  | 'generated-plugins'
+
+export interface InternalDeleteResult {
+  ok: boolean
+  bytes: number
+  error?: string
 }
 
 export interface ExecuteOutcome {
@@ -84,7 +105,7 @@ async function findProtectedDescendant(root: string): Promise<string | undefined
 }
 
 export class ExecutorService extends Service {
-  static inject = ['compensate', 'recycleBin', 'settings']
+  static inject = ['compensate', 'recycleBin', 'settings', 'system']
 
   constructor(ctx: Context) {
     super(ctx, 'executor')
@@ -177,6 +198,58 @@ export class ExecutorService extends Service {
     outcome.cancelled = Boolean(options.signal?.aborted)
     outcome.failed = outcome.results.filter((result) => !result.ok).length
     return outcome
+  }
+
+  /**
+   * 内部维护路径的受控删除（唯一删除入口的「内部通道」）。
+   *
+   * 回收站 `$I/$R`、启动文件夹快捷方式、隔离区、日志、插件 staging 等路径
+   * 被路径策略保护或不属于用户清理辖区，不能走补偿链；插件也不再直接
+   * `fs.unlink`，而是按 reason 交给执行器校验前缀后删除，保证所有删除
+   * 都从执行器这一个出口走，并留下日志。
+   */
+  async deleteInternal(target: string, reason: InternalDeleteReason): Promise<InternalDeleteResult> {
+    const env = this.ctx.system.env
+    const normalized = normalizePath(target)
+    const deny = (message: string): InternalDeleteResult => {
+      this.ctx.logger?.warn?.('内部删除被拒绝（%s）：%s — %s', reason, target, message)
+      return { ok: false, bytes: 0, error: message }
+    }
+    if (!normalized) return deny('路径为空')
+    const dataDir = env.dataDir
+    const dataRoots: Record<Exclude<InternalDeleteReason, 'recycle-bin' | 'startup-entry'>, string[]> = {
+      quarantine: [path.join(dataDir, 'quarantine')],
+      logs: [path.join(dataDir, 'logs')],
+      'plugin-staging': [path.join(dataDir, 'plugins', '.staging')],
+      'generated-plugins': [path.join(dataDir, 'generated-plugins')],
+    }
+    if (reason === 'recycle-bin') {
+      // 只允许 X:\$Recycle.Bin\<SID>\$I* / $R*
+      const drive = path.parse(normalized).root
+      if (!drive) return deny('不是绝对路径')
+      if (!isSubPath(`${drive}\\$Recycle.Bin`, normalized)) return deny('不在 $Recycle.Bin 目录内')
+      if (!/^\$[IR]/i.test(path.basename(normalized))) return deny('不是 $I/$R 回收站文件')
+    } else if (reason === 'startup-entry') {
+      // 只允许启动文件夹的直接子项，且必须是快捷方式（startup 插件只上报 .lnk/.url）
+      const startupDirs = [
+        path.join(env.appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'),
+        path.join(env.programData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'),
+      ]
+      const parent = path.dirname(normalized)
+      if (!startupDirs.some((dir) => isSubPath(dir, normalized)) || !startupDirs.some((dir) => pathKey(dir) === pathKey(parent))) {
+        return deny('不在启动文件夹内')
+      }
+      if (!/\.(lnk|url)$/i.test(normalized)) return deny('不是快捷方式文件')
+    } else if (!dataRoots[reason].some((root) => isSubPath(root, normalized))) {
+      return deny('不在允许的内部维护目录内')
+    }
+    try {
+      const result = await deletePath(normalized, { recursive: false, retries: 1 })
+      this.ctx.logger?.debug?.('内部删除（%s）：%s', reason, target)
+      return { ok: true, bytes: result.bytes }
+    } catch (error) {
+      return { ok: false, bytes: 0, error: describeDeleteError(error) }
+    }
   }
 
   /** 单条执行：删除 / 清空 / 隔离 */

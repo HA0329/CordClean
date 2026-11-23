@@ -99,6 +99,11 @@ export interface TaskCleanContext {
   readonly mode: 'delete' | 'quarantine'
   /** 本次清理会话的隔离目录（mode 为 quarantine 时存在） */
   readonly quarantineDir?: string
+  /**
+   * 内部维护路径的受控删除（回收站 `$I/$R`、启动文件夹快捷方式、隔离区、日志、插件 staging）。
+   * 自定义清理插件不再直接 `fs.unlink`，统一交给执行器校验前缀后删除。
+   */
+  deleteInternal?(path: string, reason: 'recycle-bin' | 'startup-entry' | 'quarantine' | 'logs' | 'plugin-staging' | 'generated-plugins'): Promise<{ ok: boolean; bytes: number; error?: string }>
   throwIfAborted(): void
 }
 

@@ -81,4 +81,48 @@ describe('隔离区', () => {
   it('隔离目录位于数据目录下', () => {
     expect(app.ctx.quarantine.directory.startsWith(path.resolve(sandbox.dataDir))).toBe(true)
   })
+
+  it('清单被篡改：purge 不删除隔离区外的文件（相对路径穿越）', async () => {
+    const victimDir = path.join(sandbox.root, 'victim-purge')
+    mkdirSync(victimDir, { recursive: true })
+    const victim = path.join(victimDir, 'keep.txt')
+    writeFileSync(victim, 'must-survive')
+
+    const source = sandbox.file('quarantine/e.txt', 'e-content')
+    const session = app.ctx.quarantine.beginSession('session-5')
+    const record = await session.move(source, 'temp', 9)
+    const manifest = path.join(app.ctx.quarantine.directory, 'session-5', 'manifest.jsonl')
+    writeFileSync(manifest, JSON.stringify({ ...record, storedName: '..\\..\\victim-purge\\keep.txt' }) + '\n')
+
+    const removed = await app.ctx.quarantine.purge()
+    expect(removed).toBe(0)
+    expect(existsSync(victim)).toBe(true)
+    // 非法记录被丢弃，不再出现在列表里
+    expect(await app.ctx.quarantine.list()).toHaveLength(0)
+  })
+
+  it('清单被篡改：绝对路径 storedName 不会删除任意文件', async () => {
+    const victim = sandbox.file('victim-abs/keep.txt', 'must-survive')
+    const source = sandbox.file('quarantine/f.txt', 'f-content')
+    const session = app.ctx.quarantine.beginSession('session-6')
+    const record = await session.move(source, 'temp', 9)
+    const manifest = path.join(app.ctx.quarantine.directory, 'session-6', 'manifest.jsonl')
+    writeFileSync(manifest, JSON.stringify({ ...record, storedName: victim }) + '\n')
+
+    const removed = await app.ctx.quarantine.purge()
+    expect(removed).toBe(0)
+    expect(existsSync(victim)).toBe(true)
+  })
+
+  it('清单被篡改：restore 拒绝相对路径与隔离区内目标', async () => {
+    const source = sandbox.file('quarantine/g.txt', 'g-content')
+    const session = app.ctx.quarantine.beginSession('session-7')
+    const record = await session.move(source, 'temp', 9)
+    const manifest = path.join(app.ctx.quarantine.directory, 'session-7', 'manifest.jsonl')
+    writeFileSync(manifest, JSON.stringify({ ...record, originalPath: 'relative\\g.txt' }) + '\n')
+
+    const result = await app.ctx.quarantine.restore([record.id])
+    expect(result.restored).toBe(0)
+    expect(result.failed[0].message).toContain('恢复目标')
+  })
 })

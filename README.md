@@ -7,7 +7,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.10`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；70 个测试文件 / 500 个用例。
+当前版本 `0.6.10`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、72 个 RPC 方法；71 个测试文件 / 508 个用例。
 
 更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md) · 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md) · 安全政策：[SECURITY.md](SECURITY.md)
 
@@ -35,7 +35,7 @@ pnpm start:desktop    # Electron 桌面应用
 | 运行时插件管理 | 「插件」页面可启用/停用/热重载插件，配置写入 `config.json`，无需重启应用 |
 | 通用插件框架 P1 | 外部插件可按原生 Cordis 插件加载，拥有完整 `ctx`；可贡献概览卡片、状态栏、命令、iframe 沙箱页面；主动事件/通知可实时刷新 UI；Electron 壳提供悬浮窗口/托盘；旧 worker cleaner 插件继续兼容 |
 | 插件包 v2 | 外部插件升级为「目录 + `plugin.json` 清单」：`apiVersion`/`engines` 兼容检查、权限清单、staging → 校验 → 原子落盘/回滚安装事务、包内 `client/` 页面经 `cordclean-plugin://` 协议加载；旧单文件插件继续兼容 |
-| 安全策略 | 六层删除安全链：路径策略 + 链接祖先 + 补偿链（`CleanTicket`，一次性 + TTL）+ 执行器复核（签发后 size/mtime、受保护目录扫描）+ 隔离区/回收站 + 审计；注册表类插件额外 `reg export` 备份；本地服务随机 token + Host/Origin 校验（见 [威胁模型](docs/threat-model.md)） |
+| 安全策略 | 六层删除安全链：路径策略 + 链接祖先 + 补偿链（`CleanTicket`，一次性 + TTL）+ 执行器复核（签发后 size/mtime、受保护目录扫描）+ 内部维护路径受控通道（`deleteInternal`）+ 隔离区/回收站 + 审计；注册表类插件额外 `reg export` 备份；本地服务随机 token + Host/Origin 校验（见 [威胁模型](docs/threat-model.md)） |
 | 扫描/清理分离 | 先扫描出「可清理项」，用户勾选后再执行；支持 `dryRun` 预演；扫描与清理都有独立实时进度页，切换侧边栏不会中断 |
 | 定时任务 | 多计划定时扫描；每个任务可自定义名称、按间隔或每天固定时间运行；自动清理需授权，规则变化后授权失效 |
 | 扫描结果选择 v2 | 千条级结果按「分类 → 任务」聚合；安全项智能推荐，谨慎/高风险项显式确认；支持风险/大小/任务筛选、三态整组勾选、逐项明细 + 详情说明 + 打开位置、受保护只读视图、清理确认摘要 |
@@ -52,7 +52,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 72 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（500 个用例 / 70 个文件；口径见 [项目事实表](docs/project-facts.md)）
+- **测试**：Vitest（508 个用例 / 71 个文件；口径见 [项目事实表](docs/project-facts.md)）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -103,7 +103,7 @@ pnpm start:desktop    # Electron 桌面应用
 │   ├── host/                 # 传输层：RPC 方法 + WebSocket/HTTP 宿主
 │   ├── ui/                   # 界面：Vue 3 单页应用
 │   └── plugins/              # 12 个清理插件（每个是一个独立包）
-├── tests/                    # Vitest 测试（70 个文件 / 500 用例）
+├── tests/                    # Vitest 测试（71 个文件 / 508 用例）
 ├── bench/                    # 性能基准脚本
 ├── scripts/                  # 构建、冒烟测试、插件自测、Mock LLM、E2E
 └── docs/                     # 架构、威胁模型、插件规范、论文素材
@@ -270,7 +270,7 @@ PC-Cleaner v0.9.11 的即时通讯数据保护（`WeChat Files` / `Tencent Files
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 500 个用例 / 70 个文件
+pnpm test          # 508 个用例 / 71 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md + docs/benchmark.json
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）

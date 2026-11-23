@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-23T09:39:34.877Z",
-  "commit": "d6872ff",
+  "generatedAt": "2026-11-23T09:55:06.291Z",
+  "commit": "2eb6b2e",
   "version": "0.6.10",
   "plugins": {
     "total": 12,
@@ -25,8 +25,8 @@
   "tasks": 38,
   "rpcMethods": 72,
   "tests": {
-    "files": 70,
-    "cases": 500
+    "files": 71,
+    "cases": 508
   },
   "rules": {
     "catalogCategories": 28,

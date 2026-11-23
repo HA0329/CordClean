@@ -28,7 +28,6 @@ import type {
   TaskScanContext,
 } from '@cordclean/shared'
 import {
-  deletePath,
   describeDeleteError,
   driveOf,
   errorCode,
@@ -200,11 +199,13 @@ export function locateRecyclePair(target: string): { infoPath: string } | undefi
 
 /** 静默删除 `$I`：失败只记警告（数据已经删掉了，元数据残留不影响空间统计） */
 async function unlinkQuietly(target: string, cleanCtx: TaskCleanContext): Promise<void> {
-  try {
-    await fs.unlink(toLongPath(target))
-  } catch (error) {
-    if (errorCode(error) === 'ENOENT') return
-    cleanCtx.logger.warn('删除 $I 元数据失败：%s（%s）', target, describeDeleteError(error))
+  if (!cleanCtx.deleteInternal) {
+    cleanCtx.logger.warn('内核未提供统一删除入口，$I 元数据无法清理：%s', target)
+    return
+  }
+  const result = await cleanCtx.deleteInternal(target, 'recycle-bin')
+  if (!result.ok) {
+    cleanCtx.logger.warn('删除 $I 元数据失败：%s（%s）', target, result.error ?? '未知错误')
   }
 }
 
@@ -254,8 +255,10 @@ export async function cleanRecycleItems(items: CleanItem[], cleanCtx: TaskCleanC
         results.push({ itemId: item.id, path: item.path, ok: true, bytes: 0 })
         continue
       }
-      // 先删 $R：真正的数据；deletePath 内部会处理只读文件并拒绝跟随链接
-      const removed = await deletePath(item.path, { retries: 1 })
+      // 先删 $R：真正的数据；经执行器受控内部通道删除（只接受 $Recycle.Bin 下的 $R）
+      if (!cleanCtx.deleteInternal) throw new Error('内核未提供统一删除入口')
+      const removed = await cleanCtx.deleteInternal(item.path, 'recycle-bin')
+      if (!removed.ok) throw new Error(removed.error ?? '删除失败')
       await unlinkQuietly(pair.infoPath, cleanCtx)
       results.push({ itemId: item.id, path: item.path, ok: true, bytes: removed.bytes })
     } catch (error) {

@@ -449,6 +449,8 @@ export class CleanerService extends Service implements CleanerLike {
           dryRun,
           mode: forceQuarantine ? 'quarantine' : 'delete',
           quarantineDir: quarantineSession?.dir,
+          // 内部维护路径也经执行器删除（插件不再直接 fs.unlink）
+          deleteInternal: (target: string, reason) => this.ctx.executor.deleteInternal(target, reason),
           throwIfAborted: () => {
             if (controller.signal.aborted) {
               const error = new Error('清理已取消')

@@ -583,6 +583,15 @@ export interface ExecutorLike {
     failed: number
     cancelled: boolean
   }>
+  /**
+   * 内部维护路径的受控删除（唯一删除入口的内部通道）：
+   * 回收站 `$I/$R`、启动文件夹快捷方式、隔离区、日志、插件 staging。
+   * 由执行器按 reason 校验路径前缀后删除，插件不得直接 `fs.unlink`。
+   */
+  deleteInternal(
+    target: string,
+    reason: 'recycle-bin' | 'startup-entry' | 'quarantine' | 'logs' | 'plugin-staging' | 'generated-plugins',
+  ): Promise<{ ok: boolean; bytes: number; error?: string }>
 }
 
 /** 规则注册表能力（`ctx.rules`） */

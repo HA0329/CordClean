@@ -9,7 +9,7 @@ import { appendFileSync, existsSync, mkdirSync, promises as fs, readdirSync, rea
 import path from 'node:path'
 import { Service, type Context } from 'cordis'
 import type { QuarantineLike, QuarantineRecord } from '@cordclean/shared'
-import { moveFile } from '@cordclean/utils'
+import { isAbsolutePath, isSubPath, moveFile } from '@cordclean/utils'
 import { basename } from '@cordclean/shared'
 import { errorMessage } from '@cordclean/utils'
 
@@ -37,6 +37,26 @@ function safeName(name: string): string {
   if (cleaned.length <= 120) return cleaned
   const ext = path.extname(cleaned)
   return cleaned.slice(0, 100) + (ext.length < 20 ? ext : '')
+}
+
+/**
+ * manifest 行校验：只接受结构完整的记录。
+ *
+ * `manifest.jsonl` 位于用户可写目录，可能被其它进程/同步工具篡改；
+ * 这里先做结构校验，非法记录一律丢弃，绝不让它的 `storedName`/`originalPath`
+ * 进入路径拼接或恢复流程（defect-log D-73）。
+ */
+function isQuarantineRecord(value: unknown): value is QuarantineRecord {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.id === 'string' &&
+    typeof record.sessionId === 'string' &&
+    typeof record.storedName === 'string' &&
+    typeof record.originalPath === 'string' &&
+    typeof record.bytes === 'number' &&
+    typeof record.createdAt === 'number'
+  )
 }
 
 export class QuarantineService extends Service implements QuarantineLike {
@@ -112,7 +132,9 @@ export class QuarantineService extends Service implements QuarantineLike {
       const trimmed = line.trim()
       if (!trimmed) continue
       try {
-        records.push(JSON.parse(trimmed) as QuarantineRecord)
+        const parsed: unknown = JSON.parse(trimmed)
+        if (isQuarantineRecord(parsed)) records.push(parsed)
+        else this.ctx.logger?.warn?.('隔离区清单存在结构异常的记录，已忽略：%s', trimmed.slice(0, 120))
       } catch {
         /* 跳过损坏行 */
       }
@@ -134,10 +156,11 @@ export class QuarantineService extends Service implements QuarantineLike {
     const sessions = this.listSessions()
     const result: QuarantineRecord[] = []
     for (const session of sessions) {
-      const dir = path.join(this.directory, session)
+      const dir = this.resolveSessionDir(session)
+      if (!dir) continue
       for (const record of this.readManifest(dir)) {
-        const storedName = this.safeStoredName(record.storedName)
-        if (storedName && existsSync(path.join(dir, storedName))) result.push(record)
+        const storedPath = this.resolveStoredPath(dir, record.storedName)
+        if (storedPath && existsSync(storedPath)) result.push(record)
       }
     }
     return result.sort((a, b) => b.createdAt - a.createdAt)
@@ -160,6 +183,20 @@ export class QuarantineService extends Service implements QuarantineLike {
   private safeStoredName(value: string): string | undefined {
     if (!value || value === '.' || value === '..' || value.includes('/') || value.includes('\\')) return undefined
     return path.basename(value) === value ? value : undefined
+  }
+
+  /**
+   * 把清单里的 `storedName` 解析成隔离区内的绝对路径。
+   * 非法（含分隔符/`..`/绝对路径）或解析后不在会话目录内 → undefined，绝不删除。
+   */
+  private resolveStoredPath(dir: string, storedName: unknown): string | undefined {
+    if (typeof storedName !== 'string') return undefined
+    const safe = this.safeStoredName(storedName)
+    if (!safe) return undefined
+    const root = path.resolve(dir)
+    const target = path.resolve(root, safe)
+    const prefix = root.endsWith(path.sep) ? root : root + path.sep
+    return target.startsWith(prefix) ? target : undefined
   }
 
   /** 恢复隔离项到原始位置 */
@@ -192,13 +229,18 @@ export class QuarantineService extends Service implements QuarantineLike {
           remaining.push(record)
           continue
         }
-        const storedName = this.safeStoredName(record.storedName)
-        if (!storedName) {
+        const source = this.resolveStoredPath(dir, record.storedName)
+        if (!source) {
           failed.push({ id: record.id, message: '无效的隔离项文件名' })
           remaining.push(record)
           continue
         }
-        const source = path.join(dir, storedName)
+        // 恢复目标必须是绝对路径，且不能指回隔离区内部（清单可被篡改）
+        if (!isAbsolutePath(record.originalPath) || isSubPath(this.directory, record.originalPath)) {
+          failed.push({ id: record.id, message: '无效的恢复目标路径' })
+          remaining.push(record)
+          continue
+        }
         try {
           if (!existsSync(source)) throw new Error('隔离文件已不存在')
           if (existsSync(record.originalPath)) {
@@ -230,7 +272,9 @@ export class QuarantineService extends Service implements QuarantineLike {
     const target = new Set(ids ?? [])
     let removed = 0
     for (const session of this.listSessions()) {
-      const dir = path.join(this.directory, session)
+      // 会话目录必须落在隔离区根目录内（清单/目录名都可能被篡改）
+      const dir = this.resolveSessionDir(session)
+      if (!dir) continue
       const records = this.readManifest(dir)
       const remaining: QuarantineRecord[] = []
       for (const record of records) {
@@ -239,8 +283,15 @@ export class QuarantineService extends Service implements QuarantineLike {
           remaining.push(record)
           continue
         }
+        // storedName 可能是被篡改的 `..\..\Windows\...` 或绝对路径：绝不按原样拼接删除，
+        // 非法记录直接丢弃并告警（列表里本来也不会展示它）。
+        const storedPath = this.resolveStoredPath(dir, record.storedName)
+        if (!storedPath) {
+          this.ctx.logger?.warn?.('隔离区清单中的文件名非法，已丢弃该记录（未执行删除）：%s', String(record.storedName).slice(0, 120))
+          continue
+        }
         try {
-          await fs.rm(path.join(dir, record.storedName), { force: true })
+          await fs.rm(storedPath, { force: true })
           removed++
         } catch {
           remaining.push(record)

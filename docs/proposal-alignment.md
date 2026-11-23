@@ -56,11 +56,10 @@ once + 5 分钟 TTL；执行器在真正删除前同步 consume()，同一票据
 - 现状：预检改为只检查顶层目录可读性，不再递归 open(file,'r+')；超过 5000 项、只读子项都不再阻塞，删除降级为逐项执行（先 clearDirectory 再删空目录），失败子项如实返回 ok:false，已释放字节照实计入，不再静默跳过。
 - 证据：	ests/safety-hardening.test.ts（5001 项目录被完整删除、只读文件不再阻塞）、	ests/in-use.test.ts（预检语义改为顶层可读性）；功能探针：5001 项目录 reedBytes=5001、目录已删除。
 - 残余：逐项删除时若个别子项被占用，会留下部分内容并返回失败结果（不再保证「要么全删要么不动」）。
-### 🟡 D4. “唯一删除入口”有内部维护路径例外
+### 🟡 D4. “唯一删除入口”的内部维护例外（已收敛为受控通道）
 
-- 代码现状：`plugins/recycle` 直接 `fs.unlink` 删 `$I` 元数据；`plugin-installer`、`mover`、AI 临时目录也有直接 `rm/unlink`。
-- 论文写法：改为“**用户数据**删除统一经执行器；插件安装 staging、回收站元数据、移动/临时文件属于内部维护路径”，并指向 [威胁模型](threat-model.md)。不要写“所有文件删除都只有一个入口”。
-
+- 现状：执行器新增 `deleteInternal(path, reason)` 受控内部通道，按 reason 校验前缀（`recycle-bin`/`startup-entry`/`quarantine`/`logs`/`plugin-staging`/`generated-plugins`）；`startup`、`recycle` 插件已改用它，插件内不再有 `fs.unlink`/`deletePath` 直删。`plugin-installer`、`mover`、日志与隔离区服务内部的维护性删除仍是模块内直接删除（后续批次继续收敛）。
+- 论文写法：写“**用户数据**删除统一经补偿链 + 执行器；内部维护路径经执行器受控通道或模块内维护删除”，并指向 [威胁模型](threat-model.md)。不要写“所有文件删除都只有一个入口”。
 ### ✅ D5. 性能快照已在目标机重跑（v0.6.10）
 
 - 现状：2026-11-23 在 Windows 11（Ryzen 5 5600 / 12 线程 / Node 24.22.1）用 v0.6.10 重跑 `pnpm bench`，`docs/benchmark.md` 与 `docs/benchmark.json` 为同一次快照（6.5 ms / 167.6 ms / 25 786 文件·秒^-1 / 2 031 文件·秒^-1）。
@@ -71,6 +70,11 @@ once + 5 分钟 TTL；执行器在真正删除前同步 consume()，同一票据
 - 现状：执行器在目录递归删除/清空前扫描子树，命中 `.git`、`.venv`、`.idea`、`.vscode`、微信/QQ 数据目录等受保护名即整项拒绝，不再把受保护目录随父目录一起删掉。
 - 证据：`tests/safety-hardening.test.ts` 两条用例；独立审计 P0（2026-11-23）。
 - 残余：这是删除前的额外一次全树遍历（大目录 IO 成本约 +1 遍），极端超大目录的扫描时间与删除本身同量级。
+### ✅ D7. 隔离区 purge 路径穿越（2026-11-23 已修）
+
+- 现状：`manifest.jsonl` 行结构校验；`storedName` 必须是单层文件名且解析后位于会话目录内，非法记录丢弃并告警；`restore()` 校验原路径必须是绝对路径且不在隔离区内。
+- 证据：`tests/quarantine.test.ts` 3 条篡改用例（相对路径穿越、绝对路径、非法恢复目标）。
+- 残余：同用户仍可篡改 manifest 的 `originalPath`，把恢复目标指向隔离区外的任意绝对路径（仅在用户主动点恢复时触发）；彻底方案是给清单加 HMAC/签名。
 ## 4. 论文里建议怎么写
 
 - 已对齐的部分：直接引用 [project-facts.md](project-facts.md) 与 [benchmark.md](benchmark.md)，不要在各章手抄数字。

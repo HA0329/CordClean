@@ -20,8 +20,6 @@ import Schema from 'schemastery'
 import { defineCleanerPlugin } from '@cordclean/shared'
 import type { CleanItem, CleanItemResult, TaskCleanContext, TaskEnv, TaskScanContext } from '@cordclean/shared'
 import {
-  deletePath,
-  describeDeleteError,
   ellipsis,
   errorMessage,
   exists,
@@ -538,11 +536,17 @@ export default defineCleanerPlugin<StartupConfig>({
             }
 
             if (kind === 'startup-folder') {
-              try {
-                const deleted = await deletePath(item.path)
-                results.push({ itemId: item.id, path: item.path, ok: true, bytes: deleted.bytes || item.size })
-              } catch (error) {
-                results.push(fail(item, describeDeleteError(error)))
+              // 统一删除入口：启动文件夹快捷方式经执行器按 reason 校验后删除，
+              // 插件不再直接 deletePath（路径策略对该目录是保护态，见 deleteInternal）
+              if (!cleanCtx.deleteInternal) {
+                results.push(fail(item, '内核未提供统一删除入口，已跳过（需升级内核）'))
+                continue
+              }
+              const removed = await cleanCtx.deleteInternal(item.path, 'startup-entry')
+              if (removed.ok) {
+                results.push({ itemId: item.id, path: item.path, ok: true, bytes: removed.bytes || item.size })
+              } else {
+                results.push(fail(item, removed.error ?? '删除失败'))
               }
               continue
             }
