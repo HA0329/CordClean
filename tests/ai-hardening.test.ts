@@ -419,6 +419,19 @@ async function boot(config: Record<string, unknown>, name: string) {
   })
 }
 
+/** 预置一次空扫描，避免 analyze 因「无 lastScan」自动跑全部 safe 任务扫描（CI 上可达数十秒） */
+async function seedLastScan(app: Awaited<ReturnType<typeof boot>>) {
+  app.ctx.cleaner.define({
+    id: 'sse-noop',
+    name: 'sse-noop',
+    description: 'noop',
+    category: 'temp',
+    risk: 'safe',
+    targets: [],
+    scan() {},
+  })
+  await app.ctx.cleaner.scan({ taskIds: ['sse-noop'] })
+}
 const baseConfig = (prefix: string, extra: Record<string, unknown> = {}) => ({
   apiKey: 'test-key',
   baseUrl: `http://127.0.0.1:${port}/${prefix}`,
@@ -458,6 +471,7 @@ describe('服务层边界', () => {
 
   it('分析中取消：立刻以 CANCELLED 结束，不回退非流式再打一次请求', async () => {
     const app = await boot(baseConfig('sse-cancel'), 'sse-cancel')
+    await seedLastScan(app)
     const chatCalls: string[] = []
     const firstEvent = 'data: {"choices":[{"delta":{"content":"{\\"summary\\":\\"x\\""}}]}\n\n'
     vi.stubGlobal(
@@ -509,6 +523,7 @@ describe('服务层边界', () => {
 
   it('流式被 max_tokens 截断时报「输出被截断」而不是「JSON 不合法」（服务端不结束也不等待）', async () => {
     const app = await boot({ ...baseConfig('sse-truncated'), timeoutMs: 5_000 }, 'sse-truncated')
+    await seedLastScan(app)
     let cancelledStreams = 0
     vi.stubGlobal(
       'fetch',
@@ -544,6 +559,7 @@ describe('服务层边界', () => {
 
   it('流式接口 401 时不回退非流式（只请求一次，保留 AUTH 码）', async () => {
     const app = await boot(baseConfig('sse-auth'), 'sse-auth')
+    await seedLastScan(app)
     const chatCalls: string[] = []
     vi.stubGlobal(
       'fetch',
@@ -570,6 +586,7 @@ describe('服务层边界', () => {
 
   it('流式超时后不继续回退非流式（不把一次请求拖成两次超时）', async () => {
     const app = await boot({ ...baseConfig('sse-hang'), timeoutMs: 300 }, 'sse-hang')
+    await seedLastScan(app)
     const chatCalls: string[] = []
     vi.stubGlobal(
       'fetch',
