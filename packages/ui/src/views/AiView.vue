@@ -25,6 +25,15 @@ import {
   patchSettings,
   state,
 } from '../api/store.ts'
+import {
+  aiSetupGuide,
+  aiViewPhase,
+  analyzeGate,
+  classifyAiError,
+  describeStreamActivity,
+  redactSensitiveText,
+} from './ai-view-model.ts'
+import type { AiErrorActionId, AiErrorInfo, AiSetupActionId } from './ai-view-model.ts'
 
 /** 推荐地址：切换形态时一键填入 */
 const RECOMMENDED_BASE: Record<string, string> = {
@@ -104,6 +113,79 @@ const modelOptions = computed(() => state.aiModels)
 const currentModel = computed(() => modelOptions.value.find((model) => model.id === form.model))
 /** 模型名手动输入模式：候选列表不可用/想用任意模型名时切换成普通输入框 */
 const manualModel = ref(false)
+
+/* ------------------------------------------------------------------ */
+/* 引导态 / 分析门禁 / 结构化错误（纯逻辑在 ai-view-model.ts）          */
+/* ------------------------------------------------------------------ */
+
+/** 已有可用凭据：已保存的配置 / 环境变量，或界面里刚填还没保存的 Key */
+const hasKey = computed(() => configured.value || !!form.apiKey.trim())
+
+/** 页面顶部引导：插件未启用 / 隐私关闭 / 缺 Key / 缺模型 / 探测失败 / 自定义模型 */
+const setupGuide = computed(() =>
+  aiSetupGuide({
+    available: available.value,
+    configured: hasKey.value,
+    onlineAi: onlineAi.value,
+    model: form.model,
+    modelIds: modelOptions.value.map((model) => model.id),
+    probe: probe.value ? { ok: probe.value.ok, error: probe.value.error } : undefined,
+  }),
+)
+
+/** 「开始分析」门禁：不可用时必须有可读原因（按钮 tooltip 与提示共用） */
+const runGate = computed(() =>
+  analyzeGate({
+    available: available.value,
+    configured: hasKey.value,
+    onlineAi: onlineAi.value,
+    running: running.value,
+    saving: saving.value,
+  }),
+)
+
+/** 最近一次分析失败的结构化原因；成功或重新发起后清空 */
+const analyzeError = ref<AiErrorInfo | null>(null)
+/** 用户点过「取消生成」：底层可能表现为超时/中断，分类时优先归为「已取消」 */
+let cancelRequested = false
+const analyzeElapsed = ref(0)
+let analyzeElapsedTimer: ReturnType<typeof setInterval> | null = null
+
+function startAnalyzeElapsed(): void {
+  stopAnalyzeElapsed()
+  analyzeElapsed.value = 0
+  analyzeElapsedTimer = setInterval(() => {
+    analyzeElapsed.value += 1
+  }, 1000)
+}
+
+function stopAnalyzeElapsed(): void {
+  if (analyzeElapsedTimer) {
+    clearInterval(analyzeElapsedTimer)
+    analyzeElapsedTimer = null
+  }
+}
+
+/** 分析进行中的一行状态：已接收字符 / 思维链 / 用时（流式异常结束时用户能看出进度） */
+const streamActivity = computed(() =>
+  describeStreamActivity({
+    textChars: state.aiStream.length,
+    reasoningChars: state.aiStreamReasoning.length,
+    elapsedSeconds: analyzeElapsed.value,
+  }),
+)
+
+/** 空状态 / 加载 / 错误 / 结果阶段（有旧结果时优先展示结果，不白屏） */
+const viewPhase = computed(() =>
+  aiViewPhase({
+    available: available.value,
+    configured: hasKey.value,
+    onlineAi: onlineAi.value,
+    busy: running.value,
+    hasAnalysis: Boolean(analysis.value),
+    hasError: Boolean(analyzeError.value),
+  }),
+)
 
 /** 已自动拉取模型列表的配置指纹：同一配置只自动拉一次（手动「获取模型」不受限） */
 let autoModelsKey = ''
@@ -332,12 +414,20 @@ async function loadEgress() {
 
 async function run() {
   if (running.value || saving.value) return
+  // 按钮已禁用，但键盘/程序化触发仍可能进来：给出可读原因而不是静默失败
+  if (!runGate.value.ok) {
+    ElMessage.info(runGate.value.reason ?? '当前无法开始分析')
+    return
+  }
   // 表单有未保存改动时先自动保存并热重载：保证内核使用的配置与界面一致，
   // 也避免分析完成后的状态刷新把未保存配置覆盖回默认值。
   if (formDirty.value) {
     const saved = await saveForm(true)
     if (!saved) return
   }
+  analyzeError.value = null
+  cancelRequested = false
+  startAnalyzeElapsed()
   // running 是 state.busy 的只读派生值，由 analyzeAi 内部维护，这里不再手动赋值
   try {
     await analyzeAi(
@@ -346,10 +436,35 @@ async function run() {
       visionImage.value ? { ...visionImage.value } : undefined,
       extra.value.trim() || undefined,
     )
+    analyzeError.value = null
     ElMessage.success('AI 分析完成')
   } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error)
+    // 结构化分类 + 脱敏：缺 Key / 鉴权 / 超时 / 截断 / 非法 JSON / 隐私拦截 / 取消 / 网络都可读
+    const info = classifyAiError(raw, { cancelled: cancelRequested })
+    analyzeError.value = info
+    cancelRequested = false
+    if (info.kind === 'cancelled') ElMessage.info(info.title)
+    else ElMessage.error(info.title)
+  } finally {
+    stopAnalyzeElapsed()
+  }
+}
+
+/** 「取消生成」：底层可能表现为超时/中断，先记下用户意图，再让分类优先归为「已取消」 */
+async function cancelGeneration(): Promise<void> {
+  if (!running.value) return
+  cancelRequested = true
+  try {
+    await cancelAi()
+  } catch (error) {
+    cancelRequested = false
     ElMessage.error(error instanceof Error ? error.message : String(error))
   }
+}
+
+function dismissAnalyzeError(): void {
+  analyzeError.value = null
 }
 
 async function adoptRule(rule: any, index: number) {
@@ -550,6 +665,7 @@ function stopWorkshopElapsed(): void {
 
 onUnmounted(() => {
   stopWorkshopElapsed()
+  stopAnalyzeElapsed()
   if (workshopValidateTimer) {
     clearTimeout(workshopValidateTimer)
     workshopValidateTimer = null
@@ -754,11 +870,109 @@ async function applyAiSelection() {
   }
 }
 
-function focusApiKey(): void {
-  const field = document.getElementById('ai-api-key')
+function focusField(id: string): void {
+  const field = document.getElementById(id)
   field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  const input = field?.querySelector('input')
-  if (input instanceof HTMLInputElement) input.focus()
+  const input = field?.querySelector('input, textarea')
+  if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) input.focus()
+}
+
+function focusApiKey(): void {
+  focusField('ai-api-key')
+}
+
+function focusMaxTokens(): void {
+  focusField('ai-max-tokens')
+}
+
+function focusModel(): void {
+  focusField('ai-model')
+}
+
+function focusTimeout(): void {
+  focusField('ai-timeout')
+}
+
+/** 截断/长度不足时一键翻倍最大输出 token（重新分析时会自动保存） */
+function increaseMaxTokens(): void {
+  const current = Number(form.maxTokens) || 3000
+  const next = Math.min(65536, Math.max(128, Math.round(current) * 2))
+  focusMaxTokens()
+  if (next === current) {
+    ElMessage.info('最大输出 token 已是上限 65536')
+    return
+  }
+  form.maxTokens = next
+  ElMessage.info(`已把最大输出 token 调整为 ${next}，重新分析会自动保存配置`)
+}
+
+/** 引导态按钮：一键去启用/填写 Key/改设置/重试探测，不静默失败 */
+function runSetupAction(id: AiSetupActionId): void {
+  switch (id) {
+    case 'enable-plugin':
+      void enablePlugin()
+      break
+    case 'fill-key':
+      focusApiKey()
+      break
+    case 'open-settings':
+      state.page = 'settings'
+      break
+    case 'open-plugins':
+      state.page = 'plugins'
+      break
+    case 'open-egress':
+      void loadEgress()
+      break
+    case 'refresh-models':
+      void loadModels()
+      break
+    case 'change-model':
+      manualModel.value = true
+      focusModel()
+      break
+    case 'probe':
+      void doProbe()
+      break
+  }
+}
+
+/** 结构化错误卡片按钮：重试 / 补 Key / 看外发记录 / 调大 token 等 */
+function runErrorAction(id: AiErrorActionId): void {
+  switch (id) {
+    case 'retry':
+      void run()
+      break
+    case 'fill-key':
+      focusApiKey()
+      break
+    case 'open-settings':
+      state.page = 'settings'
+      break
+    case 'open-plugins':
+      state.page = 'plugins'
+      break
+    case 'open-egress':
+      void loadEgress()
+      break
+    case 'increase-tokens':
+      increaseMaxTokens()
+      break
+    case 'focus-timeout':
+      focusTimeout()
+      break
+    case 'change-model':
+      manualModel.value = true
+      focusModel()
+      break
+    case 'remove-image':
+      visionImage.value = null
+      ElMessage.info('已移除截图，可重新分析')
+      break
+    case 'refresh-models':
+      void loadModels()
+      break
+  }
 }
 
 const shapeLabel = computed(() => SHAPES.find((item) => item.value === form.apiShape)?.value ?? form.apiShape)
@@ -775,35 +989,37 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
       <div class="cc-actions">
         <el-button :loading="loadingModels" :disabled="!available" @click="loadModels">获取模型</el-button>
         <el-button :disabled="!available" @click="loadEgress">外发记录</el-button>
-        <el-button v-if="running" type="danger" plain @click="cancelAi()">取消生成</el-button>
-        <el-button :loading="probing" :disabled="!available || !configured" @click="doProbe">测试连接</el-button>
-        <el-button
-          type="primary"
-          :loading="running"
-          :disabled="!available || !configured"
-          :title="!available ? 'AI 插件未启用' : !configured ? '请先填写 API Key' : ''"
-          @click="run"
-        >
+        <el-button v-if="running" type="danger" plain @click="cancelGeneration">取消生成</el-button>
+        <el-button :loading="probing" :disabled="!available || !hasKey" :title="!available ? 'AI 插件未启用' : !hasKey ? '请先填写 API Key' : ''" @click="doProbe">测试连接</el-button>
+        <el-button type="primary" :loading="running" :disabled="!runGate.ok" :title="runGate.reason ?? ''" @click="run">
           {{ analysis ? '重新分析' : '开始分析' }}
         </el-button>
       </div>
     </div>
 
-    <el-alert v-if="!available" type="warning" :closable="false" show-icon>
-      <template #title>AI 插件未启用</template>
+    <!-- 引导态：插件未启用 / 隐私关闭 / 缺 Key / 缺模型，给原因和一键出口，不静默失败 -->
+    <el-alert v-if="setupGuide.blocking" :type="setupGuide.tone" :closable="false" show-icon class="setup-guide">
+      <template #title>{{ setupGuide.title }}</template>
       <div class="alert-body">
-        请先启用「AI 清理顾问」插件；启用后会读取环境变量 <code>DEEPSEEK_API_KEY</code> 或在下方填写 Key。
-        <el-button size="small" type="primary" plain @click="enablePlugin">立即启用</el-button>
+        <span>{{ setupGuide.message }}</span>
+        <el-button
+          v-for="action in setupGuide.actions"
+          :key="action.id"
+          size="small"
+          :type="action.primary ? 'primary' : 'default'"
+          :plain="!action.primary"
+          @click="runSetupAction(action.id)"
+        >{{ action.label }}</el-button>
       </div>
     </el-alert>
 
-    <template v-else>
+    <template v-if="available">
       <!-- 运行状态：全部来自当前表单/实时状态，避免“固定的无用信息” -->
       <div class="status-bar">
-        <span class="cc-pill" :class="{ 'status-active': configured }">
-          {{ configured ? '凭据已配置' : '未配置 API Key' }}
+        <span class="cc-pill" :class="{ 'status-active': hasKey }">
+          {{ configured ? '凭据已配置' : hasKey ? 'API Key 已填写（未保存）' : '未配置 API Key' }}
         </span>
-        <el-button v-if="!configured" size="small" text type="primary" @click="focusApiKey">填写 API Key</el-button>
+        <el-button v-if="!hasKey" size="small" text type="primary" @click="focusApiKey">填写 API Key</el-button>
         <span class="cc-pill" :class="{ 'status-active': !formDirty, 'status-error': formDirty }">
           {{ formDirty ? '有未保存修改（分析前会自动保存）' : '配置已保存' }}
         </span>
@@ -811,12 +1027,42 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <span class="cc-pill">推理：{{ form.effort }}</span>
         <span class="cc-pill">JSON：{{ form.jsonMode }}</span>
         <span class="cc-pill">最大输出：{{ form.maxTokens }} tokens</span>
-        <span v-if="probe" class="cc-pill" :class="{ 'status-active': probe.ok, 'status-error': !probe.ok }">
+        <span v-if="probe" class="cc-pill" :class="{ 'status-active': probe.ok, 'status-error': !probe.ok }" :title="probe.ok ? '' : redactSensitiveText(probe.error)">
           探测：{{ probe.ok ? `${probe.latencyMs} ms` : '失败' }}
         </span>
         <span v-if="state.aiModelsSource" class="cc-pill">
           模型来源：{{ state.aiModelsSource === 'remote' ? '接口' : '内置目录' }}
         </span>
+        <span v-if="state.aiModelsSource === 'fallback' && hasKey" class="cc-pill status-suspended">模型列表走内置目录（可能是 Key/网络/地址问题）</span>
+      </div>
+
+      <!-- 分析失败：结构化原因 + 可执行动作 + 已接收的流式输出兜底 -->
+      <div v-if="analyzeError" class="cc-card analyze-error" role="alert" aria-live="assertive">
+        <div class="cc-card-title">
+          <h3>⚠️ {{ analyzeError.title }}</h3>
+          <el-button size="small" text @click="dismissAnalyzeError">关闭</el-button>
+        </div>
+        <p class="cc-hint">{{ analyzeError.hint }}</p>
+        <div class="cc-actions">
+          <el-button
+            v-for="action in analyzeError.actions"
+            :key="action.id"
+            size="small"
+            :type="action.primary ? 'primary' : 'default'"
+            :plain="!action.primary"
+            @click="runErrorAction(action.id)"
+          >{{ action.label }}</el-button>
+        </div>
+        <el-collapse v-if="analyzeError.detail" class="error-detail">
+          <el-collapse-item title="技术详情（已脱敏）">
+            <pre class="reasoning-text">{{ analyzeError.detail }}</pre>
+          </el-collapse-item>
+        </el-collapse>
+        <el-collapse v-if="state.aiStream" class="error-detail">
+          <el-collapse-item :title="`已接收的流式输出（${state.aiStream.length} 字符，可能不完整）`">
+            <pre class="reasoning-text">{{ state.aiStream }}</pre>
+          </el-collapse-item>
+        </el-collapse>
       </div>
 
       <!-- 接口设置 -->
@@ -848,7 +1094,7 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
             <el-input v-model="form.baseUrl" placeholder="https://api.deepseek.com" />
           </el-form-item>
 
-          <el-form-item label="模型">
+          <el-form-item label="模型" id="ai-model">
             <template v-if="manualModel">
               <el-input v-model="form.model" placeholder="直接输入模型名，例如 deepseek-flash" />
             </template>
@@ -903,11 +1149,11 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
             </el-select>
           </el-form-item>
 
-          <el-form-item label="最大输出 token">
+          <el-form-item label="最大输出 token" id="ai-max-tokens">
             <el-input-number v-model="form.maxTokens" :min="128" :max="65536" :step="512" style="width: 100%" />
           </el-form-item>
 
-          <el-form-item label="超时（毫秒）">
+          <el-form-item label="超时（毫秒）" id="ai-timeout">
             <el-input-number v-model="form.timeoutMs" :min="3000" :max="600000" :step="5000" style="width: 100%" />
           </el-form-item>
 
@@ -1021,8 +1267,15 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         <el-input v-model="extra" type="textarea" :rows="2" placeholder="告诉 AI 你的使用习惯，建议会更准确…" />
       </div>
 
-      <div v-if="state.busy" class="cc-card">
-        <div class="cc-card-title"><h3>⏳ 正在分析…</h3><span class="cc-faint">已接收 {{ state.aiStream.length }} 字符，完成后显示结构化建议</span></div>
+      <div v-if="running" class="cc-card analyzing-card" aria-live="polite" aria-busy="true">
+        <div class="cc-card-title">
+          <h3>⏳ 正在分析…</h3>
+          <div class="cc-actions">
+            <span class="cc-faint">{{ streamActivity }}</span>
+            <el-button size="small" type="danger" plain @click="cancelGeneration">取消生成</el-button>
+          </div>
+        </div>
+        <p class="cc-hint">模型正在生成：可以切到其它页面，完成后结果会保留；取消不会写入不完整结果。</p>
         <el-collapse>
           <el-collapse-item title="调试：流式原始输出（普通用户无需查看）">
             <pre class="stream-box">{{ state.aiStream || '等待模型输出…' }}</pre>
@@ -1160,8 +1413,44 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
         </div>
       </template>
 
-      <div v-else class="cc-card cc-empty">
-        点击右上角「开始分析」，AI 会读取磁盘占用、清理任务分布与系统信息后给出建议。
+      <div v-else-if="!running" class="cc-card ai-empty-state">
+        <template v-if="viewPhase === 'needs-setup'">
+          <div class="ai-empty-icon" aria-hidden="true">🔑</div>
+          <div>
+            <h4>还差一步就能分析</h4>
+            <p class="cc-hint">{{ setupGuide.message }}</p>
+          </div>
+          <div class="cc-actions">
+            <el-button size="small" type="primary" @click="runSetupAction(setupGuide.actions[0]?.id ?? 'fill-key')">
+              {{ setupGuide.actions[0]?.label ?? '去配置' }}
+            </el-button>
+            <el-button size="small" @click="showAdvanced = true">检查接口设置</el-button>
+          </div>
+        </template>
+        <template v-else-if="viewPhase === 'failed'">
+          <div class="ai-empty-icon" aria-hidden="true">⚠️</div>
+          <div>
+            <h4>本次分析没有生成结果</h4>
+            <p class="cc-hint">失败原因见上方提示；已接收的流式输出已保留，可展开查看后重试。</p>
+          </div>
+          <div class="cc-actions">
+            <el-button size="small" type="primary" @click="run">重试分析</el-button>
+            <el-button size="small" @click="loadEgress">查看外发记录</el-button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="ai-empty-icon" aria-hidden="true">✨</div>
+          <div>
+            <h4>开始第一次 AI 分析</h4>
+            <p class="cc-hint">
+              AI 会读取磁盘占用、清理任务分布与系统信息（仅脱敏摘要），完成后给出建议；应用任何清理前都需要你确认。
+            </p>
+          </div>
+          <div class="cc-actions">
+            <el-button size="small" type="primary" :disabled="!runGate.ok" @click="run">开始分析</el-button>
+            <span v-if="!runGate.ok" class="cc-hint">{{ runGate.reason }}</span>
+          </div>
+        </template>
       </div>
     <el-dialog v-model="egressOpen" title="外发记录（不变量 8）" width="760px">
       <p class="cc-faint">
@@ -1326,6 +1615,44 @@ const effortLabel = computed(() => EFFORTS.find((item) => item.value === form.ef
 
 .reasoning {
   margin-top: 12px;
+}
+
+/* 分析失败：结构化原因 + 可执行动作 */
+.analyze-error {
+  border-color: rgba(240, 80, 110, 0.35);
+}
+
+.error-detail {
+  margin-top: 8px;
+}
+
+/* 空状态 / 配置引导 */
+.ai-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 34px 20px;
+  text-align: center;
+}
+
+.ai-empty-state h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.ai-empty-state .cc-hint {
+  margin: 6px 0 0;
+  max-width: 760px;
+}
+
+.ai-empty-icon {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.analyzing-card {
+  border-color: rgba(79, 140, 255, 0.35);
 }
 
 .reasoning-text {
