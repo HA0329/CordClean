@@ -38,4 +38,17 @@ jobs:
       - name: Typecheck UI (vue-tsc)
         run: pnpm typecheck:ui
       - name: Unit / integration tests
-        run: pnpm vitest run
+        run: |
+          pnpm vitest run 2>&1 | Tee-Object -FilePath .test-output.log
+          exit $LASTEXITCODE
+      # 失败时把具体失败用例打成 annotation，便于不用登录下载日志也能定位 CI 红点
+      - name: Summarize failed tests
+        if: failure()
+        shell: pwsh
+        run: |
+          if (-not (Test-Path .test-output.log)) { exit 0 }
+          $lines = Get-Content .test-output.log
+          $failed = $lines | Select-String -Pattern '^ FAIL |^\s+FAIL ' | Select-Object -First 12
+          foreach ($f in $failed) { Write-Host ("::error::" + $f.Line.Trim()) }
+          $errors = $lines | Select-String -Pattern 'AssertionError|Error: Test timed out|Unhandled Errors' | Select-Object -First 12
+          foreach ($e in $errors) { Write-Host ("::error::" + $e.Line.Trim()) }
