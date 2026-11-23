@@ -425,7 +425,7 @@ async function seedLastScan(app: Awaited<ReturnType<typeof boot>>) {
     id: 'sse-noop',
     name: 'sse-noop',
     description: 'noop',
-    category: 'temp',
+    category: 'system',
     risk: 'safe',
     targets: [],
     scan() {},

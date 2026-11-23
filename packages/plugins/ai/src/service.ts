@@ -454,17 +454,29 @@ export class AiService extends Service implements AiLike {
   }
 
   /** 采集脱敏画像 */
-  private async buildProfile(userNote?: string): Promise<SystemProfile> {
+  private async buildProfile(userNote?: string, signal?: AbortSignal): Promise<SystemProfile> {
     const info = await this.ctx.system.info()
     const hotspots = await this.ctx.system.hotspots()
     let scan = this.ctx.cleaner.lastScan()
     if (!scan) {
-      // 没有扫描结果时只跑「安全级」任务，避免动辄数分钟的深度扫描
+      // 没有扫描结果时只跑「安全级」任务，避免动辄数分钟的深度扫描。
+      // 该隐式扫描必须可取消且有时限：用户取消/CI 慢机时不能把 analyze 拖到不可中断的数十秒。
       const safeTasks = this.ctx.cleaner
         .list()
         .filter((task: TaskDescriptor) => task.risk === 'safe')
         .map((task: TaskDescriptor) => task.id)
-      if (safeTasks.length) scan = await this.ctx.cleaner.scan({ taskIds: safeTasks })
+      if (safeTasks.length) {
+        const scanAbort = new AbortController()
+        const onAbort = () => scanAbort.abort()
+        signal?.addEventListener('abort', onAbort, { once: true })
+        const timer = setTimeout(() => scanAbort.abort(), 10_000)
+        try {
+          scan = await this.ctx.cleaner.scan({ taskIds: safeTasks, signal: scanAbort.signal })
+        } finally {
+          clearTimeout(timer)
+          signal?.removeEventListener('abort', onAbort)
+        }
+      }
     }
 
     const toGb = (bytes: number) => Math.round((bytes / 1024 ** 3) * 10) / 10
@@ -664,7 +676,7 @@ export class AiService extends Service implements AiLike {
       this.cache = analysis
       return analysis
     }
-    const profile = await this.buildProfile(options.extraContext)
+    const profile = await this.buildProfile(options.extraContext, signal)
     const scan = this.ctx.cleaner.lastScan()
     const candidates = scan
       ? [...scan.items]
