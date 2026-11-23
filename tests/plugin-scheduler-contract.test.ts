@@ -48,7 +48,7 @@ describe('插件契约：scheduler', () => {
       expect(task.name.trim().length).toBeGreaterThan(0)
       expect(['safe', 'caution', 'risky']).toContain(task.risk)
       expect(task.description === undefined || typeof task.description === 'string').toBe(true)
-      if (task.risk === 'risky' && typeof task.defaultSelected === 'boolean') expect(task.defaultSelected).toBe(false)
+      if (task.risk === 'risky' && typeof (task as { defaultSelected?: boolean }).defaultSelected === 'boolean') expect((task as { defaultSelected?: boolean }).defaultSelected).toBe(false)
     }
   })
 })
