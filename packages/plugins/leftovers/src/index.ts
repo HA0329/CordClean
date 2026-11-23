@@ -6,9 +6,15 @@
  * 1. 注册表残留（可清理，清理前自动导出 .reg 备份）：
  *    - A 类：`InstallLocation` 非空但目录已不存在（安装目录已丢失）；
  *    - B 类：`UninstallString` / `DisplayIcon` 指向的 exe 已不存在（卸载程序已丢失）。
- * 2. 目录残留（**只报告**，永不参与清理）：`Program Files` / `Program Files (x86)` /
- *    `%LOCALAPPDATA%` / `%APPDATA%` 下修改时间超过 180 天、且目录名与任何已安装软件
- *    都对不上的目录。
+ * 2. 目录残留（**只报告**，永不参与清理）：在 `Program Files` / `Program Files (x86)` /
+ *    `%LOCALAPPDATA%` / `%APPDATA%` 的基础上，追加 `%LOCALAPPDATA%\Programs`（用户级安装）
+ *    与 `%PROGRAMDATA%`（发布者级数据，顶层通常是发布者目录）作为扫描根。目录需同时满足：
+ *    - 名称/路径未命中排除名单（Windows/System32、回收站、Temp、包管理器缓存与开发目录、
+ *      CordClean 自身数据目录等）；
+ *    - 目录名与任何已安装软件（显示名 / 发布者 / 安装目录）都对不上；
+ *    - 最后修改时间超过 180 天。
+ *    真实判定逻辑全部在 `residual-rules.ts` 的纯函数里，由 tests/leftovers-residual.test.ts
+ *    直接覆盖；每条目录残留的 note 会写明匹配依据（与已安装软件均无匹配）、年龄与所在根。
  *
  * 安全约定（见 docs/plugin-authoring.md「安全红线」）：
  * - 本插件不调用 `pathPolicy.addRoot()`，因此所有目录类上报项都会被内核标记为受保护项，
@@ -33,12 +39,62 @@ import {
   normalizePath,
   parseRegSubKeys,
   parseRegValues,
+  pathKey,
   powershell,
   regDeleteKey,
   regExport,
   regQuery,
-  safeStat,
+  safeLstat,
 } from '@cordclean/utils'
+import {
+  SUSPECT_MAX_AGE_DAYS,
+  buildExclusionContext,
+  buildInstalledSoftwareIndex,
+  defaultSuspectRoots,
+  judgeSuspectDirectory,
+  toSuspectDraft,
+  type SuspectRoot,
+  type SuspectRootKind,
+  type SuspectSkipReason,
+} from './residual-rules.ts'
+
+// 纯判定规则一并从插件入口导出，便于测试与后续复用（package.json 只映射到 index.ts）
+export {
+  SUSPECT_MAX_AGE_DAYS,
+  SUSPECT_MIN_NAME_LENGTH,
+  ageDaysFromMtime,
+  buildExclusionContext,
+  buildInstalledSoftwareIndex,
+  classifyExcludedName,
+  classifyExcludedPath,
+  defaultSuspectRoots,
+  findInstalledSoftwareMatch,
+  formatAgeDays,
+  formatSuspectNote,
+  isSuspectAge,
+  judgeSuspectDirectory,
+  normalizePublisher,
+  normalizeSoftwareName,
+  textContainsToken,
+  toSuspectDraft,
+} from './residual-rules.ts'
+export type {
+  DirectoryCandidate,
+  ExclusionContext,
+  ExclusionEnv,
+  ExclusionReason,
+  InstalledSoftwareIndex,
+  JudgeContext,
+  SoftwareEntryLike,
+  SoftwareMatch,
+  SoftwareMatchBasis,
+  SuspectDecision,
+  SuspectDirectoryDetail,
+  SuspectItemDraft,
+  SuspectRoot,
+  SuspectRootKind,
+  SuspectSkipReason,
+} from './residual-rules.ts'
 
 /* ------------------------------------------------------------------ */
 /* 常量                                                                */
@@ -52,45 +108,8 @@ export const UNINSTALL_ROOTS = [
   'HKCU\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
 ]
 
-/** 疑似残留目录的判定：修改时间必须早于 N 天 */
-const SUSPECT_MAX_AGE_DAYS = 180
 /** 疑似残留目录最多上报条数 */
 const SUSPECT_MAX_ITEMS = 50
-/** 目录名过短时匹配「DisplayName 子串」几乎必然命中，直接跳过（更保守） */
-const SUSPECT_MIN_NAME_LENGTH = 3
-/**
- * 目录名黑名单：这些是 Windows / 运行时自身的目录，不属于「应用残留」。
- * 加黑名单是为了让「疑似残留」的提示更保守，避免把系统目录报给用户。
- */
-const SUSPECT_DENY_NAMES = new Set([
-  'common files',
-  'internet explorer',
-  'modifiablewindowsapps',
-  'msbuild',
-  'reference assemblies',
-  'uninstall information',
-  'windowsapps',
-  'windows defender',
-  'windows mail',
-  'windows media player',
-  'windows nt',
-  'windows photo viewer',
-  'windows portable devices',
-  'windows sidebar',
-  'windowspowershell',
-  'microsoft',
-  'microsoft.net',
-  'microsoft office',
-  'microsoft shared',
-  'dotnet',
-  'temp',
-  'packages',
-  'programs',
-  'virtualstore',
-  'crashdumps',
-  'd3dscache',
-  'connecteddevicesplatform',
-])
 
 /** 卸载条目中需要读取的值名（顺序与 UninstallEntry 字段一致） */
 const UNINSTALL_FIELDS: Array<[keyof UninstallEntry, string]> = [
@@ -118,7 +137,9 @@ const Config = Schema.object({
     .description('分析注册表卸载项，找出安装目录或卸载程序已丢失的残留项（清理前自动导出 .reg 备份）'),
   includeDirectories: Schema.boolean()
     .default(true)
-    .description('在 Program Files / AppData 下提示疑似残留目录（只做提示，永远不会被删除）'),
+    .description(
+      '在 Program Files / AppData / %PROGRAMDATA% 下提示疑似残留目录（只做提示，永远不会被删除；系统目录、Temp、回收站、包管理器缓存与 CordClean 自身数据目录会被排除）',
+    ),
   backupDir: Schema.string()
     .default('')
     .description('注册表备份目录，留空表示使用数据目录下的 backups 文件夹'),
@@ -157,10 +178,41 @@ export interface UninstallCollection {
 export interface SuspectDirectory {
   path: string
   name: string
-  /** 所属根目录（用于界面分组） */
+  /** 所属根目录标签（用于界面分组），如 `%PROGRAMDATA%` */
   root: string
+  /** 扫描根类别（用于说明该目录的判定语境） */
+  rootKind: SuspectRootKind
   /** 距今天数（目录最后修改时间） */
   ageDays: number
+  /** 目录最后修改时间（毫秒） */
+  mtimeMs: number
+}
+
+/** 单个扫描根的统计（用于日志与自测证明扫描确实覆盖了新根） */
+export interface SuspectRootStat {
+  label: string
+  path: string
+  /** 根目录是否存在且可读（不存在的根会被静默跳过） */
+  readable: boolean
+  /** 顶层目录数量（已排除符号链接） */
+  candidates: number
+  /** 该根命中数 */
+  suspects: number
+}
+
+/** findSuspectDirectories 的统计结果（供日志/审计使用） */
+export interface SuspectDirectoryStats {
+  /** 去重后的已安装软件索引规模 */
+  index: { displayNames: number; publishers: number; installDirs: number }
+  roots: SuspectRootStat[]
+  /** 各类跳过原因计数（黑名单/匹配/年龄不足等） */
+  skipped: Partial<Record<SuspectSkipReason, number>>
+  /** 命中已安装软件（因此不上报）的目录数 */
+  matched: number
+  /** 判定为疑似残留的总数（截断前） */
+  suspectTotal: number
+  /** 是否因 maxItems 截断 */
+  truncated: boolean
 }
 
 export interface SuspectDirectoryOptions {
@@ -168,10 +220,15 @@ export interface SuspectDirectoryOptions {
   entries: UninstallEntry[]
   /** 最小目录年龄（天），默认 180 */
   minAgeDays?: number
-  /** 最多返回条数，默认 50 */
+  /** 最多返回条数，默认无限（由调用方截断） */
   maxItems?: number
-  /** 自定义扫描根，默认 Program Files / Program Files (x86) / %LOCALAPPDATA% / %APPDATA% */
-  roots?: Array<{ label: string; path: string }>
+  /**
+   * 自定义扫描根，默认 Program Files / Program Files (x86) / %LOCALAPPDATA% / %APPDATA% /
+   * %LOCALAPPDATA%\Programs / %PROGRAMDATA%
+   */
+  roots?: Array<{ label: string; path: string; kind?: SuspectRootKind }>
+  /** 扫描统计回调（日志与自测用） */
+  onStats?: (stats: SuspectDirectoryStats) => void
 }
 
 /* ------------------------------------------------------------------ */
@@ -407,66 +464,139 @@ export async function detectResidual(entry: UninstallEntry, env: TaskEnv): Promi
 /* 疑似残留目录                                                        */
 /* ------------------------------------------------------------------ */
 
-/** 默认的目录检查范围 */
-export function defaultSuspectRoots(env: TaskEnv): Array<{ label: string; path: string }> {
-  return [
-    { label: 'Program Files', path: env.programFiles },
-    { label: 'Program Files (x86)', path: env.programFilesX86 },
-    { label: '%LOCALAPPDATA%', path: env.localAppData },
-    { label: '%APPDATA%', path: env.appData },
-  ].filter((root) => !!root.path)
+/** 跳过原因 → 日志可读标签 */
+const SKIP_REASON_LABELS: Record<SuspectSkipReason, string> = {
+  link: '链接/不可读',
+  'too-short': '名称过短',
+  'excluded-name': '系统/缓存/开发目录',
+  'excluded-path': '受保护位置',
+  'installed-match': '已安装软件匹配',
+  'invalid-age': '时间异常',
+  'too-new': '未满年龄阈值',
+}
+
+/** 把跳过原因计数格式化为一行日志 */
+function describeSuspectSkips(skipped: Partial<Record<SuspectSkipReason, number>>): string {
+  return Object.entries(skipped)
+    .filter(([, count]) => (count ?? 0) > 0)
+    .map(([reason, count]) => `${SKIP_REASON_LABELS[reason as SuspectSkipReason] ?? reason}=${count}`)
+    .join('，')
+}
+
+/** 根据 TaskEnv 构造路径排除上下文（含 TEMP/TMP 环境变量） */
+function exclusionsForEnv(env: TaskEnv) {
+  return buildExclusionContext({
+    dataDir: env.dataDir,
+    windowsDir: env.windowsDir,
+    localAppData: env.localAppData,
+    appData: env.appData,
+    userProfile: env.userProfile,
+    systemDrive: env.systemDrive,
+    drives: env.drives,
+    tempDirs: [env.get('TEMP'), env.get('TMP')],
+  })
 }
 
 /**
  * 找出「疑似残留目录」。
  *
- * 判定刻意保守（宁可漏报，不要误报）：
- * 1. 只看顶层目录，不递归；
- * 2. 跳过联接点 / 符号链接（不跟随链接）；
- * 3. 目录名去空白后至少 3 个字符，且不在系统目录黑名单中；
- * 4. 目录名（小写）不能出现在任何卸载项的 DisplayName / InstallLocation 中；
+ * 判定刻意保守（宁可漏报，不要误报），核心判定在 residual-rules.ts 的纯函数里：
+ * 1. 只看扫描根下的顶层目录，不递归；
+ * 2. 跳过联接点 / 符号链接（readdir 的 dirent 与 lstat 双重确认，不跟随链接）；
+ * 3. 名称/路径命中排除名单（系统目录、Temp、回收站、包管理器缓存、CordClean 自身数据目录）；
+ * 4. 目录名与任何已安装软件（显示名 / 发布者 / 安装目录）匹配；
  * 5. 目录的最后修改时间必须早于 180 天；
- * 6. 最多返回 50 条。
+ * 6. 结果按年龄从旧到新排序后截断到 maxItems。
+ *
+ * onStats 会给出每个扫描根的候选/命中数与各类跳过计数，便于日志和「扫描确实覆盖新根」的验证。
  */
 export async function findSuspectDirectories(options: SuspectDirectoryOptions): Promise<SuspectDirectory[]> {
   const minAgeDays = options.minAgeDays ?? SUSPECT_MAX_AGE_DAYS
   const maxItems = options.maxItems ?? SUSPECT_MAX_ITEMS
-  const roots = options.roots?.length ? options.roots : defaultSuspectRoots(options.env)
-  const haystack = options.entries
-    .map((entry) => `${entry.displayName}\n${entry.installLocation}`)
-    .join('\n')
-    .toLowerCase()
+  const roots: SuspectRoot[] = (options.roots?.length ? options.roots : defaultSuspectRoots(options.env)).map((root) => ({
+    label: root.label,
+    path: root.path,
+    kind: root.kind ?? 'program-files',
+  }))
+  // 已安装软件索引只构建一次（名称/发布者/安装目录均已归一化去重）
+  const index = buildInstalledSoftwareIndex(options.entries)
+  const exclusions = exclusionsForEnv(options.env)
   const now = Date.now()
   const found: SuspectDirectory[] = []
   const seen = new Set<string>()
+  const stats: SuspectDirectoryStats = {
+    index: {
+      displayNames: index.displayNames.length,
+      publishers: index.publishers.length,
+      installDirs: index.installDirs.length,
+    },
+    roots: [],
+    skipped: {},
+    matched: 0,
+    suspectTotal: 0,
+    truncated: false,
+  }
+  const countSkip = (reason: SuspectSkipReason): void => {
+    stats.skipped[reason] = (stats.skipped[reason] ?? 0) + 1
+  }
 
   for (const root of roots) {
     if (!root.path) continue
+    const rootStat: SuspectRootStat = { label: root.label, path: root.path, readable: false, candidates: 0, suspects: 0 }
     let dirents
     try {
       dirents = await fs.readdir(root.path, { withFileTypes: true })
+      rootStat.readable = true
     } catch {
+      // 不存在的扫描根（例如没有 %PROGRAMDATA% 的精简系统）静默跳过
+      stats.roots.push(rootStat)
       continue
     }
     for (const dirent of dirents) {
-      if (found.length >= maxItems) return found
-      if (!dirent.isDirectory() || dirent.isSymbolicLink()) continue
-      const name = dirent.name
-      const lower = name.toLowerCase().trim()
-      if (lower.length < SUSPECT_MIN_NAME_LENGTH) continue
-      if (SUSPECT_DENY_NAMES.has(lower)) continue
-      if (haystack.includes(lower)) continue
-      const full = `${root.path}\\${name}`
-      if (seen.has(full.toLowerCase())) continue
-      const stat = await safeStat(full)
-      if (!stat || !stat.isDirectory()) continue
-      const ageDays = Math.floor((now - stat.mtimeMs) / 86_400_000)
-      if (!Number.isFinite(ageDays) || ageDays < minAgeDays) continue
-      seen.add(full.toLowerCase())
-      found.push({ path: full, name, root: root.label, ageDays })
+      if (!dirent.isDirectory()) continue
+      rootStat.candidates++
+      const full = path.join(root.path, dirent.name)
+      const key = pathKey(full)
+      if (seen.has(key)) continue
+      seen.add(key)
+      if (dirent.isSymbolicLink()) {
+        countSkip('link')
+        continue
+      }
+      const stat = await safeLstat(full)
+      // 复核：readdir 的类型在部分网络盘/重解析点上不可靠；lstat 失败或发现链接一律不进入
+      if (!stat || !stat.isDirectory() || stat.isSymbolicLink()) {
+        countSkip('link')
+        continue
+      }
+      const decision = judgeSuspectDirectory(
+        { path: full, name: dirent.name, rootKind: root.kind, mtimeMs: stat.mtimeMs },
+        { index, exclusions, now, minAgeDays },
+      )
+      if (!decision.suspect) {
+        countSkip(decision.skipReason ?? 'too-new')
+        if (decision.skipReason === 'installed-match') stats.matched++
+        continue
+      }
+      rootStat.suspects++
+      found.push({
+        path: full,
+        name: dirent.name,
+        root: root.label,
+        rootKind: root.kind,
+        ageDays: decision.ageDays ?? 0,
+        mtimeMs: stat.mtimeMs,
+      })
     }
+    stats.roots.push(rootStat)
   }
-  return found
+
+  // 越旧的目录越像残留：按年龄降序后截断，保证 50 条上限优先保留最旧项
+  found.sort((left, right) => right.ageDays - left.ageDays || left.path.localeCompare(right.path))
+  stats.suspectTotal = found.length
+  stats.truncated = found.length > maxItems
+  options.onStats?.(stats)
+  return found.slice(0, maxItems)
 }
 
 /* ------------------------------------------------------------------ */
@@ -499,24 +629,23 @@ export default defineCleanerPlugin<LeftoversConfig>({
       ctx.cleaner.define({
         id: 'leftovers',
         name: '应用残留',
-        description: '找出已卸载软件留下的注册表卸载项与疑似残留目录',
+        description: '找出已卸载软件留下的注册表卸载项与疑似残留目录（目录仅提示，永不删除）',
         category: 'apps',
         risk: 'risky',
         icon: '🧩',
         defaultSelected: false,
         estimatedMs: 6000,
-        targets: [
-          ...UNINSTALL_ROOTS,
-          env.programFiles,
-          env.programFilesX86,
-          env.localAppData,
-          env.appData,
-        ].filter(Boolean),
-        tips: ['清理注册表前会自动导出 .reg 备份', '目录类残留只做提示，建议人工确认'],
+        targets: [...UNINSTALL_ROOTS, ...defaultSuspectRoots(env).map((root) => root.path)].filter(Boolean),
+        tips: [
+          '清理注册表前会自动导出 .reg 备份',
+          '目录类残留只做提示，永远不会被删除，建议人工确认',
+          '目录扫描覆盖 Program Files（含 x86）、%LOCALAPPDATA%、%APPDATA%、%LOCALAPPDATA%\\Programs 与 %PROGRAMDATA%',
+          '系统目录、Temp、回收站、包管理器缓存（node_modules/.pnpm 等）与 CordClean 自身数据目录会被自动排除，避免误报',
+        ],
         async scan(scan) {
           scan.throwIfAborted()
 
-          // 目录比对需要「所有已安装软件的 DisplayName / InstallLocation」，
+          // 目录比对需要「所有已安装软件的显示名 / 发布者 / 安装路径」，
           // 因此只要有一项功能开启，就需要读取一次注册表卸载项。
           const collection: UninstallCollection = includeRegistry() || includeDirectories()
             ? await collectUninstallEntries()
@@ -569,29 +698,61 @@ export default defineCleanerPlugin<LeftoversConfig>({
           // ② 疑似残留目录：只报告、不可清理
           if (includeDirectories()) {
             scan.throwIfAborted()
+            let stats: SuspectDirectoryStats | undefined
             const suspects = await findSuspectDirectories({
               env: scan.env,
               entries: collection.entries,
+              // 多取一条用于判断是否超上限（真实上报仍按 SUSPECT_MAX_ITEMS 截断）
               maxItems: SUSPECT_MAX_ITEMS + 1,
+              onStats: (value) => {
+                stats = value
+              },
             })
+            // 把「扫了哪些根、比对了多少软件、跳过了什么」如实写进日志，便于用户/审计判断结果可信度
+            if (stats) {
+              scan.logger.info(
+                `目录比对索引（已去重）：软件名 ${stats.index.displayNames} 个，发布者 ${stats.index.publishers} 个，安装目录 ${stats.index.installDirs} 个`,
+              )
+              for (const root of stats.roots) {
+                scan.logger.info(
+                  `  扫描根 ${root.label}：候选目录 ${root.candidates} 个，命中 ${root.suspects} 个${
+                    root.readable ? '' : '（不存在或不可读，已跳过）'
+                  }`,
+                )
+              }
+              // 「已安装软件匹配」单独展示，其余跳过原因聚合为一行
+              const otherSkips: Partial<Record<SuspectSkipReason, number>> = { ...stats.skipped }
+              delete otherSkips['installed-match']
+              const skippedText = describeSuspectSkips(otherSkips)
+              scan.logger.info(
+                `疑似残留目录：命中 ${stats.suspectTotal} 个（仅提示，不参与清理）；已安装软件匹配 ${stats.matched} 个${
+                  skippedText ? `；其余跳过：${skippedText}` : ''
+                }`,
+              )
+            }
             if (suspects.length > SUSPECT_MAX_ITEMS) {
               scan.addError({
-                path: scan.env.programFiles,
-                message: `疑似残留目录超过 ${SUSPECT_MAX_ITEMS} 个，仅上报前 ${SUSPECT_MAX_ITEMS} 个`,
+                path: defaultSuspectRoots(scan.env)[0]?.path ?? scan.env.programFiles,
+                message: `疑似残留目录超过 ${SUSPECT_MAX_ITEMS} 个，仅上报最旧的 ${SUSPECT_MAX_ITEMS} 个`,
               })
             }
+            const installedCount = collection.entries.length
             for (const suspect of suspects.slice(0, SUSPECT_MAX_ITEMS)) {
               scan.throwIfAborted()
-              scan.emit({
-                path: suspect.path,
-                title: suspect.name,
-                kind: 'directory',
-                size: 0,
-                risk: 'risky',
-                defaultSelected: false,
-                note: '疑似残留目录（仅供参考，请人工确认）',
-                meta: { ageDays: suspect.ageDays, root: suspect.root },
-              })
+              // note 写明匹配依据/年龄/所在根；defaultSelected=false 由 toSuspectDraft 固定
+              scan.emit(
+                toSuspectDraft(
+                  {
+                    path: suspect.path,
+                    name: suspect.name,
+                    rootLabel: suspect.root,
+                    rootKind: suspect.rootKind,
+                    ageDays: suspect.ageDays,
+                    mtimeMs: suspect.mtimeMs,
+                  },
+                  installedCount,
+                ),
+              )
             }
           }
         },
@@ -605,7 +766,13 @@ export default defineCleanerPlugin<LeftoversConfig>({
             if (cleanCtx.signal.aborted) break
             // 目录类残留一律只报告，即使因为自定义扫描根而通过了路径策略也不处理
             if (item.kind !== 'registry') {
-              results.push({ itemId: item.id, path: item.path, ok: false, bytes: 0, error: '仅报告项' })
+              results.push({
+                itemId: item.id,
+                path: item.path,
+                ok: false,
+                bytes: 0,
+                error: '目录类残留仅提示，不参与清理（请人工确认后手动处理）',
+              })
               continue
             }
             if (cleanCtx.dryRun) {
