@@ -94,6 +94,20 @@ const CATALOG: Catalog = {
 }
 
 /** 展开 %VAR% 与 ~/；无法展开时返回空串 */
+
+/** 受保护/无权限路径的遍历错误：属预期噪声，不逐个上报 */
+let suppressedWalkErrors = 0
+const ACCESS_DENIED = /EACCES|EPERM|operation not permitted|access is denied|拒绝访问|权限不足/i
+function walkErrorHandler(scan: TaskScanContext): (targetPath: string, error: unknown) => void {
+  return (targetPath, error) => {
+    const message = String(error)
+    if (ACCESS_DENIED.test(message) || scan.pathPolicy.isProtected(targetPath)) {
+      suppressedWalkErrors++
+      return
+    }
+    scan.addError({ path: targetPath, message })
+  }
+}
 export function expandTemplate(template: string, env: TaskEnv): string {
   let value = template.trim()
   if (!value) return ''
@@ -237,7 +251,7 @@ async function scanRule(
           signal: scan.signal,
           maxDepth: 1,
           maxEntries: Math.max(1, options.maxItems),
-          onError: (targetPath, error) => scan.addError({ path: targetPath, message: String(error) }),
+          onError: walkErrorHandler(scan),
         })) {
           const entryKey = pathKey(entry.path)
           if (entryKey === pathKey(root)) continue
@@ -279,7 +293,7 @@ async function scanRule(
       for await (const entry of walk(root, {
         signal: scan.signal,
         maxDepth: patternSegments.length,
-        onError: (targetPath, error) => scan.addError({ path: targetPath, message: String(error) }),
+        onError: walkErrorHandler(scan),
         shouldEnter: (dir) => !isExcluded(dir, target),
       })) {
         if (entry.isDirectory !== wantDirectory) continue
@@ -308,7 +322,7 @@ async function scanRule(
       for await (const entry of walk(root, {
         signal: scan.signal,
         maxDepth: patternSegments.length,
-        onError: (targetPath, error) => scan.addError({ path: targetPath, message: String(error) }),
+        onError: walkErrorHandler(scan),
       })) {
         if (entry.isDirectory) continue
         const segments = entry.path.slice(root.length + 1).split(/[\\/]+/)
@@ -334,7 +348,7 @@ async function scanRule(
       for await (const entry of walk(root, {
         signal: scan.signal,
         maxDepth,
-        onError: (targetPath, error) => scan.addError({ path: targetPath, message: String(error) }),
+        onError: walkErrorHandler(scan),
       })) {
         if (entry.isDirectory) continue
         if (patternSegments.length) {
@@ -358,7 +372,7 @@ async function scanRule(
         signal: scan.signal,
         maxDepth: target.maxDepth ?? 8,
         shouldEnter: (dir) => !isExcluded(dir, target),
-        onError: (targetPath, error) => scan.addError({ path: targetPath, message: String(error) }),
+        onError: walkErrorHandler(scan),
       })) {
         if (!entry.isDirectory) continue
         if (!names.has(path.basename(entry.path).toLowerCase())) continue
@@ -498,6 +512,7 @@ export default defineCleanerPlugin<RulePackConfig>({
       )
 
       async function scanCategory(scan: TaskScanContext): Promise<DraftWithRule[]> {
+  suppressedWalkErrors = 0
         // 规则之间互不依赖：并发扫描，让体积统计的 I/O 重叠起来
         const perRule = await mapLimit(rules, Math.max(1, settings.scan.concurrency), async (rule) => {
           scan.throwIfAborted()

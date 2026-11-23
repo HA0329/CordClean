@@ -1413,48 +1413,6 @@
           }
         },
         {
-          "id": "dev_caches-4",
-          "name": "系统盘根 pnpm store",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_dirs",
-            "base": "%SYSTEMDRIVE%/",
-            "pattern": ".pnpm-store",
-            "action": "clear",
-            "skipIfInUse": true
-          }
-        },
-        {
-          "id": "dev_caches-5",
-          "name": "D 盘根 pnpm store",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_dirs",
-            "base": "D:/",
-            "pattern": ".pnpm-store",
-            "action": "clear",
-            "skipIfInUse": true
-          }
-        },
-        {
-          "id": "dev_caches-6",
-          "name": "E 盘根 pnpm store",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_dirs",
-            "base": "E:/",
-            "pattern": ".pnpm-store",
-            "action": "clear",
-            "skipIfInUse": true
-          }
-        },
-        {
           "id": "dev_caches-7",
           "name": "pip 缓存",
           "risk": "caution",
@@ -1905,49 +1863,6 @@
           }
         },
         {
-          "id": "system_admin-5",
-          "name": "chkdsk 残留(found.*)（只清空内容，恢复出的碎片无法找回）",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_dirs",
-            "base": "%SYSTEMDRIVE%/",
-            "pattern": "found.*",
-            "action": "clear",
-            "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
-          "id": "system_admin-6",
-          "name": "Windows 更新日志(KB*.log)",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%WINDIR%",
-            "pattern": "KB*.log",
-            "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
-          "id": "system_admin-7",
-          "name": "Windows 备份残留(*.bak)",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%WINDIR%",
-            "pattern": "*.bak",
-            "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
           "id": "system_admin-8",
           "name": "Windows 更新诊断日志",
           "risk": "caution",
@@ -1956,20 +1871,6 @@
           "target": {
             "type": "clear_dir",
             "path": "%WINDIR%/Logs/WindowsUpdate",
-            "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
-          "id": "system_admin-9",
-          "name": "事件日志归档",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%WINDIR%/System32/winevt/Logs",
-            "pattern": "Archive-*.evtx",
             "skipIfInUse": true,
             "requiresAdmin": true
           }
@@ -1987,20 +1888,6 @@
             "deepOnly": true,
             "skipIfInUse": true,
             "olderThanDays": 30,
-            "requiresAdmin": true
-          }
-        },
-        {
-          "id": "system_admin-11",
-          "name": "系统崩溃内存转储(MEMORY.DMP)",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%WINDIR%",
-            "pattern": "MEMORY.DMP",
-            "skipIfInUse": true,
             "requiresAdmin": true
           }
         },
@@ -2276,48 +2163,6 @@
           }
         },
         {
-          "id": "system_logs-14",
-          "name": "Windows 更新日志",
-          "risk": "safe",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%WINDIR%",
-            "pattern": "WindowsUpdate.log",
-            "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
-          "id": "system_logs-15",
-          "name": "DTC 安装日志",
-          "risk": "safe",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%WINDIR%",
-            "pattern": "DtcInstall.log",
-            "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
-          "id": "system_logs-16",
-          "name": "待处理文件重命名操作日志",
-          "risk": "safe",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%WINDIR%",
-            "pattern": "PFRO.log",
-            "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
           "id": "system_logs-17",
           "name": "更新编排服务日志(USOShared)",
           "risk": "safe",
@@ -2368,20 +2213,6 @@
             "base": "%PROGRAMDATA%/Microsoft/Windows/DeliveryOptimization",
             "pattern": "Cache",
             "action": "clear",
-            "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
-          "id": "system_logs-21",
-          "name": "传递优化跟踪日志",
-          "risk": "safe",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%PROGRAMDATA%/Microsoft/Windows/DeliveryOptimization/Logs",
-            "pattern": "*.etl",
             "skipIfInUse": true,
             "requiresAdmin": true
           }
@@ -3122,30 +2953,6 @@
             "base": "%LOCALAPPDATA%/Google/Chrome/User Data",
             "pattern": "*/Network/Cookies"
           }
-        },
-        {
-          "id": "database_compact-11",
-          "name": "Firefox 历史库压缩",
-          "risk": "safe",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "compact_db",
-            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
-            "pattern": "*/places.sqlite"
-          }
-        },
-        {
-          "id": "database_compact-12",
-          "name": "Firefox 表单库压缩",
-          "risk": "safe",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "compact_db",
-            "base": "%APPDATA%/Mozilla/Firefox/Profiles",
-            "pattern": "*/formhistory.sqlite"
-          }
         }
       ]
     },
@@ -3321,20 +3128,6 @@
           "target": {
             "type": "clear_dir",
             "path": "%PROGRAMDATA%/Microsoft/Diagnosis/ETLLogs",
-            "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
-          "id": "recycle_and_diagnostics-2",
-          "name": "事件追踪日志(ETL文件)",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%WINDIR%/System32/winevt/Logs",
-            "pattern": "*.etl",
             "skipIfInUse": true,
             "requiresAdmin": true
           }
@@ -3606,22 +3399,6 @@
             "base": "%WINDIR%/Logs/CBS",
             "pattern": "CbsPersist*.log",
             "skipIfInUse": true,
-            "requiresAdmin": true
-          }
-        },
-        {
-          "id": "extreme_stealth-2",
-          "name": "超30天的大体积事件日志(>50MB)",
-          "risk": "caution",
-          "source": "imported",
-          "version": 1,
-          "target": {
-            "type": "glob_files",
-            "base": "%WINDIR%/System32/winevt/Logs",
-            "pattern": "*.evtx",
-            "skipIfInUse": true,
-            "olderThanDays": 30,
-            "minSizeMb": 50,
             "requiresAdmin": true
           }
         },

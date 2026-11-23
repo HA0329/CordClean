@@ -93,7 +93,11 @@ export class RulesService extends Service implements RulesLike {
         continue
       }
       const roots = resolveRoots?.(rule) ?? []
-      const clear = rule.target.type === 'clear_dir' || (rule.target.type === 'glob_dirs' && rule.target.action !== 'delete')
+      const clear =
+        rule.target.type === 'clear_dir' ||
+        (rule.target.type === 'glob_dirs' && rule.target.action !== 'delete') ||
+        // find_dirs 的 clear 只清空匹配到的子目录内容（如 Steam shadercache），不会删除受保护目录本身
+        (rule.target.type === 'find_dirs' && rule.target.action !== 'delete')
       let blocked = false
       for (const root of roots) {
         if (/^[a-zA-Z]:\\?$/.test(root)) {
