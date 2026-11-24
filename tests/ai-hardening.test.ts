@@ -659,6 +659,7 @@ describe('服务层边界', () => {
   it('模型首次返回空内容时自动重试一次（真实模型偶发空输出）', async () => {
     const app = await boot({ ...baseConfig('retry-empty'), stream: false, timeoutMs: 10_000 }, 'retry-empty')
     await seedLastScan(app)
+    stripSlowContext(app)
     let calls = 0
     const valid = JSON.stringify({ summary: '重试后成功', suggestions: [], selection: [] })
     vi.stubGlobal(
@@ -686,6 +687,7 @@ describe('服务层边界', () => {
   it('持续空内容只自动重试一次后报 INVALID_RESPONSE', async () => {
     const app = await boot({ ...baseConfig('retry-empty-always'), stream: false, timeoutMs: 10_000 }, 'retry-empty-always')
     await seedLastScan(app)
+    stripSlowContext(app)
     let calls = 0
     vi.stubGlobal(
       'fetch',
