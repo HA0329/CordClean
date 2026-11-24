@@ -4,6 +4,20 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## v0.6.15 — 2026-11-24
+
+### AI 两插件真实模型深度测试与修复
+
+- **D1**：AI 顾问空输出/低 maxTokens 截断不再直接失败——`INVALID_RESPONSE` 自动重试一次并把
+  max_tokens 提升到至少 16384（按模型上限收敛）；真实模型空回答 3/3、deepseek-v4-pro 低 token 复验通过；
+- **D2**：AI 顾问并发/重复提交时取消旧分析，旧请求 `CANCELLED`、新请求正常返回；
+- 真实模型深度矩阵：顾问隐私/图片/选择/失败态/超时/取消全链路；工坊 28/28、事务 4/4、
+  依赖/原生/UI 三类生成插件运行验证 6/6；
+- 新增 [AI 深度测试记录](docs/verification/ai-deep-testing-2026-11-24.md) 与 [已知问题](docs/known-issues.md)
+  （PAT HTTPS 推送偶发挂死及带超时/远端核对处置）；
+- 测试基线：**106 文件 / 935 用例**。
+
+详细说明：[docs/release-notes-v0.6.15.md](docs/release-notes-v0.6.15.md)
 ## v0.6.14 — 2026-11-24
 
 ### 修复 v0.6.13 CI 红

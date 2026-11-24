@@ -2,7 +2,7 @@
 
 感谢你愿意改进 CordClean。这个项目优先保证 **安全、可恢复、可测试**，其次才是功能数量。
 
-> 当前版本：`0.6.14` · 测试基线：106 个测试文件 / 935 个用例 · 发布约定见 [docs/release-process.md](docs/release-process.md)。
+> 当前版本：`0.6.15` · 测试基线：106 个测试文件 / 935 个用例 · 发布约定见 [docs/release-process.md](docs/release-process.md)。
 
 ## 1. 开发环境
 
