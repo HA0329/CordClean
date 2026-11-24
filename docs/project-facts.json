@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-24T05:02:25.416Z",
-  "commit": "e412bc4",
+  "generatedAt": "2026-11-24T10:38:37.338Z",
+  "commit": "7dad0b5",
   "version": "0.6.15",
   "plugins": {
     "total": 12,
@@ -25,16 +25,16 @@
   "tasks": 38,
   "rpcMethods": 73,
   "tests": {
-    "files": 106,
-    "cases": 935
+    "files": 107,
+    "cases": 939
   },
   "rules": {
     "catalogCategories": 28,
-    "catalogRules": 255,
+    "catalogRules": 265,
     "extraCategories": 9,
     "extraRules": 130,
     "totalCategories": 37,
-    "totalRules": 385
+    "totalRules": 395
   },
   "benchmark": {
     "file": "docs/benchmark.md",

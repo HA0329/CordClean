@@ -7,7 +7,7 @@
 >
 > 目标不是再做一款「CCleaner 克隆」，而是验证一件事：**把"清理能力"抽象成插件，用插件框架统一管理生命周期、依赖、配置与安全边界**，从而让工具可扩展、可裁剪、可审计。
 
-当前版本 `0.6.15`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、73 个 RPC 方法；106 个测试文件 / 935 个用例。
+当前版本 `0.6.15`；12 个内置插件（8 个默认启用）、默认 38 个清理任务、73 个 RPC 方法；107 个测试文件 / 939 个用例。
 
 更新记录：[CHANGELOG.md](CHANGELOG.md) · 发布约定：[docs/release-process.md](docs/release-process.md) · 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md) · 安全政策：[SECURITY.md](SECURITY.md)
 
@@ -52,7 +52,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **界面**：Vue 3 + Vite + Element Plus
 - **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 72 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
-- **测试**：Vitest（935 个用例 / 106 个文件；口径见 [项目事实表](docs/project-facts.md)）
+- **测试**：Vitest（939 个用例 / 107 个文件；口径见 [项目事实表](docs/project-facts.md)）
 - **构建**：esbuild（主进程）+ Vite（界面）
 
 ## 3. 架构总览
@@ -103,7 +103,7 @@ pnpm start:desktop    # Electron 桌面应用
 │   ├── host/                 # 传输层：RPC 方法 + WebSocket/HTTP 宿主
 │   ├── ui/                   # 界面：Vue 3 单页应用
 │   └── plugins/              # 12 个清理插件（每个是一个独立包）
-├── tests/                    # Vitest 测试（106 个文件 / 935 用例）
+├── tests/                    # Vitest 测试（107 个文件 / 939 用例）
 ├── bench/                    # 性能基准脚本
 ├── scripts/                  # 构建、冒烟测试、插件自测、Mock LLM、E2E
 └── docs/                     # 架构、威胁模型、插件规范、论文素材
@@ -155,7 +155,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 
 | 插件 | 任务 | 风险 | 说明 |
 | --- | --- | --- | --- |
-| `rule-pack` | 规则库（默认 31 类 / 296 条规则任务；总库 37 类/385 条） | 安全~高风险 | 数据驱动：catalog + extra 两套 JSON，新增清理域只需加数据（见 §6.2） |
+| `rule-pack` | 规则库（默认 31 类 / 306 条规则任务；总库 37 类/395 条） | 安全~高风险 | 数据驱动：catalog + extra 两套 JSON，新增清理域只需加数据（见 §6.2） |
 | `scheduler` | —（定时扫描，不产生清理任务） | — | 多计划扫描并通知；每个任务可自定义名称；默认禁用，`clean` 模式需显式授权，授权与任务范围/模式绑定 |
 | `shortcuts` | 失效快捷方式 | 高风险 | 纯二进制解析 `.lnk`，只清理目标不存在的死链；默认禁用 |
 | `recycle` | 回收站 | 安全 | 解析 `$I/$R` 结构，按原始路径展示 |
@@ -220,7 +220,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - **来源**：从 [PC-Cleaner](https://github.com/HA0329/PC-Cleaner) **v0.9.11** 的 `rules.json`（规则数据版本 0.9.9）导入并持续扩充；两套数据文件：
   - `catalog.json`：**28 个分类 / 271 条规则 / 284 个候选根**（原始导入；上游 `broken_shortcuts` 由 `shortcuts` 插件实现、`dev_purge` 依赖 `<CWD>` 语义未导入）；
   - `extra.json`：**9 个分类 / 130 条规则**（后续扩充）；
-  - 合计 37 类 / 385 条（默认装载 31 类 / 296 条；同一目标可能被多个分类引用）。
+  - 合计 37 类 / 395 条（默认装载 31 类 / 306 条；同一目标可能被多个分类引用）。
 - **默认装载**：非高风险、非 `deepOnly` 的规则默认生效，约 **31 类 / 312 条**；高风险分类（浏览器密码/Cookie、Windows.old、Downloads 大文件等）
   与 `deepOnly` 规则默认不装载，可在设置里打开；
 - **分类 → 任务**：一个分类一个任务（`rule:<category>`），风险取组内最高；
@@ -270,7 +270,7 @@ PC-Cleaner v0.9.11 的即时通讯数据保护（`WeChat Files` / `Tencent Files
 ## 8. 测试与性能
 
 ```bash
-pnpm test          # 935 个用例 / 106 个文件
+pnpm test          # 939 个用例 / 107 个文件
 pnpm bench         # 性能基准 → docs/benchmark.md + docs/benchmark.json
 pnpm smoke         # 内核冒烟
 pnpm exec tsx scripts/audit-plugins.ts   # 内置插件的真实扫描审计（只读）

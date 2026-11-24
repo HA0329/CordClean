@@ -1,7 +1,7 @@
 # CordClean 项目事实表
 
 > 本文件由 `pnpm facts` 从源码、`vitest list` 与规则 JSON 自动生成，**请勿手改**。
-> 生成时间：2026-11-24T05:02:25.416Z；commit：`e412bc4`；版本：`0.6.15`。
+> 生成时间：2026-11-24T10:38:37.338Z；commit：`7dad0b5`；版本：`0.6.15`。
 > 论文、README、答辩材料引用数量时以本表为准；性能数字以 [benchmark.md](benchmark.md) 为唯一来源；历史发布说明保留发布时口径。
 
 | 项目 | 值 | 来源 |
@@ -10,9 +10,9 @@
 | 内置插件 | 12 个（默认启用 8 个，运行时 active 8 个） | `packages/core/src/manifest.ts` + 运行时 `ctx.plugins.list()` |
 | 默认清理任务 | 38 个 | 运行时 `ctx.cleaner.list()`（全部内置插件加载后） |
 | RPC 方法 | 73 个 | `packages/shared/src/rpc.ts` 的 `ApiMap` |
-| 测试文件 | 106 个 | `tests/*.test.ts` |
-| 测试用例 | 935 个 | `pnpm exec vitest list --json` |
-| 规则库 | 37 类 / 385 条（catalog 28 类/255 条 + extra 9 类/130 条） | `packages/plugins/rule-pack/rules/*.json` |
+| 测试文件 | 107 个 | `tests/*.test.ts` |
+| 测试用例 | 939 个 | `pnpm exec vitest list --json` |
+| 规则库 | 37 类 / 395 条（catalog 28 类/265 条 + extra 9 类/130 条） | `packages/plugins/rule-pack/rules/*.json` |
 | 性能快照 | 2026/11/23 16:58:41 · win32 10.0.26100 · 12 核 · Node 24.22.1 | [benchmark.md](benchmark.md)（`pnpm bench` 生成） |
 
 ## 口径说明
