@@ -2,7 +2,7 @@
 
 感谢你愿意改进 CordClean。这个项目优先保证 **安全、可恢复、可测试**，其次才是功能数量。
 
-> 当前版本：`0.6.14` · 测试基线：106 个测试文件 / 932 个用例 · 发布约定见 [docs/release-process.md](docs/release-process.md)。
+> 当前版本：`0.6.14` · 测试基线：106 个测试文件 / 935 个用例 · 发布约定见 [docs/release-process.md](docs/release-process.md)。
 
 ## 1. 开发环境
 
@@ -25,7 +25,7 @@ pnpm dev:desktop    # Electron 桌面外壳
 ```powershell
 pnpm typecheck      # tsc
 pnpm typecheck:ui   # vue-tsc
-pnpm test           # 106 个文件 / 932 个用例（会先构建 UI）
+pnpm test           # 106 个文件 / 935 个用例（会先构建 UI）
 pnpm build          # UI + 桌面主进程
 ```
 
