@@ -612,6 +612,32 @@ export class AiService extends Service implements AiLike {
   }
 
   async analyze(options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[]; image?: { mime: string; data: string } } = {}): Promise<AiAnalysis> {
+    // 重复/并发提交：新的分析应取消上一次仍在进行的分析，避免两次请求互相覆盖结果与浪费 token
+    this.analyzeController?.abort()
+    let overrideTokens: number | undefined
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await this.analyzeOnce(options, attempt > 0 ? overrideTokens : undefined)
+      } catch (error) {
+        // 真实模型偶发「只输出思维链/空内容/非法 JSON/被截断」：自动从更高 max_tokens 重试一次。
+        // 推理模型的思维链也会占输出 token，低 maxTokens 切换模型时尤其容易空答/截断。
+        const retryable =
+          error instanceof AiError &&
+          error.code === 'INVALID_RESPONSE' &&
+          !this.analyzeController?.signal.aborted
+        if (!retryable || attempt === 1) throw error
+        const baseTokens = Number(this.rawConfig.maxTokens) || 4096
+        overrideTokens = Math.min(this.modelLimits().maxOutputTokens, Math.max(16_384, baseTokens * 2))
+        this.ctx.logger.info('AI 输出无效/截断，自动提高 max_tokens 到 %d 重试一次：%s', overrideTokens, errorMessage(error))
+      }
+    }
+    throw new AiError('模型多次未返回有效分析结果', 'INVALID_RESPONSE')
+  }
+
+  private async analyzeOnce(
+    options: { taskIds?: string[]; extraContext?: string; contextProviders?: string[]; image?: { mime: string; data: string } } = {},
+    maxTokensOverride?: number,
+  ): Promise<AiAnalysis> {
     this.analyzeController = new AbortController()
     const signal = this.analyzeController.signal
     const key = this.requireKey()
@@ -633,7 +659,7 @@ export class AiService extends Service implements AiLike {
     }
     const limits = this.modelLimits()
     // 尊重用户配置的 max_tokens：只按模型能力上限收敛，不再偷偷抬到 32768
-    const requestedTokens = Number(this.rawConfig.maxTokens)
+    const requestedTokens = Number(maxTokensOverride ?? this.rawConfig.maxTokens)
     const config = {
       ...this.rawConfig,
       maxTokens: Math.min(limits.maxOutputTokens, Math.max(1, Number.isFinite(requestedTokens) ? requestedTokens : 3000)),

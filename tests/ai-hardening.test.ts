@@ -542,8 +542,9 @@ describe('服务层边界', () => {
       expect(error).toBeInstanceOf(AiError)
       expect((error as AiError).message).toContain('输出被截断')
       expect((error as AiError).code).toBe('INVALID_RESPONSE')
-      // 截断在流式阶段即被识别：只发一次流式请求，没有回退非流式再补一次。
-      expect(calls).toBe(1)
+      // 截断在流式阶段即被识别；随后自动提高 max_tokens 重试一次（仍是流式），
+      // 第二次仍截断才报错——不会回退非流式再补请求。
+      expect(calls).toBe(2)
     } finally {
       await app.dispose()
     }
@@ -621,6 +622,88 @@ describe('服务层边界', () => {
     }
   }, 30_000)
 
+  it('并发提交新分析会取消上一次分析（避免结果互相覆盖）', async () => {
+    const app = await boot({ ...baseConfig('concurrent'), stream: false, timeoutMs: 10_000 }, 'concurrent')
+    await seedLastScan(app)
+    stripSlowContext(app)
+    let calls = 0
+    const valid = JSON.stringify({ summary: '第二次成功', suggestions: [], selection: [] })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: any, init: any) => {
+        const url = String(input)
+        if (url.includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+        calls++
+        if (calls === 1) {
+          // 第一次请求挂起，直到被第二次 analyze 取消
+          return await new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+          })
+        }
+        return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: valid } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }),
+    )
+    try {
+      const first = app.ctx.ai!.analyze({})
+      for (let i = 0; i < 500 && calls === 0; i++) await new Promise((r) => setTimeout(r, 10))
+      expect(calls).toBe(1)
+      const second = app.ctx.ai!.analyze({})
+      await expect(first).rejects.toMatchObject({ code: 'CANCELLED' })
+      await expect(second).resolves.toMatchObject({ summary: '第二次成功' })
+      expect(calls).toBe(2)
+    } finally {
+      vi.unstubAllGlobals()
+      await app.dispose()
+    }
+  }, 30_000)
+  it('模型首次返回空内容时自动重试一次（真实模型偶发空输出）', async () => {
+    const app = await boot({ ...baseConfig('retry-empty'), stream: false, timeoutMs: 10_000 }, 'retry-empty')
+    await seedLastScan(app)
+    let calls = 0
+    const valid = JSON.stringify({ summary: '重试后成功', suggestions: [], selection: [] })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: any) => {
+        const url = String(input)
+        if (url.includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+        calls++
+        const payload = calls === 1
+          ? { choices: [{ message: { role: 'assistant', content: '' } }] }
+          : { choices: [{ message: { role: 'assistant', content: valid } }] }
+        return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })
+      }),
+    )
+    try {
+      const result = await app.ctx.ai!.analyze({})
+      expect(result.summary).toContain('重试后成功')
+      expect(calls).toBe(2)
+    } finally {
+      vi.unstubAllGlobals()
+      await app.dispose()
+    }
+  }, 30_000)
+
+  it('持续空内容只自动重试一次后报 INVALID_RESPONSE', async () => {
+    const app = await boot({ ...baseConfig('retry-empty-always'), stream: false, timeoutMs: 10_000 }, 'retry-empty-always')
+    await seedLastScan(app)
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: any) => {
+        const url = String(input)
+        if (url.includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+        calls++
+        return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: '' } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }),
+    )
+    try {
+      await expect(app.ctx.ai!.analyze({})).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+      expect(calls).toBe(2)
+    } finally {
+      vi.unstubAllGlobals()
+      await app.dispose()
+    }
+  }, 30_000)
   it('分析结果里的虚构 taskId 不会出现在建议里，真实任务则保留', async () => {
     const app = await boot(baseConfig('analysis', { stream: false }), 'analysis-taskid')
     try {
