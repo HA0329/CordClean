@@ -6,7 +6,7 @@
 
 ## 1. 差异分析
 
-PC-Cleaner v0.9.19：**34 分类 / 300 目标**；CordClean：37 分类 / 385 条规则（迁移时额外增加了 extra_* 分类）。
+PC-Cleaner v0.9.19：**34 分类 / 300 目标**；CordClean 扩展前：37 分类 / 385 条规则（迁移时额外增加了 extra_* 分类），扩展后：**37 分类 / 395 条**。
 按「分类 + 目标路径」逐条对齐后：
 
 - **分类缺失**：`downloads_temp`、`downloads_installers`、`downloads_extracted`、`system_wer`、`dev_purge`、`broken_shortcuts`；

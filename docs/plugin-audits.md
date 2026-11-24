@@ -1,4 +1,4 @@
-# 内置插件独立验证记录（2026-11-23）
+# 内置插件独立验证记录（2026-11-23；2026-11-24 复跑规则库）
 
 > 对应「插件区逐个插件独立完成」：每个插件单独做真实扫描审计 + 独立契约测试 + 单独提交，
 > 验证通过后再进入下一个插件。审计脚本：`scripts/audit-plugin.ts`（只读；默认禁用插件会临时启用；
@@ -18,7 +18,7 @@ pnpm exec vitest run tests/plugin-<plugin-id>-contract.test.ts
 
 | # | 插件 id | 名称 | 真实扫描审计（任务/清理项/错误/违例） | 契约测试 | 结论 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `rule-pack` | 规则库 | 汇总：任务 31，清理项 468，体积 3804.6 MB，扫描错误 72，契约违例 0 | `tests/plugin-rule-pack-contract.test.ts` | 通过（0 违例） |
+| 1 | `rule-pack` | 规则库 | 汇总：任务 31，清理项 468，体积 3564.6 MB，扫描错误 0，契约违例 0（2026-11-24 复跑） | `tests/plugin-rule-pack-contract.test.ts` | 通过（0 违例） |
 | 2 | `scheduler` | 定时扫描 | 汇总：任务 0，清理项 0，体积 0.0 MB，扫描错误 0，契约违例 0 | `tests/plugin-scheduler-contract.test.ts` | 通过（0 违例） |
 | 3 | `shortcuts` | 失效快捷方式 | 汇总：任务 1，清理项 0，体积 0.0 MB，扫描错误 0，契约违例 0 | `tests/plugin-shortcuts-contract.test.ts` | 通过（0 违例） |
 | 4 | `recycle` | 回收站 | 汇总：任务 1，清理项 0，体积 0.0 MB，扫描错误 0，契约违例 0 | `tests/plugin-recycle-contract.test.ts` | 通过（0 违例） |

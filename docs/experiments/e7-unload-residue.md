@@ -2,7 +2,7 @@
 
 > 对应论文设计属性：**Cordis `ctx.effect()` 的可逆副作用 → 插件卸载无残留**。
 > 实验代码：[tests/e7-unload.test.ts](../../tests/e7-unload.test.ts)（自动化，可重复运行）。
-> 首次执行日期：2026-11-14；实验执行版本：CordClean 0.6.9；当前发布版本：0.6.11。
+> 首次执行日期：2026-11-14；实验执行版本：CordClean 0.6.9；执行时发布版本：0.6.11（当前版本见 README/project-facts）。
 
 ## 1. 实验目标
 

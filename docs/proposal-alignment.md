@@ -11,10 +11,10 @@
 | 开题报告声明 | 仓库证据 | 核对方式 |
 | --- | --- | --- |
 | 题目：基于 Cordis 插件架构的 Windows 安全清理工具 | README 标题、`package.json` description、`docs/thesis-outline.md` 题目 | `pnpm docs:check` |
-| 当前版本 v0.6.11，自 2026-10 起持续迭代 | `package.json` 0.6.11；`git log` 2026-10-18 起 | `git log --reverse` |
+| 当前版本 v0.6.15（规则库扩展后），自 2026-10 起持续迭代 | `package.json` 0.6.15；`git log` 2026-10-18 起 | `git log --reverse` |
 | 12 个内置插件（8 个默认启用） | `packages/core/src/manifest.ts` + 运行时 `ctx.plugins.list()` | [project-facts.md](project-facts.md) |
 | 默认 38 个清理任务 | 运行时 `ctx.cleaner.list().length`（加载全部插件后） | [project-facts.md](project-facts.md) |
-| 72 个 RPC 方法 | `packages/shared/src/rpc.ts` 的 `ApiMap` | `pnpm facts` |
+| 73 个 RPC 方法 | `packages/shared/src/rpc.ts` 的 `ApiMap` | `pnpm facts` |
 | 插件可注册任务、卡片、状态项、命令、页面 | `packages/shared/src/plugin-api.ts`、`packages/core/src/domains/kernel/ui.ts` | `pnpm test:platform` |
 | inject 声明依赖、effect 登记副作用、卸载回退 | `packages/core/src/domains/kernel/plugins.ts`；E7/E8 | `tests/e7-unload.test.ts`、`tests/e8-dependency.test.ts` |
 | 六层删除安全链（路径策略—链接祖先—补偿链—执行器—隔离恢复—审计） | `packages/core/src/domains/safety/{path-policy,compensate,executor,quarantine,recycle-bin}.ts`、`domains/engine/history.ts` | `pnpm test:security`、`pnpm test:engine` |

@@ -4,6 +4,15 @@
 > 具体做法：新增 `docs/release-notes-vX.Y.Z.md`、在本文件追加对应条目、在 annotated tag 消息中写摘要，并在推送后创建 GitHub Release。
 > 版本号遵循语义化版本；详细设计见对应文档。
 
+## 未发布 — 规则库参考 PC-Cleaner v0.9.19 扩展（2026-11-24）
+
+- 新增 10 条安全规则：NVIDIA ComputeCache；QQ 浏览器 Cache/Code Cache；搜狗 WebCache；
+  Slack/Teams/飞书-Lark 缓存；传递优化跟踪日志；系统级 WER Temp；设备元数据缓存；
+- 校正迁移时弱化的风险等级：system_logs/database_compact safe→caution（对齐 PC-Cleaner v0.9.19）；
+- 当前规模：37 分类 / **395 条规则**（默认装载 31 类 / 306 条）；测试 **107 文件 / 939 用例**；
+- 真实扫描：入库规则 296→306，项 462→463（+1 设备元数据缓存 713,480B），错误 0；
+- 安全：初始化 0 条规则被安全门拒绝；`audit-plugin rule-pack` 0 错误 0 契约违例；
+- 详细差异/新增规则表/未采纳项：[docs/verification/rule-pack-pc-v0919.md](docs/verification/rule-pack-pc-v0919.md)。
 ## v0.6.15 — 2026-11-24
 
 ### AI 两插件真实模型深度测试与修复

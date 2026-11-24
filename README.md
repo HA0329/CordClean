@@ -50,7 +50,7 @@ pnpm start:desktop    # Electron 桌面应用
 - **内核**：Node.js 22+ / TypeScript / [Cordis](https://github.com/cordiverse/cordis) 4（`cordis@4.0.0-rc.12`）插件框架
 - **配置校验**：Schemastery（Cordis 生态的 schema 库）+ zod（RPC 参数校验）
 - **界面**：Vue 3 + Vite + Element Plus
-- **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 72 个方法）
+- **传输层**：JSON-RPC 2.0（WebSocket / Electron IPC 双实现，`ApiMap` 共 73 个方法）
 - **桌面外壳**：Electron 38（`sandbox: true` + `contextIsolation: true`）
 - **测试**：Vitest（939 个用例 / 107 个文件；口径见 [项目事实表](docs/project-facts.md)）
 - **构建**：esbuild（主进程）+ Vite（界面）
@@ -105,8 +105,8 @@ pnpm start:desktop    # Electron 桌面应用
 │   └── plugins/              # 12 个清理插件（每个是一个独立包）
 ├── tests/                    # Vitest 测试（107 个文件 / 939 用例）
 ├── bench/                    # 性能基准脚本
-├── scripts/                  # 构建、冒烟测试、插件自测、Mock LLM、E2E
-└── docs/                     # 架构、威胁模型、插件规范、论文素材
+├── scripts/                  # 构建、冒烟测试、插件自测、Mock LLM、真实模型验证、用户场景矩阵、E2E
+└── docs/                     # 架构、威胁模型、插件规范、验证记录、论文素材
 ```
 
 ## 5. 快速开始
@@ -217,11 +217,11 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 
 `rule-pack` 插件把 `packages/plugins/rule-pack/rules/` 下的规则自动变成清理任务：
 
-- **来源**：从 [PC-Cleaner](https://github.com/HA0329/PC-Cleaner) **v0.9.11** 的 `rules.json`（规则数据版本 0.9.9）导入并持续扩充；两套数据文件：
-  - `catalog.json`：**28 个分类 / 271 条规则 / 284 个候选根**（原始导入；上游 `broken_shortcuts` 由 `shortcuts` 插件实现、`dev_purge` 依赖 `<CWD>` 语义未导入）；
+- **来源**：从 [PC-Cleaner](https://github.com/HA0329/PC-Cleaner) **v0.9.11**（规则数据 0.9.9）导入，2026-11-24 参考 **v0.9.19** 扩充 10 条安全规则；两套数据文件：
+  - `catalog.json`：**28 个分类 / 265 条规则**（原始导入 + v0.9.19 安全扩充；上游 `broken_shortcuts` 由 `shortcuts` 插件实现、`dev_purge` 依赖 `<CWD>` 语义未导入）；
   - `extra.json`：**9 个分类 / 130 条规则**（后续扩充）；
   - 合计 37 类 / 395 条（默认装载 31 类 / 306 条；同一目标可能被多个分类引用）。
-- **默认装载**：非高风险、非 `deepOnly` 的规则默认生效，约 **31 类 / 312 条**；高风险分类（浏览器密码/Cookie、Windows.old、Downloads 大文件等）
+- **默认装载**：非高风险、非 `deepOnly` 的规则默认生效，约 **31 类 / 306 条**；高风险分类（浏览器密码/Cookie、Windows.old、Downloads 大文件等）
   与 `deepOnly` 规则默认不装载，可在设置里打开；
 - **分类 → 任务**：一个分类一个任务（`rule:<category>`），风险取组内最高；
 - **规则 → 扫描**：支持 7 种已实现类型：`clear_dir`（清空内容）、`delete_dir`、`glob_files`、`glob_dirs`、
@@ -232,7 +232,7 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - **新增清理域**：在 `catalog.json` / `extra.json` 加一段 JSON，或写进用户规则（`settings.rules.custom`），
   重启/热重载插件即可生效，内核与其它插件零改动。
 
-PC-Cleaner v0.9.11 的即时通讯数据保护（`WeChat Files` / `Tencent Files` 等按完整路径段拦截）已同步到路径策略，详见 [规则库同步验收](docs/verification/pc-cleaner-rules-sync-2026-10-28.md)。
+PC-Cleaner v0.9.11 的即时通讯数据保护（`WeChat Files` / `Tencent Files` 等按完整路径段拦截）已同步到路径策略；2026-11-24 又参考 v0.9.19 做差异扩展与风险校正，详见 [规则库同步验收](docs/verification/pc-cleaner-rules-sync-2026-10-28.md) 与 [v0.9.19 扩展记录](docs/verification/rule-pack-pc-v0919.md)。
 
 规则校验与覆盖率由 `scripts/audit-rules.ts` 输出到 [规则库审计报告](docs/rules-report.md)：
 结构错误、暂未实现的类型、死目标、重复目标、被路径策略拦截的目标都会列出来。
@@ -360,11 +360,17 @@ node scripts/verify-clean-ui.mjs         # 3000 条 mock 数据的清理页选�
 - [插件开发规范](docs/plugin-authoring.md)
 - [v2 插件包规范](docs/plugin-package-v2.md) —— 目录 + `plugin.json`、权限与兼容检查、安装事务、`client/` 自定义协议、AI 工坊产出 v2 包
 - [更新日志](CHANGELOG.md) —— 每个版本的变更摘要与更新说明入口
+- [PC-Cleaner v0.9.19 规则扩展记录](docs/verification/rule-pack-pc-v0919.md) —— 34 分类/300 目标差异、10 条新增规则、风险校正、扫描前后对比与未采纳项
 - [PC-Cleaner 规则库同步验收](docs/verification/pc-cleaner-rules-sync-2026-10-28.md) —— 上游 0.9.11 对比、有意不导入项与保护网更新
 - [真实用户走查（2026-10-31）](docs/verification/usability-walkthrough-2026-10-31.md) —— 全新配置下的扫描/选择/预演/清理/撤销/日志真实体验与问题清单
 - [AI 建议与插件工坊深度验收（2026-10-31）](docs/verification/ai-workshop-deep-test-2026-10-31.md) —— 真实模型分析/直答/截图、工坊生成与安装、客户端页面 bridge 验收
 - [发布流程](docs/release-process.md) —— 每次更新必须写说明、打 tag、确认 CI 的清单
-- [v0.6.11 发布说明](docs/release-notes-v0.6.11.md) —— 侧边栏与 7 区独立升级、12 插件逐个验证、工坊真实取消、AI 稳定错误码、撤销逐条原因、UI 规范统一
+- [v0.6.15 发布说明](docs/release-notes-v0.6.15.md) —— AI 两插件真实模型深度测试修复 D1/D2；发布后规则库参考 PC-Cleaner v0.9.19 扩展
+- [v0.6.14 发布说明](docs/release-notes-v0.6.14.md) —— 修复 v0.6.13 CI 红：文档计数、AI 流式超时/截断/取消回退与隐式扫描可取消限时
+- [v0.6.13 发布说明](docs/release-notes-v0.6.13.md) —— 真实用户模拟 + 真实模型全链路验证补做与配置文案修复
+- [v0.6.12 发布说明](docs/release-notes-v0.6.12.md) —— AI 两插件加固 + 12 个内置插件整改收口、规则 385 条
+- [AI 真实模型深度测试记录（2026-11-24）](docs/verification/ai-deep-testing-2026-11-24.md) —— 顾问/工坊真实模型矩阵、缺陷 D1/D2 修复与局限
+- [已知问题](docs/known-issues.md) —— 本机 PAT HTTPS 推送偶发挂死的环境处置约定- [v0.6.11 发布说明](docs/release-notes-v0.6.11.md) —— 侧边栏与 7 区独立升级、12 插件逐个验证、工坊真实取消、AI 稳定错误码、撤销逐条原因、UI 规范统一
 - [v0.6.10 发布说明](docs/release-notes-v0.6.10.md) —— 插件依赖挂起状态同步（suspended）、E7/E8 实验材料
 - [v0.6.9 发布说明](docs/release-notes-v0.6.9.md) —— 旧 client 页面兼容、AI 产物过滤、工坊真实流式进度、Key 状态复核
 - [v0.6.8 发布说明](docs/release-notes-v0.6.8.md) —— P0 AI 规则安全门、client bridge 校验、engines/扫描根/流式修复
